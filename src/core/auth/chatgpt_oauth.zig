@@ -705,7 +705,7 @@ fn buildBrowserAuthorizationUrl(
     try form.append(&out.writer, "id_token_add_organizations", "true");
     try form.append(&out.writer, "codex_cli_simplified_flow", "true");
     try form.append(&out.writer, "state", state);
-    try form.append(&out.writer, "originator", "fx");
+    try form.append(&out.writer, "originator", "pf");
     return out.toOwnedSlice();
 }
 
@@ -821,7 +821,7 @@ test "ChatGPT browser authorization URL uses PKCE without device authentication"
     try std.testing.expect(std.mem.find(u8, url, "code_challenge=challenge-value") != null);
     try std.testing.expect(std.mem.find(u8, url, "code_challenge_method=S256") != null);
     try std.testing.expect(std.mem.find(u8, url, "state=state-value") != null);
-    try std.testing.expect(std.mem.find(u8, url, "originator=fx") != null);
+    try std.testing.expect(std.mem.find(u8, url, "originator=pf") != null);
     try std.testing.expect(std.mem.find(u8, url, "device") == null);
 }
 

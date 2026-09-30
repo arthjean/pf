@@ -196,7 +196,7 @@ const FetchOperation = struct {
             extra_headers[extra_len] = .{ .name = "chatgpt-account-id", .value = account_id };
             extra_len += 1;
         }
-        extra_headers[extra_len] = .{ .name = "originator", .value = "fx" };
+        extra_headers[extra_len] = .{ .name = "originator", .value = "pf" };
         extra_len += 1;
         extra_headers[extra_len] = .{ .name = "accept", .value = "application/json" };
         extra_len += 1;

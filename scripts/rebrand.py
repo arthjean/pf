@@ -54,9 +54,7 @@ RETARGETS = [
 PROTECTED = [
     # Upstream attribution and fixtures that parse real repository URLs.
     r"(?:https?://github\.com/|git@github\.com:|git\+https://github\.com/)?vercel-labs/fx\b(?:\.git)?",
-    # Partner identifiers owned by fx, kept until Arthur decides how pf authenticates.
-    r"\"originator\",\s*(?:\.value\s*=\s*)?\"fx\"",
-    r"originator=fx\b",
+    # Grok client identifiers, kept as fx until a real login proves xAI accepts pf.
     r"\"referrer\",\s*\"fx\"",
     r"referrer=fx\b",
     r"get\(\"referrer\"\)\s*!==\s*\"fx\"",
