@@ -31,6 +31,7 @@ const RunError = error{
     ReplaceFailed,
     OutOfMemory,
     Cancelled,
+    NoReleaseChannel,
 };
 
 pub fn run(
@@ -39,6 +40,7 @@ pub fn run(
     channel: update_target.Channel,
     format: output_contracts.OutputFormat,
 ) RunResult {
+    if (helpers.resolveCdnBase() == null) return failureResult(current, channel, error.NoReleaseChannel);
     return runInner(alloc, current, channel, format) catch |err| failureResult(current, channel, err);
 }
 
@@ -140,6 +142,7 @@ fn failureMessage(err: RunError) []const u8 {
         error.ReplaceFailed => "failed to replace binary (permission denied?)",
         error.OutOfMemory => "out of memory",
         error.Cancelled => "upgrade cancelled",
+        error.NoReleaseChannel => "no release channel is available yet; rebuild from source to update",
     };
 }
 
@@ -180,7 +183,10 @@ fn upgradeWorkerInner(
     progress: *ProgressState,
     show_progress: bool,
 ) !void {
-    const cdn_base = helpers.resolveCdnBase();
+    const cdn_base = helpers.resolveCdnBase() orelse {
+        result.err = .fetch_failed;
+        return;
+    };
     const fetched_target = helpers.fetchTarget(alloc, channel, cdn_base, .{}) catch {
         result.err = .fetch_failed;
         return;

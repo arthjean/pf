@@ -247,7 +247,7 @@ pub const AutoUpgrade = struct {
         alloc: Allocator,
         current: update_target.CurrentBuild,
     ) void {
-        const cdn_base = helpers.resolveCdnBase();
+        const cdn_base = helpers.resolveCdnBase() orelse return;
         if (helpers.cancelRequested(&self.should_stop)) return;
         var target = helpers.fetchTarget(alloc, self.selected_channel, cdn_base, self.transferControl()) catch return;
         defer target.deinit(alloc);

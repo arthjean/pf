@@ -18,9 +18,11 @@ fn setRecvTimeout(conn: *std.http.Client.Connection) void {
     std.posix.setsockopt(sock, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch {};
 }
 
-pub const cdn_base = "https://releases.fx.sh";
+/// pf has no release channel yet, so only the loopback E2E fixture serves
+/// upgrades. Set this once pf publishes its own releases.
+pub const cdn_base: ?[]const u8 = null;
 
-pub fn resolveCdnBase() []const u8 {
+pub fn resolveCdnBase() ?[]const u8 {
     if (io_mod.getenv("FX_E2E_UPGRADE_BASE_URL")) |url| {
         if (isLoopbackE2eUpgradeBase(url)) return url;
     }
@@ -448,8 +450,8 @@ test "E2E upgrade base accepts only explicit IPv4 loopback origins" {
     try std.testing.expect(!isLoopbackE2eUpgradeBase("http://localhost:1234"));
 }
 
-test "production upgrade base uses the fx release domain" {
-    try std.testing.expectEqualStrings("https://releases.fx.sh", resolveCdnBase());
+test "production upgrade base is unset until pf has a release channel" {
+    try std.testing.expect(resolveCdnBase() == null);
 }
 
 test "extractChecksumHex parses sha256sum format" {
