@@ -4388,7 +4388,7 @@ test(
       for (const request of responses) {
         expect(request.tokenAuth).toBe("xai-grok-cli");
         expect(request.authenticateResponse).toBe("authenticate-response");
-        expect(request.clientIdentifier).toBe("pf");
+        expect(request.clientIdentifier).toBe("fx");
         expect(request.clientVersion).toBe("1.0.6");
         expect(request.modelOverride).toBe("grok-4.20");
         expect(request.grokUserId).toBe("acct_grok_e2e");
@@ -6341,7 +6341,7 @@ test(
       for (const [index, headers] of grok.headers.entries()) {
         expect(headers.tokenAuth).toBe("xai-grok-cli");
         expect(headers.authenticateResponse).toBe("authenticate-response");
-        expect(headers.clientIdentifier).toBe("pf");
+        expect(headers.clientIdentifier).toBe("fx");
         expect(headers.clientVersion).toBe("1.0.6");
         expect(headers.modelOverride).toBe(index === 1 ? "grok-4.5" : "grok-4.20");
         expect(headers.grokUserId).toBe("acct_auto_review");

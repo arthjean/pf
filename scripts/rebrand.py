@@ -5,16 +5,19 @@ Paneflow Agent started from vercel-labs/fx. Every rename rule lives here so the
 same rules apply to this repository and to fx changes ported later.
 
 Commands:
-  apply            rewrite tracked text files and rename tracked paths in place
+  apply            rewrite tracked text files, .tar.gz member paths, and tracked paths in place
   check            list fx spellings outside the allowlist; exit 1 if any remain
   filter           rewrite stdin to stdout
   port FROM TO     3-way merge the fx range FROM..TO from a local fx clone
 """
 
 import argparse
+import gzip
+import io
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
@@ -44,6 +47,7 @@ RETARGETS = [
     (r"0x5c, 0x75, 0x59, 0xd2, 0xd0, 0xa5, 0x13, 0xb7,", "0x95, 0xb7, 0x7a, 0x27, 0x83, 0x14, 0xcc, 0x0e,"),
     (r"0x79, 0x95, 0x1f, 0xc4, 0x3a, 0x02, 0xd1, 0x73,", "0x50, 0x28, 0x88, 0x0d, 0x85, 0xf9, 0xfb, 0x51,"),
     (r"0x4c, 0x71, 0x8b, 0x0b, 0x51, 0x19, 0x58, 0x1e,", "0x99, 0xcd, 0xdd, 0x09, 0xef, 0x8c, 0x1b, 0x6e,"),
+    (r"15b963713444428d1548b060b5ee883a209f7cea43ff80e0fdaa33a98b41e34e", "2fdaa8dfedca78ae42e09d63f5fa4ad59d61afd1e38e1c2bd8abf25b4fd31cf5"),
 ]
 
 # Spans that must stay fx. They are masked before the rename rules run.
@@ -57,6 +61,7 @@ PROTECTED = [
     r"referrer=fx\b",
     r"get\(\"referrer\"\)\s*!==\s*\"fx\"",
     r"\"x-grok-client-identifier\",\s*\.value\s*=\s*\"fx\"",
+    r"clientIdentifier\)\.toBe\(\"fx\"\)",
     # The Slack bridge runs on fx.sh with fx's Slack app.
     r"\"https://fx\.sh\"",
     r"https://fx\.sh/api/slack/[^\s\"'`)]*",
@@ -154,6 +159,23 @@ def rename_path(path):
     return "/".join(rename_text(part) for part in path.split("/"))
 
 
+def rename_binary(path, data):
+    """Rename member paths inside .tar.gz fixtures; return other binary data unchanged."""
+    if not path.endswith(".tar.gz"):
+        return data
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as src:
+        members = src.getmembers()
+        if all(rename_path(m.name) == m.name for m in members):
+            return data
+        out = io.BytesIO()
+        with gzip.GzipFile(filename="", mode="wb", fileobj=out, mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.GNU_FORMAT) as dst:
+            for member in members:
+                content = src.extractfile(member) if member.isfile() else None
+                member.name = rename_path(member.name)
+                dst.addfile(member, content)
+    return out.getvalue()
+
+
 def decode(data):
     """Return text for UTF-8 files, or None for binary data."""
     if data is None or b"\0" in data[:8192]:
@@ -177,12 +199,16 @@ def cmd_apply(_args):
     for path in tracked_files():
         file = ROOT / path
         if path not in SKIP_FILES and not file.is_symlink():
-            text = decode(file.read_bytes())
+            data = file.read_bytes()
+            text = decode(data)
             if text is not None:
                 renamed = rename_text(text)
                 if renamed != text:
                     file.write_text(renamed, encoding="utf-8")
                     changed += 1
+            elif (renamed := rename_binary(path, data)) != data:
+                file.write_bytes(renamed)
+                changed += 1
         target = rename_path(path)
         if target != path:
             (ROOT / target).parent.mkdir(parents=True, exist_ok=True)
@@ -236,7 +262,7 @@ def cmd_port(args):
         binary = (old is not None and old_text is None) or (new is not None and new_text is None)
         if status == "D":
             current = dest.read_bytes() if dest.exists() else None
-            expected = old if binary else rename_text(old_text).encode()
+            expected = rename_binary(path, old) if binary else rename_text(old_text).encode()
             if current is None:
                 continue
             if current == expected:
@@ -245,7 +271,7 @@ def cmd_port(args):
             else:
                 conflicts.append(f"{dest.relative_to(ROOT)}: deleted upstream but changed in pf")
             continue
-        payload = new if binary else rename_text(new_text).encode()
+        payload = rename_binary(path, new) if binary else rename_text(new_text).encode()
         if status == "A" or not dest.exists():
             if dest.exists() and dest.read_bytes() != payload:
                 conflicts.append(f"{dest.relative_to(ROOT)}: added upstream but already exists in pf")

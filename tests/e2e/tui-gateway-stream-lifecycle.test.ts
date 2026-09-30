@@ -268,7 +268,7 @@ const CANONICAL_A_B_SSE =
   'data: {"type":"finish","finishReason":{"unified":"tool-calls","raw":"tool-calls"},"usage":{"inputTokens":{"total":11},"outputTokens":{"total":17}}}\n\n' +
   "data: [DONE]\n\n";
 const CANONICAL_A_B_SHA256 =
-  "15b963713444428d1548b060b5ee883a209f7cea43ff80e0fdaa33a98b41e34e";
+  "2fdaa8dfedca78ae42e09d63f5fa4ad59d61afd1e38e1c2bd8abf25b4fd31cf5";
 
 type LifecycleStage =
   | "baseline-silent"

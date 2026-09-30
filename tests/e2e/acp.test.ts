@@ -9026,7 +9026,7 @@ describe("acp: model catalog authentication", () => {
         for (const request of grok.requests) {
           expect(request.tokenAuth).toBe("xai-grok-cli");
           expect(request.authenticateResponse).toBe("authenticate-response");
-          expect(request.clientIdentifier).toBe("pf");
+          expect(request.clientIdentifier).toBe("fx");
           expect(request.clientVersion).toBe("1.0.6");
           expect(request.modelOverride).toBe("grok-4.20");
           expect(request.grokUserId).toBe("acct_grok_acp");
