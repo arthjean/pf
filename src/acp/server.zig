@@ -45,16 +45,16 @@ const permissions = @import("../core/permissions/permissions.zig");
 const host_tool_runtime = @import("../core/tooling/host_tool_runtime.zig");
 const tool_dispatch = @import("../core/tooling/tool_dispatch.zig");
 const agent_checkpoint = @import("../core/agent/runtime/checkpoint.zig");
-const libfx_steering = @import("libfx_steering.zig");
+const libpf_steering = @import("libpf_steering.zig");
 
 const Allocator = std.mem.Allocator;
 const ErrorCode = jsonrpc.ErrorCode;
 const writeJsonStr = jsonrpc.writeJsonStr;
 const legacy_url_completion_timeout_ms: i64 = 10 * 60 * 1000;
-const libfx_provider_tools = [_]tool_dispatch.Tool{
+const libpf_provider_tools = [_]tool_dispatch.Tool{
     host_tool_runtime.providerProjection(builtin_tools.web_search),
 };
-const libfx_provider_tool_registry = tool_dispatch.Registry{ .tools = &libfx_provider_tools };
+const libpf_provider_tool_registry = tool_dispatch.Registry{ .tools = &libpf_provider_tools };
 
 const AcpMethod = enum {
     request_cancel,
@@ -69,10 +69,10 @@ const AcpMethod = enum {
     session_prompt,
     session_set_config_option,
     session_set_mode,
-    libfx_checkpoint,
-    libfx_restore,
-    libfx_new,
-    libfx_steer,
+    libpf_checkpoint,
+    libpf_restore,
+    libpf_new,
+    libpf_steer,
     unknown,
 
     fn parse(method: []const u8) AcpMethod {
@@ -88,10 +88,10 @@ const AcpMethod = enum {
         if (std.mem.eql(u8, method, "session/prompt")) return .session_prompt;
         if (std.mem.eql(u8, method, "session/set_config_option")) return .session_set_config_option;
         if (std.mem.eql(u8, method, "session/set_mode")) return .session_set_mode;
-        if (std.mem.eql(u8, method, "libfx/checkpoint")) return .libfx_checkpoint;
-        if (std.mem.eql(u8, method, "libfx/restore")) return .libfx_restore;
-        if (std.mem.eql(u8, method, "libfx/new")) return .libfx_new;
-        if (std.mem.eql(u8, method, "libfx/steer")) return .libfx_steer;
+        if (std.mem.eql(u8, method, "libpf/checkpoint")) return .libpf_checkpoint;
+        if (std.mem.eql(u8, method, "libpf/restore")) return .libpf_restore;
+        if (std.mem.eql(u8, method, "libpf/new")) return .libpf_new;
+        if (std.mem.eql(u8, method, "libpf/steer")) return .libpf_steer;
         return .unknown;
     }
 
@@ -105,23 +105,23 @@ const AcpMethod = enum {
             .session_load,
             .session_resume,
             .session_close,
-            .libfx_new,
-            .libfx_steer,
+            .libpf_new,
+            .libpf_steer,
             => false,
             .session_list,
             .session_remove,
             .session_prompt,
             .session_set_config_option,
-            .libfx_checkpoint,
-            .libfx_restore,
+            .libpf_checkpoint,
+            .libpf_restore,
             .unknown,
             => true,
         };
     }
 
-    fn isLibfx(self: AcpMethod) bool {
+    fn isLibpf(self: AcpMethod) bool {
         return switch (self) {
-            .libfx_checkpoint, .libfx_restore, .libfx_new, .libfx_steer => true,
+            .libpf_checkpoint, .libpf_restore, .libpf_new, .libpf_steer => true,
             else => false,
         };
     }
@@ -218,7 +218,7 @@ pub const ActiveSessionState = struct {
     mcp: ?*mcp_runtime.McpRuntime = null,
     cancel_flag: std.atomic.Value(bool),
     pending_prompt_id: ?jsonrpc.RequestId,
-    steering: libfx_steering.Runtime = .{},
+    steering: libpf_steering.Runtime = .{},
 
     pub fn retainGrant(self: *ActiveSessionState, alloc: Allocator, tool_name: []const u8, target_path: []const u8) !void {
         for (self.session_grants) |grant| {
@@ -532,7 +532,7 @@ pub fn refreshModelCredential(
         state,
         &refreshed,
         expected_account_id,
-        if (source == .fx_login) state.gateway_team else null,
+        if (source == .pf_login) state.gateway_team else null,
     );
     return worker_token;
 }
@@ -802,7 +802,7 @@ pub fn runWithTransport(
         .cfg = cfg,
         .writer = writer_value,
         .web_search_runtime = web_search_runtime.Runtime.init(.{
-            .provider = cfg.provider_set.gateway.fx_search,
+            .provider = cfg.provider_set.gateway.pf_search,
         }),
         .terminal_client = terminal_client_runtime.Runtime.init(
             cfg.process_provider,
@@ -1273,7 +1273,7 @@ fn dispatch(state: *ServerState, alloc: Allocator, msg: *jsonrpc.Message) !void 
         return state.writer.writeResponse(alloc, msg.id, "null");
     }
 
-    if (method.isLibfx() and !state.cfg.minimal_kernel) {
+    if (method.isLibpf() and !state.cfg.minimal_kernel) {
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.method_not_found,
             .message = "Method not found",
@@ -1296,10 +1296,10 @@ fn dispatch(state: *ServerState, alloc: Allocator, msg: *jsonrpc.Message) !void 
             .session_prompt => startPrompt(state, alloc, msg),
             .session_set_config_option => handleSetConfigOption(state, alloc, msg),
             .session_set_mode => handleSetMode(state, alloc, msg),
-            .libfx_checkpoint => handleKernelCheckpoint(state, alloc, msg),
-            .libfx_restore => handleKernelRestore(state, alloc, msg),
-            .libfx_new => sessions.handleNewLibfxSession(state, alloc, msg),
-            .libfx_steer => handleKernelSteer(state, alloc, msg),
+            .libpf_checkpoint => handleKernelCheckpoint(state, alloc, msg),
+            .libpf_restore => handleKernelRestore(state, alloc, msg),
+            .libpf_new => sessions.handleNewLibpfSession(state, alloc, msg),
+            .libpf_steer => handleKernelSteer(state, alloc, msg),
             else => state.writer.writeError(alloc, msg.id, .{
                 .code = ErrorCode.method_not_found,
                 .message = "Method not available in the web core yet",
@@ -1316,10 +1316,10 @@ fn dispatch(state: *ServerState, alloc: Allocator, msg: *jsonrpc.Message) !void 
         .session_prompt => startPrompt(state, alloc, msg),
         .session_set_config_option => handleSetConfigOption(state, alloc, msg),
         .session_set_mode => handleSetMode(state, alloc, msg),
-        .libfx_checkpoint => handleKernelCheckpoint(state, alloc, msg),
-        .libfx_restore => handleKernelRestore(state, alloc, msg),
-        .libfx_new => sessions.handleNewLibfxSession(state, alloc, msg),
-        .libfx_steer => handleKernelSteer(state, alloc, msg),
+        .libpf_checkpoint => handleKernelCheckpoint(state, alloc, msg),
+        .libpf_restore => handleKernelRestore(state, alloc, msg),
+        .libpf_new => sessions.handleNewLibpfSession(state, alloc, msg),
+        .libpf_steer => handleKernelSteer(state, alloc, msg),
         .initialize,
         .request_cancel,
         .session_cancel,
@@ -1372,18 +1372,18 @@ fn handleRequestCancellation(
     handleCancel(state, true);
 }
 
-fn libfxSessionId(alloc: Allocator, msg: *const jsonrpc.Message) !std.json.Parsed(std.json.Value) {
-    const raw = msg.params_raw orelse return error.InvalidLibfxParams;
+fn libpfSessionId(alloc: Allocator, msg: *const jsonrpc.Message) !std.json.Parsed(std.json.Value) {
+    const raw = msg.params_raw orelse return error.InvalidLibpfParams;
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch
-        return error.InvalidLibfxParams;
+        return error.InvalidLibpfParams;
     if (parsed.value != .object) {
         parsed.deinit();
-        return error.InvalidLibfxParams;
+        return error.InvalidLibpfParams;
     }
     return parsed;
 }
 
-fn activeLibfxSession(
+fn activeLibpfSession(
     state: *ServerState,
     params: std.json.Value,
 ) ?*ActiveSessionState {
@@ -1394,7 +1394,7 @@ fn activeLibfxSession(
     return active;
 }
 
-pub fn takeLibfxSteering(
+pub fn takeLibpfSteering(
     state: *ServerState,
     result_alloc: Allocator,
     close_if_empty: bool,
@@ -1408,20 +1408,20 @@ fn handleKernelCheckpoint(
     alloc: Allocator,
     msg: *const jsonrpc.Message,
 ) !void {
-    var parsed = libfxSessionId(alloc, msg) catch return state.writer.writeError(alloc, msg.id, .{
+    var parsed = libpfSessionId(alloc, msg) catch return state.writer.writeError(alloc, msg.id, .{
         .code = ErrorCode.invalid_params,
-        .message = "Invalid libfx checkpoint params",
+        .message = "Invalid libpf checkpoint params",
     });
     defer parsed.deinit();
-    const active = activeLibfxSession(state, parsed.value) orelse
+    const active = activeLibpfSession(state, parsed.value) orelse
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Unknown libfx session",
+            .message = "Unknown libpf session",
         });
     const bytes = active.session_rt.agent.checkpoint(alloc) catch
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_request,
-            .message = "libfx checkpoint is unavailable",
+            .message = "libpf checkpoint is unavailable",
         });
     defer alloc.free(bytes);
     const encoded = try alloc.alloc(u8, std.base64.standard.Encoder.calcSize(bytes.len));
@@ -1440,34 +1440,34 @@ fn handleKernelRestore(
     alloc: Allocator,
     msg: *const jsonrpc.Message,
 ) !void {
-    var parsed = libfxSessionId(alloc, msg) catch return state.writer.writeError(alloc, msg.id, .{
+    var parsed = libpfSessionId(alloc, msg) catch return state.writer.writeError(alloc, msg.id, .{
         .code = ErrorCode.invalid_params,
-        .message = "Invalid libfx restore params",
+        .message = "Invalid libpf restore params",
     });
     defer parsed.deinit();
-    const active = activeLibfxSession(state, parsed.value) orelse
+    const active = activeLibpfSession(state, parsed.value) orelse
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Unknown libfx session",
+            .message = "Unknown libpf session",
         });
     const checkpoint = parsed.value.object.get("checkpoint") orelse
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Missing libfx checkpoint",
+            .message = "Missing libpf checkpoint",
         });
     if (checkpoint != .string) return state.writer.writeError(alloc, msg.id, .{
         .code = ErrorCode.invalid_params,
-        .message = "Invalid libfx checkpoint",
+        .message = "Invalid libpf checkpoint",
     });
     const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(checkpoint.string) catch
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Invalid libfx checkpoint",
+            .message = "Invalid libpf checkpoint",
         });
     if (decoded_len > agent_checkpoint.max_checkpoint_bytes) {
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "libfx checkpoint is too large",
+            .message = "libpf checkpoint is too large",
         });
     }
     const bytes = try alloc.alloc(u8, decoded_len);
@@ -1475,12 +1475,12 @@ fn handleKernelRestore(
     std.base64.standard.Decoder.decode(bytes, checkpoint.string) catch
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Invalid libfx checkpoint",
+            .message = "Invalid libpf checkpoint",
         });
     active.session_rt.agent.restoreCheckpoint(alloc, bytes) catch
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Invalid or non-fresh libfx checkpoint",
+            .message = "Invalid or non-fresh libpf checkpoint",
         });
     try state.writer.writeResponse(alloc, msg.id, "null");
 }
@@ -1490,15 +1490,15 @@ fn handleKernelSteer(
     alloc: Allocator,
     msg: *const jsonrpc.Message,
 ) !void {
-    var parsed = libfxSessionId(alloc, msg) catch return state.writer.writeError(alloc, msg.id, .{
+    var parsed = libpfSessionId(alloc, msg) catch return state.writer.writeError(alloc, msg.id, .{
         .code = ErrorCode.invalid_params,
-        .message = "Invalid libfx steer params",
+        .message = "Invalid libpf steer params",
     });
     defer parsed.deinit();
-    const active = activeLibfxSession(state, parsed.value) orelse
+    const active = activeLibpfSession(state, parsed.value) orelse
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Unknown libfx session",
+            .message = "Unknown libpf session",
         });
     const text = parsed.value.object.get("text") orelse
         return state.writer.writeError(alloc, msg.id, .{
@@ -1517,7 +1517,7 @@ fn handleKernelSteer(
             },
             .message = switch (err) {
                 error.EmptySteeringMessage => "Steering text cannot be empty",
-                error.SteeringMessageTooLarge => "Steering text exceeds the 64 KiB libfx limit",
+                error.SteeringMessageTooLarge => "Steering text exceeds the 64 KiB libpf limit",
                 error.SteeringQueueFull => "Steering queue is full",
                 error.SteeringNotActive => "No prompt is running",
                 error.OutOfMemory => "Failed to queue steering text",
@@ -1529,7 +1529,7 @@ fn handleKernelSteer(
     try update.writer.writeAll("{\"sessionId\":");
     try writeJsonStr(active.session_id, &update.writer);
     try update.writer.writeAll(",\"update\":");
-    try acp_types.writeUserMessageChunk(&update.writer, "libfx-steering", text.string);
+    try acp_types.writeUserMessageChunk(&update.writer, "libpf-steering", text.string);
     try update.writer.writeByte('}');
     try state.writer.writeNotification(alloc, "session/update", update.written());
     try state.writer.writeResponse(alloc, msg.id, "null");
@@ -1725,7 +1725,7 @@ const InitializeRequest = struct {
 fn parseInitializeRequest(
     alloc: Allocator,
     params: ?[]const u8,
-    allow_libfx: bool,
+    allow_libpf: bool,
 ) !InitializeRequest {
     const raw = params orelse return error.InvalidInitializeParams;
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw, .{}) catch
@@ -1757,16 +1757,16 @@ fn parseInitializeRequest(
         request.client_terminal = value == .bool and value.bool;
     }
     request.client_elicitation = elicitation.parseAcpCapabilities(capabilities);
-    if (allow_libfx) {
-        if (capabilities.object.get("libfx")) |libfx| {
-            if (libfx != .object) return error.InvalidInitializeParams;
+    if (allow_libpf) {
+        if (capabilities.object.get("libpf")) |libpf| {
+            if (libpf != .object) return error.InvalidInitializeParams;
             request.host_tools = try host_tool_runtime.Runtime.initWithProviderRegistry(
                 alloc,
-                libfx.object.get("tools"),
-                libfx_provider_tool_registry,
+                libpf.object.get("tools"),
+                libpf_provider_tool_registry,
             );
             errdefer request.host_tools.deinit();
-            if (libfx.object.get("instructions")) |instructions| {
+            if (libpf.object.get("instructions")) |instructions| {
                 if (instructions != .string or instructions.string.len > 64 * 1024) {
                     return error.InvalidInitializeParams;
                 }
@@ -1777,11 +1777,11 @@ fn parseInitializeRequest(
     return request;
 }
 
-test "ACP initialize owns libfx tools and instructions" {
+test "ACP initialize owns libpf tools and instructions" {
     const alloc = std.testing.allocator;
     var request = try parseInitializeRequest(
         alloc,
-        \\{"protocolVersion":1,"clientCapabilities":{"libfx":{"tools":[{"name":"lookup","description":"Lookup","inputSchema":{"type":"object"}}],"instructions":"Be concise."}}}
+        \\{"protocolVersion":1,"clientCapabilities":{"libpf":{"tools":[{"name":"lookup","description":"Lookup","inputSchema":{"type":"object"}}],"instructions":"Be concise."}}}
     ,
         true,
     );
@@ -1791,11 +1791,11 @@ test "ACP initialize owns libfx tools and instructions" {
     try std.testing.expectEqualStrings("Be concise.", request.host_instructions);
 }
 
-test "ACP initialize accepts registered provider-executed libfx tools" {
+test "ACP initialize accepts registered provider-executed libpf tools" {
     const alloc = std.testing.allocator;
     var request = try parseInitializeRequest(
         alloc,
-        \\{"protocolVersion":1,"clientCapabilities":{"libfx":{"tools":[{"name":"web_search","providerExecuted":true}]}}}
+        \\{"protocolVersion":1,"clientCapabilities":{"libpf":{"tools":[{"name":"web_search","providerExecuted":true}]}}}
     ,
         true,
     );
@@ -1806,11 +1806,11 @@ test "ACP initialize accepts registered provider-executed libfx tools" {
     try std.testing.expect(request.host_tools.tools[0].write_provider_advertisement_fn != null);
 }
 
-test "ordinary ACP ignores private libfx capabilities" {
+test "ordinary ACP ignores private libpf capabilities" {
     const alloc = std.testing.allocator;
     var request = try parseInitializeRequest(
         alloc,
-        \\{"protocolVersion":1,"clientCapabilities":{"libfx":"ignored"}}
+        \\{"protocolVersion":1,"clientCapabilities":{"libpf":"ignored"}}
     ,
         false,
     );
@@ -1821,7 +1821,7 @@ test "ordinary ACP ignores private libfx capabilities" {
 
 fn loadConfiguredStartupState(state: *const ServerState, alloc: Allocator) !app_lifecycle.StartupState {
     if (state.cfg.minimal_kernel) {
-        return app_lifecycle.loadLibfxStartupState(
+        return app_lifecycle.loadLibpfStartupState(
             alloc,
             state.cfg.workspace_root_override orelse "/",
             state.cfg.model_override orelse state.cfg.default_model,
@@ -2064,7 +2064,7 @@ fn handleInitialize(state: *ServerState, alloc: Allocator, msg: *jsonrpc.Message
     if (state.host_instructions.len > 0) alloc.free(state.host_instructions);
     state.host_instructions = request.host_instructions;
     request.host_instructions = &.{};
-    debug_trace.logf("acp", "libfx host capabilities tools={d} instructions_bytes={d}", .{
+    debug_trace.logf("acp", "libpf host capabilities tools={d} instructions_bytes={d}", .{
         state.host_tools.tools.len,
         state.host_instructions.len,
     });
@@ -2089,7 +2089,7 @@ fn applyEffortOverride(state: *ServerState, alloc: Allocator, msg: *jsonrpc.Mess
     const fallback = bundle.fallbackModelCapabilities(state.selected_model);
     var capabilities: model_capabilities.Capabilities = undefined;
     if (state.cfg.minimal_kernel and state.capability_resolver.state == .idle) {
-        // libfx cores skip the startup catalog resolve; explicit effort and
+        // libpf cores skip the startup catalog resolve; explicit effort and
         // fast overrides are the creation-time consumers that need it.
         const catalog_provider = catalogProviderFor(state, state.provider) orelse return true;
         var catalog_cancel_flag = std.atomic.Value(bool).init(false);
@@ -2126,7 +2126,7 @@ fn applyEffortOverride(state: *ServerState, alloc: Allocator, msg: *jsonrpc.Mess
             .code = ErrorCode.invalid_params,
             .message = message,
             .data = .{
-                .code = "LIBFX_MODEL_UNSUPPORTED_EFFORT",
+                .code = "LIBPF_MODEL_UNSUPPORTED_EFFORT",
                 .model = state.selected_model,
                 .capability = "effort",
             },
@@ -2246,7 +2246,7 @@ fn applyFastOverride(state: *ServerState, alloc: Allocator, msg: *jsonrpc.Messag
             .code = ErrorCode.invalid_params,
             .message = message,
             .data = .{
-                .code = "LIBFX_MODEL_UNSUPPORTED_FAST",
+                .code = "LIBPF_MODEL_UNSUPPORTED_FAST",
                 .model = state.selected_model,
                 .capability = "fast",
             },
@@ -2861,16 +2861,16 @@ test "ACP method parser classifies request dispatch methods" {
     try std.testing.expectEqual(AcpMethod.session_prompt, AcpMethod.parse("session/prompt"));
     try std.testing.expectEqual(AcpMethod.session_set_config_option, AcpMethod.parse("session/set_config_option"));
     try std.testing.expectEqual(AcpMethod.session_set_mode, AcpMethod.parse("session/set_mode"));
-    try std.testing.expectEqual(AcpMethod.libfx_checkpoint, AcpMethod.parse("libfx/checkpoint"));
-    try std.testing.expectEqual(AcpMethod.libfx_restore, AcpMethod.parse("libfx/restore"));
-    try std.testing.expectEqual(AcpMethod.libfx_new, AcpMethod.parse("libfx/new"));
-    try std.testing.expectEqual(AcpMethod.libfx_steer, AcpMethod.parse("libfx/steer"));
+    try std.testing.expectEqual(AcpMethod.libpf_checkpoint, AcpMethod.parse("libpf/checkpoint"));
+    try std.testing.expectEqual(AcpMethod.libpf_restore, AcpMethod.parse("libpf/restore"));
+    try std.testing.expectEqual(AcpMethod.libpf_new, AcpMethod.parse("libpf/new"));
+    try std.testing.expectEqual(AcpMethod.libpf_steer, AcpMethod.parse("libpf/steer"));
     try std.testing.expectEqual(AcpMethod.unknown, AcpMethod.parse("workspace/unknown"));
-    try std.testing.expect(AcpMethod.libfx_checkpoint.isLibfx());
-    try std.testing.expect(AcpMethod.libfx_restore.isLibfx());
-    try std.testing.expect(AcpMethod.libfx_new.isLibfx());
-    try std.testing.expect(AcpMethod.libfx_steer.isLibfx());
-    try std.testing.expect(!AcpMethod.session_new.isLibfx());
+    try std.testing.expect(AcpMethod.libpf_checkpoint.isLibpf());
+    try std.testing.expect(AcpMethod.libpf_restore.isLibpf());
+    try std.testing.expect(AcpMethod.libpf_new.isLibpf());
+    try std.testing.expect(AcpMethod.libpf_steer.isLibpf());
+    try std.testing.expect(!AcpMethod.session_new.isLibpf());
 }
 
 test "ACP prompt gate policy keeps lifecycle interruption responsive" {
@@ -2884,7 +2884,7 @@ test "ACP prompt gate policy keeps lifecycle interruption responsive" {
     try std.testing.expect(AcpMethod.session_prompt.waitsForActivePrompt());
     try std.testing.expect(AcpMethod.session_set_config_option.waitsForActivePrompt());
     try std.testing.expect(!AcpMethod.session_set_mode.waitsForActivePrompt());
-    try std.testing.expect(!AcpMethod.libfx_steer.waitsForActivePrompt());
+    try std.testing.expect(!AcpMethod.libpf_steer.waitsForActivePrompt());
     try std.testing.expect(AcpMethod.unknown.waitsForActivePrompt());
 }
 

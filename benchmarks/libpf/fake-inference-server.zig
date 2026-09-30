@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Protocol = enum { fx, openai };
+const Protocol = enum { pf, openai };
 const max_request_bytes = 8 * 1024 * 1024;
 var next_request_id: std.atomic.Value(u64) = .init(1);
 
@@ -42,7 +42,7 @@ fn serveConnection(stream: std.Io.net.Stream) void {
     var io_backend: std.Io.Threaded = .init_single_threaded;
     defer io_backend.deinit();
     serveConnectionFallible(io_backend.io(), stream) catch |err| {
-        std.log.err("libfx benchmark server failed: {s}", .{@errorName(err)});
+        std.log.err("libpf benchmark server failed: {s}", .{@errorName(err)});
     };
 }
 
@@ -63,8 +63,8 @@ fn serveConnectionFallible(io: std.Io, stream: std.Io.net.Stream) !void {
             try request.respond("method not allowed\n", .{ .status = .method_not_allowed, .keep_alive = false });
             return;
         }
-        const protocol: Protocol = if (std.mem.eql(u8, request.head.target, "/fx"))
-            .fx
+        const protocol: Protocol = if (std.mem.eql(u8, request.head.target, "/pf"))
+            .pf
         else if (std.mem.eql(u8, request.head.target, "/v1/responses"))
             .openai
         else {
@@ -101,7 +101,7 @@ fn writeResponse(request: *std.http.Server.Request, protocol: Protocol, keep_ali
     try response.writer.flush();
     try request.server.out.flush();
     switch (protocol) {
-        .fx => try response.writer.writeAll(
+        .pf => try response.writer.writeAll(
             "data: {\"type\":\"text-delta\",\"id\":\"0\",\"delta\":\"xxxxx\"}\n\n" ++
                 "data: {\"type\":\"finish\",\"finishReason\":{\"unified\":\"stop\",\"raw\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1},\"outputTokens\":{\"total\":1}}}\n\n" ++
                 "data: [DONE]\n\n",

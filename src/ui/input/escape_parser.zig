@@ -38,7 +38,7 @@ const control_sequence_discard_max_bytes: u16 = 32;
 const kitty_up_key: u16 = 57352;
 const kitty_down_key: u16 = 57353;
 // Kitty reports every keypad key as its own function code. KP_SEPARATOR (57416),
-// KP_INSERT (57425), and KP_BEGIN (57427) have no main-row equivalent fx can
+// KP_INSERT (57425), and KP_BEGIN (57427) have no main-row equivalent pf can
 // act on and stay unmapped.
 const kp_0: u16 = 57399;
 const kp_9: u16 = 57408;

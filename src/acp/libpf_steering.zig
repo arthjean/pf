@@ -15,7 +15,7 @@ pub const EnqueueError = Allocator.Error || error{
     SteeringNotActive,
 };
 
-/// Owns bounded libfx steering text shared by the ACP reader and prompt worker.
+/// Owns bounded libpf steering text shared by the ACP reader and prompt worker.
 pub const Runtime = struct {
     mutex: std.Io.Mutex = .init,
     messages: std.ArrayListUnmanaged([]u8) = .empty,
@@ -93,7 +93,7 @@ pub const Runtime = struct {
     fn clearLocked(self: *Runtime, alloc: Allocator, reason: []const u8) void {
         if (self.messages.items.len > 0) {
             debug_trace.logf(
-                "libfx",
+                "libpf",
                 "dropped steering messages={d} bytes={d} reason={s}",
                 .{ self.messages.items.len, self.queued_bytes, reason },
             );
@@ -110,7 +110,7 @@ pub const Runtime = struct {
     }
 };
 
-test "libfx steering runtime preserves order and releases drained storage" {
+test "libpf steering runtime preserves order and releases drained storage" {
     const alloc = std.testing.allocator;
     var runtime: Runtime = .{};
     defer runtime.deinit(alloc);
@@ -130,7 +130,7 @@ test "libfx steering runtime preserves order and releases drained storage" {
     try std.testing.expectEqual(@as(usize, 0), runtime.queued_bytes);
 }
 
-test "libfx steering runtime bounds each message and total queue" {
+test "libpf steering runtime bounds each message and total queue" {
     const alloc = std.testing.allocator;
     var runtime: Runtime = .{};
     defer runtime.deinit(alloc);

@@ -12,7 +12,7 @@ const gatewayOrigin = value("--gateway-origin", null);
 const piRoot = value("--pi-root", null);
 const samples = Number(value("--samples", "100"));
 const warmups = Number(value("--warmups", "3"));
-if (!new Set(["libfx", "pi"]).has(target) || !gatewayOrigin) throw new Error("target and gateway origin are required");
+if (!new Set(["libpf", "pi"]).has(target) || !gatewayOrigin) throw new Error("target and gateway origin are required");
 if (target === "pi" && !piRoot) throw new Error("Pi npm prefix is required");
 if (!Number.isInteger(samples) || samples < 1 || samples > 1000 || !Number.isInteger(warmups) || warmups < 0 || warmups > 100) {
   throw new Error("samples must be 1..1000 and warmups must be 0..100");
@@ -37,9 +37,9 @@ function bodyBytes(body) {
 
 globalThis.fetch = async (input, init = {}) => {
   const isPrompt = String(init.method ?? input?.method ?? "GET").toUpperCase() === "POST";
-  if (target === "libfx" && !isPrompt) {
+  if (target === "libpf" && !isPrompt) {
     if ((init.method ?? "GET") !== "GET" || String(input) !== "https://ai-gateway.vercel.sh/coding-agent/v1/models") {
-      throw new Error("unexpected non-prompt libfx benchmark request");
+      throw new Error("unexpected non-prompt libpf benchmark request");
     }
     catalogRequests += 1;
     return Response.json({ object: "list", data: [{ id: "fake/model", type: "language", context_window: 1_000_000, max_tokens: 4096 }] });
@@ -74,15 +74,15 @@ globalThis.fetch = async (input, init = {}) => {
 const importAt = performance.now();
 let importedAt;
 let initializedAt;
-if (target === "libfx") {
-  const { createFxAgent } = await import(pathToFileURL(resolve(root, "sdk/node.js")));
+if (target === "libpf") {
+  const { createPfAgent } = await import(pathToFileURL(resolve(root, "sdk/node.js")));
   importedAt = performance.now();
-  const agent = await createFxAgent({
+  const agent = await createPfAgent({
     backend: "native",
-    nativeAddon: resolve(root, "zig-out/lib/libfx.node"),
+    nativeAddon: resolve(root, "zig-out/lib/libpf.node"),
     fetch: globalThis.fetch,
     apiKey: "competitive-benchmark-key",
-    gatewayChatUrl: `${gatewayOrigin}/fx`,
+    gatewayChatUrl: `${gatewayOrigin}/pf`,
     model: "fake/model",
     instructions: "Return the synthetic response exactly.",
   });
@@ -99,7 +99,7 @@ if (target === "libfx") {
     const result = await turn.result;
     row.completed_at = performance.now();
     active = null;
-    if (result.stopReason !== "end_turn") throw new Error(`unexpected libfx stop reason: ${result.stopReason}`);
+    if (result.stopReason !== "end_turn") throw new Error(`unexpected libpf stop reason: ${result.stopReason}`);
   };
   cleanup = () => agent.close();
 } else {
@@ -177,7 +177,7 @@ try {
     }
     if (index >= 0) rows.push(row);
   }
-  if (target === "libfx" && catalogRequests !== 1) throw new Error("libfx must reuse model metadata across benchmark prompts");
+  if (target === "libpf" && catalogRequests !== 1) throw new Error("libpf must reuse model metadata across benchmark prompts");
 } finally {
   active = null;
   await cleanup();

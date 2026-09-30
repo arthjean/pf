@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const backend = process.argv[2] || "native";
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
@@ -60,21 +60,21 @@ async function exerciseCancellation(settlement, closeBeforeSettle) {
   const controller = new AbortController();
   let agent;
   try {
-    agent = await createFxAgent({
+    agent = await createPfAgent({
       backend,
-      nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
-      ...(backend === "wasm" ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) } : {}),
+      nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
+      ...(backend === "wasm" ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) } : {}),
       fetch(input, init) {
         const url = init.method === "GET" ? `http://127.0.0.1:${server.address().port}/models` : input;
         assert.equal(new URL(url).origin, `http://127.0.0.1:${server.address().port}`);
         return fetch(url, init);
       },
-      traceWasi: process.env.LIBFX_TRACE_WASM === "1",
+      traceWasi: process.env.LIBPF_TRACE_WASM === "1",
       onEvent(event) {
         events.push(event);
         const message = event.message;
         const beforeTool = backend === "native"
-          ? message?.method === "libfx/tool_call"
+          ? message?.method === "libpf/tool_call"
           : message?.method === "session/update" && message.params?.update?.sessionUpdate === "tool_call";
         if (settlement === "before-start" && event.type === "acp.receive" && beforeTool) {
           controller.abort();

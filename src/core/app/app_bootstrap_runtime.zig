@@ -352,7 +352,7 @@ pub fn Runtime(comptime App: type) type {
                 else
                     .local,
                 .resize_handler = resize_handler,
-                .fx_version = App.app_version,
+                .pf_version = App.app_version,
                 .provider_override = launch_overrides.provider,
                 .model_override = launch_overrides.model,
             });
@@ -373,7 +373,7 @@ pub fn Runtime(comptime App: type) type {
             }
             app.auth.recordStartupStatus(
                 startup.stored_key_status,
-                startup.fx_login_status,
+                startup.pf_login_status,
                 startup.credential_load_failure,
                 startup.credential_onboarding_skipped,
             );
@@ -391,7 +391,7 @@ pub fn Runtime(comptime App: type) type {
                 app.auth.openOnboardingPicker(app.alloc);
             }
             if (comptime @hasField(App, "terminal_input_runtime") and @hasField(App, "terminal")) {
-                // Own theme protocol bytes even under FX_THEME; probing stays gated.
+                // Own theme protocol bytes even under PF_THEME; probing stays gated.
                 app.terminal_input_runtime.terminal_theme_monitor.start();
                 if (startup.theme_monitor_enabled) {
                     app.terminal.enableThemeNotifications() catch |err| {
@@ -562,7 +562,7 @@ pub fn Runtime(comptime App: type) type {
                 const auth_view = app.auth.view();
                 const load_error: ?anyerror = if (startup.credential_load_failure) |failure|
                     failure.err
-                else if (auth_view.stored_key_status == .unavailable or auth_view.fx_login_status == .unavailable)
+                else if (auth_view.stored_key_status == .unavailable or auth_view.pf_login_status == .unavailable)
                     error.CredentialStorageUnavailable
                 else
                     null;
@@ -664,7 +664,7 @@ const TestCapture = struct {
     footer_rows: u16 = 0,
     default_model: []const u8 = "",
     default_agent_step_limit: usize = 0,
-    fx_version: []const u8 = "",
+    pf_version: []const u8 = "",
     configured_model: [64]u8 = undefined,
     configured_model_len: usize = 0,
     configured_model_source: config_runtime.ModelSource = .compiled_default,
@@ -835,7 +835,7 @@ fn testDeps() BootstrapDeps(TestApp) {
         .load_skills = loadSkillsForTest,
         .skill_root_policy = .{
             .workspace_roots = &test_workspace_skill_roots,
-            .managed_root_source = .global_fx,
+            .managed_root_source = .global_pf,
             .global_roots = &test_global_skill_roots,
         },
         .welcome_message = welcomeMessageForTest,
@@ -854,7 +854,7 @@ fn bootstrapInteractiveAppForTest(cfg: app_lifecycle.BootstrapConfig) !app_lifec
     capture.footer_rows = cfg.footer_rows;
     capture.default_model = cfg.default_model;
     capture.default_agent_step_limit = cfg.default_agent_step_limit;
-    capture.fx_version = cfg.fx_version;
+    capture.pf_version = cfg.pf_version;
     try std.testing.expect(cfg.terminal == &active_app_for_pointer_check.?.terminal);
     active_app_for_pointer_check.?.shell.layout = .{
         .rows = 24,
@@ -952,7 +952,7 @@ fn loadSkillsForTest(
     errdefer alloc.free(diagnostics);
     diagnostics[0] = .{
         .path = try alloc.dupe(u8, "/skills/hostile\npath/body-sentinel"),
-        .source = .global_fx,
+        .source = .global_pf,
         .scope = .candidate,
         .cause = .{ .invalid_metadata = .missing_name },
     };
@@ -1161,7 +1161,7 @@ test "app_bootstrap_runtime transfers startup state and starts a fresh session" 
     try std.testing.expectEqual(@as(u16, 4), capture.footer_rows);
     try std.testing.expectEqualStrings("default-model", capture.default_model);
     try std.testing.expectEqual(@as(usize, 24), capture.default_agent_step_limit);
-    try std.testing.expectEqualStrings(TestApp.app_version, capture.fx_version);
+    try std.testing.expectEqualStrings(TestApp.app_version, capture.pf_version);
     try std.testing.expectEqualStrings(
         "configured-model",
         capture.configuredModel(),
@@ -1195,7 +1195,7 @@ test "app_bootstrap_runtime transfers startup state and starts a fresh session" 
     try std.testing.expectEqualStrings("title", events[5]);
     try std.testing.expectEqual(@as(usize, 1), capture.begin_calls);
     try std.testing.expectEqual(@as(usize, 1), capture.enable_calls);
-    try std.testing.expectEqualStrings("fx v" ++ build_options.app_version ++ " | workspace", capture.titleText());
+    try std.testing.expectEqualStrings("pf v" ++ build_options.app_version ++ " | workspace", capture.titleText());
 
     try std.testing.expectEqualStrings("/workspace", app.workspace_root);
     try std.testing.expectEqualStrings("api-key", app.auth.apiKey().?);

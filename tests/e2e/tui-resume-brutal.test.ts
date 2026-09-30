@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import {
   FAKE_GATEWAY_MODEL,
   fakeGatewayFinalText,
@@ -110,7 +110,7 @@ function summarize(values: number[]) {
 
 function makePaths(label: string): Paths {
   const tempRoot = platform() === "darwin" ? "/private/tmp" : tmpdir();
-  const root = realpathSync(mkdtempSync(join(tempRoot, `fx-r-${label}-`)));
+  const root = realpathSync(mkdtempSync(join(tempRoot, `pf-r-${label}-`)));
   return {
     root,
     home: join(root, "home"),
@@ -128,22 +128,22 @@ function gatewayEnv(home: string, gateway: ReturnType<typeof startFakeGateway>) 
     HOME: home,
     AI_GATEWAY_API_KEY: "fake-resume-brutal-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_GATEWAY_BASE_URL: gateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_MODEL: FAKE_GATEWAY_MODEL,
-    FX_AUTO_UPGRADE: "0",
+    PF_GATEWAY_BASE_URL: gateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_MODEL: FAKE_GATEWAY_MODEL,
+    PF_AUTO_UPGRADE: "0",
     NO_COLOR: "1",
   };
 }
 
 function prepareFilesystem(paths: Paths, config: Config): void {
-  mkdirSync(join(paths.home, ".fx"), { recursive: true });
+  mkdirSync(join(paths.home, ".pf"), { recursive: true });
   mkdirSync(paths.workspace);
   mkdirSync(paths.foreignWorkspace);
   writeFileSync(paths.stderr, "");
   writeFileSync(paths.trace, "");
   writeFileSync(
-    join(paths.home, ".fx", "settings.json"),
+    join(paths.home, ".pf", "settings.json"),
     JSON.stringify({
       sandbox: "none",
       permission_mode: "auto",
@@ -232,12 +232,12 @@ async function seedRealSession(paths: Paths, config: Config): Promise<IndexedSum
   let session: TmuxSession | null = null;
   try {
     session = await TmuxSession.create({
-      cmd: FX_BIN,
+      cmd: PF_BIN,
       cwd: realpathSync(paths.workspace),
       env: {
         ...gatewayEnv(paths.home, gateway),
-        FX_TRACE_LOG: paths.trace,
-        FX_TRACE_SCOPES: "prompt,session,context_compaction,worker",
+        PF_TRACE_LOG: paths.trace,
+        PF_TRACE_SCOPES: "prompt,session,context_compaction,worker",
       },
       stderrPath: paths.stderr,
       width: 104,
@@ -252,7 +252,7 @@ async function seedRealSession(paths: Paths, config: Config): Promise<IndexedSum
     await session.waitForPane((pane) =>
       stripAnsi(pane).includes(FINAL_MARKER) && hasEmptyComposer(pane),
     TIMEOUT * 20);
-    const savedSessionsRoot = join(paths.home, ".fx", "sessions");
+    const savedSessionsRoot = join(paths.home, ".pf", "sessions");
     await session.waitForPane(() => readdirSync(savedSessionsRoot).some((id) => {
       const path = join(savedSessionsRoot, id, "events.jsonl");
       return existsSync(path) && readFileSync(path, "utf8").includes('"turn_completed"');
@@ -265,7 +265,7 @@ async function seedRealSession(paths: Paths, config: Config): Promise<IndexedSum
   }
   expect(readFileSync(paths.stderr, "utf8")).toBe("");
 
-  const sessionsRoot = join(paths.home, ".fx", "sessions");
+  const sessionsRoot = join(paths.home, ".pf", "sessions");
   const sessionIds = readdirSync(sessionsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
@@ -309,7 +309,7 @@ function installLargeCatalog(
   config: Config,
   real: IndexedSummary,
 ): void {
-  const sessionsRoot = join(paths.home, ".fx", "sessions");
+  const sessionsRoot = join(paths.home, ".pf", "sessions");
   const base = Math.max(Date.now(), real.updated_at_ms + config.catalogEntries + 10);
   const entries: IndexedSummary[] = [{
     id: "resume-foreign-newest",
@@ -532,13 +532,13 @@ async function runStress(config: Config): Promise<Paths> {
   let passed = false;
   let cacheBuildMs = 0;
   try {
-    const cachePath = join(paths.home, ".fx", "sessions", ".resume-catalog");
+    const cachePath = join(paths.home, ".pf", "sessions", ".resume-catalog");
     rmSync(cachePath, { force: true });
     const buildStarted = performance.now();
     session = await TmuxSession.create({
-      cmd: FX_BIN,
+      cmd: PF_BIN,
       cwd: realpathSync(paths.workspace),
-      env: { ...gatewayEnv(paths.home, gateway), FX_TRACE_LOG: paths.trace, FX_TRACE_SCOPES: "core,session" },
+      env: { ...gatewayEnv(paths.home, gateway), PF_TRACE_LOG: paths.trace, PF_TRACE_SCOPES: "core,session" },
       stderrPath: paths.stderr, width: 112, height: 32, minimumHistoryLines: 50_000,
     });
     await session.waitForComposer(TIMEOUT);
@@ -559,12 +559,12 @@ async function runStress(config: Config): Promise<Paths> {
     writeFileSync(paths.stderr, "");
     const coldStarted = performance.now();
     session = await TmuxSession.create({
-      cmd: FX_BIN,
+      cmd: PF_BIN,
       cwd: realpathSync(paths.workspace),
       env: {
         ...gatewayEnv(paths.home, gateway),
-        FX_TRACE_LOG: paths.trace,
-        FX_TRACE_SCOPES: "core,session",
+        PF_TRACE_LOG: paths.trace,
+        PF_TRACE_SCOPES: "core,session",
       },
       stderrPath: paths.stderr,
       width: 112,
@@ -616,7 +616,7 @@ async function runStress(config: Config): Promise<Paths> {
 
     const report = {
       config,
-      catalogEntries: readdirSync(join(paths.home, ".fx", "sessions"), {
+      catalogEntries: readdirSync(join(paths.home, ".pf", "sessions"), {
         withFileTypes: true,
       }).filter((entry) => entry.isDirectory()).length,
       transitions: {
@@ -700,7 +700,7 @@ test.skipIf(!tmuxAvailable())(
   300_000,
 );
 
-test.skipIf(!tmuxAvailable() || process.env.FX_RESUME_BRUTAL !== "1")(
+test.skipIf(!tmuxAvailable() || process.env.PF_RESUME_BRUTAL !== "1")(
   "/resume sustains one hundred mixed interaction cycles without resource drift",
   async () => {
     await runStress({
@@ -718,7 +718,7 @@ test.skipIf(!tmuxAvailable() || process.env.FX_RESUME_BRUTAL !== "1")(
 
 test.skipIf(
   !tmuxAvailable() ||
-    process.env.FX_RESUME_PROFILE !== "1" ||
+    process.env.PF_RESUME_PROFILE !== "1" ||
     platform() !== "darwin" ||
     !existsSync("/usr/bin/sample"),
 )(
@@ -740,10 +740,10 @@ test.skipIf(
   900_000,
 );
 
-test.skipIf(!tmuxAvailable() || process.env.FX_RESUME_50K !== "1")(
+test.skipIf(!tmuxAvailable() || process.env.PF_RESUME_50K !== "1")(
   "/resume survives a fifty-thousand-entry catalog and real fifty-thousand-line tool-heavy session",
   async () => {
-    const profileSeconds = process.env.FX_RESUME_PROFILE === "1" &&
+    const profileSeconds = process.env.PF_RESUME_PROFILE === "1" &&
         platform() === "darwin" &&
         existsSync("/usr/bin/sample")
       ? 30

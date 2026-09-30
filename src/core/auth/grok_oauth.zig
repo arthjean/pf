@@ -22,10 +22,10 @@ const token_url = "https://auth.x.ai/oauth2/token";
 const issuer_url = "https://auth.x.ai";
 const userinfo_url = "https://auth.x.ai/oauth2/userinfo";
 const revoke_url = "https://auth.x.ai/oauth2/revoke";
-const e2e_token_url_env = "FX_E2E_GROK_TOKEN_URL";
-const e2e_issuer_url_env = "FX_E2E_GROK_ISSUER_URL";
-const e2e_userinfo_url_env = "FX_E2E_GROK_USERINFO_URL";
-const e2e_revoke_url_env = "FX_E2E_GROK_REVOKE_URL";
+const e2e_token_url_env = "PF_E2E_GROK_TOKEN_URL";
+const e2e_issuer_url_env = "PF_E2E_GROK_ISSUER_URL";
+const e2e_userinfo_url_env = "PF_E2E_GROK_USERINFO_URL";
+const e2e_revoke_url_env = "PF_E2E_GROK_REVOKE_URL";
 const browser_scope = "openid profile email offline_access grok-cli:access api:access";
 const browser_login_timeout_seconds: i64 = 5 * 60;
 
@@ -358,7 +358,7 @@ pub fn runLogin(
     try writeStdout(authorization_url);
     try writeStdout("\n\nWaiting for browser authorization...\n");
     try writeStdout("Paste the code shown by xAI and press enter if the browser doesn't return.\n");
-    if (io_mod.getenv("FX_NO_OPEN_BROWSER") == null) {
+    if (io_mod.getenv("PF_NO_OPEN_BROWSER") == null) {
         _ = url_opener.open(alloc, authorization_url) catch false;
     }
 

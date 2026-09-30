@@ -1090,7 +1090,7 @@ pub const Runtime = struct {
 
     /// Process exit: force-kill every live command's process group instead of
     /// granting the cooperative termination grace, then wait only for each
-    /// worker thread to observe the kill so no command outlives fx.
+    /// worker thread to observe the kill so no command outlives pf.
     pub fn terminateForProcessExit(self: *Runtime) void {
         self.stopAllAndJoin(.force);
     }

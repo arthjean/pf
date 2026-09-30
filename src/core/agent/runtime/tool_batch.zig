@@ -251,7 +251,7 @@ pub fn assembleParallelToolResults(
                 "tool",
                 "argument_integrity_rejected",
                 step_ctx,
-                "call_id={s} name={s} failure={s} provenance=fx_local",
+                "call_id={s} name={s} failure={s} provenance=pf_local",
                 .{ original_call.id, original_call.name, @tagName(original_call.argument_integrity) },
             );
             try runtime_tool_admission.recordRejectedToolCall(
@@ -292,7 +292,7 @@ pub fn assembleParallelToolResults(
             .{
                 .increment_error = execution.status == .failure or tool_result_errors.isToolOutputError(safe_tool_output),
                 .record_completion = execution.status == .success,
-                .status = runtime_execution_memory.persistedStatusForCurrentFxLocalResult(
+                .status = runtime_execution_memory.persistedStatusForCurrentPfLocalResult(
                     execution.status,
                     safe_tool_output,
                 ),
@@ -388,7 +388,7 @@ pub fn processCommittedFileResult(
         .content = model_output,
         .tool_call_id = tool_call.id,
         .tool_name = tool_call.name,
-        .tool_result_status = runtime_execution_memory.persistedStatusForCurrentFxLocalResult(
+        .tool_result_status = runtime_execution_memory.persistedStatusForCurrentPfLocalResult(
             execution.status,
             model_output,
         ),
@@ -522,7 +522,7 @@ pub fn appendOrdinaryExecutedResult(
             .increment_error = execution.status == .failure or tool_result_errors.isToolOutputError(model_output),
             .record_completion = true,
             .mark_write = activity == .write or activity == .edit,
-            .status = runtime_execution_memory.persistedStatusForCurrentFxLocalResult(
+            .status = runtime_execution_memory.persistedStatusForCurrentPfLocalResult(
                 execution.status,
                 model_output,
             ),

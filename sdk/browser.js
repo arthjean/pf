@@ -1,23 +1,23 @@
 import {
-  createFxAgent as createWasmAgent,
-  createFxTerminal as createWasmTerminal,
+  createPfAgent as createWasmAgent,
+  createPfTerminal as createWasmTerminal,
   encodeXtermKeyEvent,
-  fxSdkApiVersion,
+  pfSdkApiVersion,
   listModels,
   supportsJspi,
   xtermAdapter,
-} from "./fx-sdk.js";
+} from "./pf-sdk.js";
 
-export { encodeXtermKeyEvent, fxSdkApiVersion, listModels, supportsJspi, xtermAdapter };
-export const libfxApiVersion = 2;
+export { encodeXtermKeyEvent, pfSdkApiVersion, listModels, supportsJspi, xtermAdapter };
+export const libpfApiVersion = 2;
 
-const defaultCoreWasm = new URL("./fx-core.wasm", import.meta.url).href;
-const defaultTermWasm = new URL("./fx-term.wasm", import.meta.url).href;
+const defaultCoreWasm = new URL("./pf-core.wasm", import.meta.url).href;
+const defaultTermWasm = new URL("./pf-term.wasm", import.meta.url).href;
 
-export function createFxAgent(options = {}) {
+export function createPfAgent(options = {}) {
   return createWasmAgent({ ...options, wasm: options.wasm ?? defaultCoreWasm });
 }
 
-export function createFxTerminal(options = {}) {
+export function createPfTerminal(options = {}) {
   return createWasmTerminal({ ...options, wasm: options.wasm ?? defaultTermWasm });
 }

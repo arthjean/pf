@@ -2,13 +2,13 @@
 import { strict as assert } from "node:assert";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const defaultAddon = resolve(scriptDir, "../../zig-out/lib/libfx.node");
+const defaultAddon = resolve(scriptDir, "../../zig-out/lib/libpf.node");
 const addon = process.argv[2] || `./${relative(process.cwd(), defaultAddon)}`;
 const events = [];
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   nativeAddon: addon,
   backend: "native",
   apiKey: "native-core-test-key",

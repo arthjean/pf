@@ -37,7 +37,7 @@ const private_file_permissions = std.Io.File.Permissions.fromMode(0o600);
 
 pub const file_name = "history-cache.bin";
 
-const magic = "fx-history-cache\x1a\n"; // 18 bytes; all offsets use magic.len
+const magic = "pf-history-cache\x1a\n"; // 18 bytes; all offsets use magic.len
 // Version 2: ConversationToolResult carries CommittedFilePresentation
 // .content_handle (spilled diff snapshots). The schema binding on
 // conversation_schema_version already discards version-1 caches.
@@ -730,7 +730,7 @@ test "history snapshot codec round trips every event kind" {
             .provisional_id = "p1",
             .provider_result = "{\"ok\":true}",
             .final_identity = .valid,
-            .provenance = .fx_local,
+            .provenance = .pf_local,
         } },
     });
     try encodeDecodeRoundtrip(alloc, .{

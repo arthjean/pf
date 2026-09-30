@@ -21,7 +21,7 @@ const Allocator = std.mem.Allocator;
 
 comptime {
     if (build_options.wasm_surface != .core) {
-        @compileError("fx-core requires -Dwasm-surface=core");
+        @compileError("pf-core requires -Dwasm-surface=core");
     }
 }
 
@@ -51,9 +51,9 @@ pub fn main(init: std.process.Init) !void {
         .context_registry = .{ .default_provider = context_contract.empty_provider },
         .mode_registry = builtin_modes.registry,
         .credential_override = io_mod.getenv("AI_GATEWAY_API_KEY"),
-        .model_override = io_mod.getenv("FX_MODEL"),
-        .effort_override = io_mod.getenv("FX_EFFORT"),
-        .fast_override = fastOverrideFromEnv(io_mod.getenv("FX_FAST")),
+        .model_override = io_mod.getenv("PF_MODEL"),
+        .effort_override = io_mod.getenv("PF_EFFORT"),
+        .fast_override = fastOverrideFromEnv(io_mod.getenv("PF_FAST")),
         .workspace_root_override = "/",
         .allow_acp_mcp = false,
         .allow_native_tools = false,
@@ -117,7 +117,7 @@ fn fetchCredits(
     return .{};
 }
 
-/// Parses the FX_FAST host toggle: "true"/"1" enable the fast lane,
+/// Parses the PF_FAST host toggle: "true"/"1" enable the fast lane,
 /// "false"/"0" disable it, anything else leaves the default in place.
 fn fastOverrideFromEnv(value: ?[]const u8) ?bool {
     const raw = value orelse return null;

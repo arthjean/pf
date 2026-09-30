@@ -641,7 +641,7 @@ fn lifecycleTerminalLine(
     const cancelled = kind == .cancelled;
     const text_style = if (cancelled) ui_render.hint_style else "";
     const text_reset = if (cancelled) ui_render.reset_style else "";
-    const follow_up = if (cancelled) " · What can fx do differently?" else "";
+    const follow_up = if (cancelled) " · What can pf do differently?" else "";
     const normalized = if (has_marker)
         try std.fmt.allocPrint(
             alloc,
@@ -2620,7 +2620,7 @@ fn checkToolDetailResultReplacementAllocationFailures(alloc: Allocator) !void {
     errdefer if (tool_name) |value| alloc.free(value);
     var previous_result: ?[]u8 = try alloc.dupe(u8, "previous result");
     errdefer if (previous_result) |value| alloc.free(value);
-    var previous_artifact: ?[]u8 = try alloc.dupe(u8, "fx-command-previous.log");
+    var previous_artifact: ?[]u8 = try alloc.dupe(u8, "pf-command-previous.log");
     errdefer if (previous_artifact) |value| alloc.free(value);
     try runtime.tool_details.append(alloc, .{
         .entry_id = 1,
@@ -2641,7 +2641,7 @@ fn checkToolDetailResultReplacementAllocationFailures(alloc: Allocator) !void {
         .completed,
         "replacement result",
         null,
-        "fx-command-replacement.log",
+        "pf-command-replacement.log",
         null,
     ) catch |err| {
         try std.testing.expectEqualStrings(
@@ -2649,7 +2649,7 @@ fn checkToolDetailResultReplacementAllocationFailures(alloc: Allocator) !void {
             runtime.toolDetailForEntry(1).?.result.?,
         );
         try std.testing.expectEqualStrings(
-            "fx-command-previous.log",
+            "pf-command-previous.log",
             runtime.toolDetailForEntry(1).?.command_artifact_handle.?,
         );
         return err;
@@ -2659,7 +2659,7 @@ fn checkToolDetailResultReplacementAllocationFailures(alloc: Allocator) !void {
         runtime.toolDetailForEntry(1).?.result.?,
     );
     try std.testing.expectEqualStrings(
-        "fx-command-replacement.log",
+        "pf-command-replacement.log",
         runtime.toolDetailForEntry(1).?.command_artifact_handle.?,
     );
 }
@@ -2912,7 +2912,7 @@ test "historical command detail keeps artifact handles after command block attac
     } };
     defer runtime.deinit(alloc);
 
-    const raw_preview = "exit_code=0\ntruncated=true\nstdout_bytes=21\nstderr_bytes=0\noutput_file=/tmp/fx-command-replayed.log\n<stdout>RESUMED_EXACT_RESULT\n</stdout>";
+    const raw_preview = "exit_code=0\ntruncated=true\nstdout_bytes=21\nstderr_bytes=0\noutput_file=/tmp/pf-command-replayed.log\n<stdout>RESUMED_EXACT_RESULT\n</stdout>";
     const raw_result = try std.fmt.allocPrint(
         alloc,
         "<tool_result_preview handle=\"{s}\" stored_bytes=\"{d}\">\n{s}\n</tool_result_preview>\n" ++
@@ -2952,7 +2952,7 @@ test "historical command detail keeps artifact handles after command block attac
     try std.testing.expect(fallback_detail.command_output_entry_id == null);
     try std.testing.expectEqualStrings(raw_result, fallback_detail.result.?);
     try std.testing.expectEqualStrings(result_handle, fallback_detail.result_handle.?);
-    try std.testing.expectEqualStrings("fx-command-replayed.log", fallback_detail.command_artifact_handle.?);
+    try std.testing.expectEqualStrings("pf-command-replayed.log", fallback_detail.command_artifact_handle.?);
 
     const styles: Styles = .{
         .system_notice_label_style = "",
@@ -2977,7 +2977,7 @@ test "historical command detail keeps artifact handles after command block attac
     try std.testing.expect(command_detail.command_output_entry_id != null);
     try std.testing.expectEqualStrings(raw_result, command_detail.result.?);
     try std.testing.expectEqualStrings(result_handle, command_detail.result_handle.?);
-    try std.testing.expectEqualStrings("fx-command-replayed.log", command_detail.command_artifact_handle.?);
+    try std.testing.expectEqualStrings("pf-command-replayed.log", command_detail.command_artifact_handle.?);
 
     runtime.full_transcript.depth = .full;
     var projection = try runtime.buildFullTranscriptProjection(alloc, null);
@@ -3040,7 +3040,7 @@ test "historical nonzero command keeps replay ownership outside compact sideband
     try runtime.flushCommandOutputSummary(alloc, &metrics, styles, true);
     const command_output_entry_id = runtime.latestCommandOutputEntryId().?;
 
-    const replay_handle = "fx-command-replay-historical.bin";
+    const replay_handle = "pf-command-replay-historical.bin";
     try runtime.attachHistoricalToolDetailAfterCommandOutput(
         alloc,
         entry_id,
@@ -3093,7 +3093,7 @@ test "historical command detail ignores artifact-shaped command output" {
     var runtime = TranscriptRuntime{};
     defer runtime.deinit(alloc);
 
-    const raw_result = "exit_code=0\n<stdout>\noutput_file=/tmp/fx-command-other.log\n</stdout>\n";
+    const raw_result = "exit_code=0\n<stdout>\noutput_file=/tmp/pf-command-other.log\n</stdout>\n";
     var metrics: Metrics = .{};
     const entry_id = try runtime.writeCompletedToolStatusReturningEntryId(
         alloc,
@@ -3207,13 +3207,13 @@ test "command terminal detail owns the consolidated command output entry" {
     _ = try runtime.applyToolLifecycle(alloc, .{ .terminal = .{
         .id = id,
         .outcome = .{ .kind = .completed, .summary = "Ran printf demo" },
-        .command_artifact_handle = "fx-command-live.log",
+        .command_artifact_handle = "pf-command-live.log",
     } });
 
     const status_entry_id = runtime.toolActivityRecord(id).?.entry_id;
     const detail = runtime.toolDetailForEntry(status_entry_id).?;
     try std.testing.expectEqual(runtime.command_output_blocks.items[0].entry_id, detail.command_output_entry_id);
-    try std.testing.expectEqualStrings("fx-command-live.log", detail.command_artifact_handle.?);
+    try std.testing.expectEqualStrings("pf-command-live.log", detail.command_artifact_handle.?);
 }
 
 test "late command output reopens its completed lifecycle block" {
@@ -4014,7 +4014,7 @@ test "retintEntriesForTheme rewrites owned presentation without touching externa
     const segments = runtime.lookupAssistantSegments(assistant_id).?;
     try segments.text.appendSlice(alloc, "\x1b[38;5;245mcode\x1b[39m \x1b[38;5;252m✓\x1b[39m\n");
 
-    try runtime.retintEntriesForTheme(alloc, shared_theme.fx_dark, shared_theme.fx_light);
+    try runtime.retintEntriesForTheme(alloc, shared_theme.pf_dark, shared_theme.pf_light);
 
     try std.testing.expectEqual(owned_id, runtime.entries.items[0].id());
     try std.testing.expectEqual(command_id, runtime.entries.items[1].id());
@@ -4262,28 +4262,28 @@ pub const TranscriptRuntime = struct {
     layout: Layout = undefined,
     cursor_row: u16 = 1,
     cursor_col: u16 = 1,
-    /// Top terminal row owned by fx. Rows above this contain pre-fx scrollback
-    /// and must not be touched by fx repaint logic.
+    /// Top terminal row owned by pf. Rows above this contain pre-pf scrollback
+    /// and must not be touched by pf repaint logic.
     /// Initialized to the cursor row captured at `initViewport`, and
     /// decreased as the transcript scrolls until it reaches row 1.
     viewport_top_row: u16 = 1,
-    /// First row fx is allowed to clear or repaint. This is set after
-    /// launch-time reservation has created fx-owned rows. Rows above it
-    /// belong to pre-fx terminal content and must not be touched by
+    /// First row pf is allowed to clear or repaint. This is set after
+    /// launch-time reservation has created pf-owned rows. Rows above it
+    /// belong to pre-pf terminal content and must not be touched by
     /// resize/layout repair.
     owned_top_row: u16 = 1,
     /// Set when a resize leaves no drawable rows below `owned_top_row`.
     /// The next successful repaint uses natural terminal scroll to
     /// compact older visible rows into scrollback before drawing the
-    /// latest fx frame.
+    /// latest pf frame.
     pending_scroll_compact: bool = false,
-    /// Minimum body rows fx should keep available for the visible
+    /// Minimum body rows pf should keep available for the visible
     /// viewport. Startup sets this to the welcome banner height so a
     /// later resize cannot leave the renderer with a partial banner
     /// band and stale resize-reflow cells above it.
     min_visible_viewport_rows: u16 = 0,
     /// Resize-only guard rows to clear above `viewport_top_row` on the
-    /// next replay. Real terminals can reflow old fx cells just above
+    /// next replay. Real terminals can reflow old pf cells just above
     /// the logical band during a drag; this lets the settled pass erase
     /// that residue without widening normal streaming paints.
     reflow_clear_guard_rows: u16 = 0,
@@ -4397,8 +4397,8 @@ pub const TranscriptRuntime = struct {
     /// frame on its own.
     transcript_band_dirty: bool = false,
     /// False until the first non-empty viewport paint has established
-    /// fx's transcript band. Before that point transcript writes are
-    /// model updates only: emitting scroll newlines would move pre-fx
+    /// pf's transcript band. Before that point transcript writes are
+    /// model updates only: emitting scroll newlines would move pre-pf
     /// shell rows before the renderer has had a chance to respect
     /// `viewport_top_row`.
     has_painted_transcript: bool = false,
@@ -4430,7 +4430,7 @@ pub const TranscriptRuntime = struct {
     replaceable_row: u16 = 1,
     replaceable_start: usize = 0,
     /// In-process terminal shadow used as the previous state for cell diffs.
-    /// Bootstrap enables it unconditionally; FX_TRACE dumps it at synchronized
+    /// Bootstrap enables it unconditionally; PF_TRACE dumps it at synchronized
     /// update boundaries.
     shadow_vt: ?*vt_emulator.Grid = null,
     shadow_vt_alloc: ?Allocator = null,
@@ -11837,13 +11837,13 @@ test "resume view snapshot omits a visible leading welcome entry" {
     try runtime.writeTranscriptClassified(
         alloc,
         &metrics,
-        "fx · Run /help for commands\n\n",
+        "pf · Run /help for commands\n\n",
         true,
         .welcome,
     );
     try runtime.enableShadowVt(alloc);
     try runtime.shadow_vt.?.feed(
-        "\x1b[1;1Hfx · Run /help for commands" ++
+        "\x1b[1;1Hpf · Run /help for commands" ++
             "\x1b[3;1Hvisible one\x1b[4;1Hvisible two",
     );
     runtime.has_painted_transcript = true;

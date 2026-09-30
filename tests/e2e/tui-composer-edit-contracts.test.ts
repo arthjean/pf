@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import {
   composerContains,
   FAKE_GATEWAY_MODEL,
@@ -50,19 +50,19 @@ afterEach(async () => {
   fixtureImagePath = null;
 });
 
-async function startFx(
+async function startPf(
   withGateway: boolean,
   responseCount = 1,
   duplicateReview = false,
   traceScopes?: string,
 ): Promise<TmuxSession> {
-  root = realpathSync(mkdtempSync(join(tmpdir(), "fx-edit-contracts-")));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "pf-edit-contracts-")));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace);
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({}),
   );
   stderrPath = join(root, "stderr.log");
@@ -75,7 +75,7 @@ async function startFx(
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   );
   writeFileSync(join(workspace, "target.txt"), "target\n");
-  const skillRoot = join(home, ".fx", "skills", "review");
+  const skillRoot = join(home, ".pf", "skills", "review");
   mkdirSync(skillRoot, { recursive: true });
   writeFileSync(
     join(skillRoot, "SKILL.md"),
@@ -110,21 +110,21 @@ async function startFx(
   }
 
   session = await TmuxSession.create({
-    cmd: FX_BIN,
+    cmd: PF_BIN,
     cwd: workspace,
     env: {
       HOME: home,
       AI_GATEWAY_API_KEY: withGateway ? "fake-edit-contract-key" : undefined,
       VERCEL_OIDC_TOKEN: undefined,
-      FX_GATEWAY_BASE_URL: gateway?.baseUrl,
-      FX_GATEWAY_CHAT_URL: gateway?.chatUrl,
-      FX_E2E_GATEWAY_MODELS_URL: gateway
+      PF_GATEWAY_BASE_URL: gateway?.baseUrl,
+      PF_GATEWAY_CHAT_URL: gateway?.chatUrl,
+      PF_E2E_GATEWAY_MODELS_URL: gateway
         ? `${gateway.baseUrl}/coding-agent/v1/models`
         : undefined,
-      FX_MODEL: withGateway ? FAKE_GATEWAY_MODEL : undefined,
-      FX_AUTO_UPGRADE: "0",
-      FX_TRACE_LOG: tracePath,
-      FX_TRACE_SCOPES: traceScopes,
+      PF_MODEL: withGateway ? FAKE_GATEWAY_MODEL : undefined,
+      PF_AUTO_UPGRADE: "0",
+      PF_TRACE_LOG: tracePath,
+      PF_TRACE_SCOPES: traceScopes,
     },
     width: 112,
     height: 32,
@@ -135,7 +135,7 @@ async function startFx(
 }
 
 function historyImageSnapshotPath(): string {
-  const sessionsRoot = join(root!, "home", ".fx", "sessions");
+  const sessionsRoot = join(root!, "home", ".pf", "sessions");
   const sessionNames = readdirSync(sessionsRoot, { withFileTypes: true })
     .filter((entry) =>
       entry.isDirectory() &&
@@ -273,7 +273,7 @@ async function selectReviewSkill(
 tmuxTest(
   "composer shortcuts pressed immediately after Escape preserve input order",
   async () => {
-    const active = await startFx(true, 2);
+    const active = await startPf(true, 2);
 
     await active.sendLiteralText("abc");
     await active.sendHexBytes(["1b", "01", "58"]);
@@ -295,7 +295,7 @@ tmuxTest(
 tmuxTest(
   "CRLF paste reaches Gateway as one logical newline",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await pasteExact(active, "CRLF_SENTINEL_A\r\nCRLF_SENTINEL_B");
     await active.sendKeys("Enter");
@@ -310,7 +310,7 @@ tmuxTest(
 tmuxTest(
   "embedded paste terminator cannot execute its same-epoch suffix",
   async () => {
-    const active = await startFx(true, 1, false, "input,theme,resize,native_clear");
+    const active = await startPf(true, 1, false, "input,theme,resize,native_clear");
     await active.sendLiteralText("PRESERVED_DRAFT");
 
     await active.sendHexBytes([
@@ -337,7 +337,7 @@ tmuxTest(
 tmuxTest(
   "active paste keeps a trailing escape sequence out of response parsers",
   async () => {
-    const active = await startFx(true, 1, false, "input,theme,resize,native_clear");
+    const active = await startPf(true, 1, false, "input,theme,resize,native_clear");
     await active.sendLiteralText("ESCAPE_DRAFT");
 
     await active.sendHexBytes([
@@ -363,7 +363,7 @@ tmuxTest(
 tmuxTest(
   "direct multiline paste reaches Gateway with boundary whitespace intact",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const exact = "    if True:\n        print(\"x\")\n";
 
     await pasteExact(active, exact);
@@ -383,7 +383,7 @@ tmuxTest(
 tmuxTest(
   "tiny clipped composer exposes hidden rows and preserves the submitted draft",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const visibleDraft = "GROUP_I_HIDDEN_ROW\nGROUP_I_CURSOR_ROW";
     const exact = `${visibleDraft}\n`;
     await active.resizeWindow(40, 8, 500);
@@ -413,7 +413,7 @@ tmuxTest(
 tmuxTest(
   "absolute non-image path at prompt start reaches Gateway",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const path = realpathSync(join(root!, "workspace", "target.txt"));
     const prompt = `${path} please inspect`;
 
@@ -433,7 +433,7 @@ tmuxTest(
 tmuxTest(
   "typed prompt above the old 4 KiB limit reaches Gateway byte-for-byte",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const prompt = `BEGIN-${"x".repeat(8192)}-END`;
 
     await waitForModelRequest();
@@ -457,7 +457,7 @@ tmuxTest(
 tmuxTest(
   "multi-megabyte bracketed paste survives edits and resize byte-for-byte",
   async () => {
-    const active = await startFx(true, 1, false, "input");
+    const active = await startPf(true, 1, false, "input");
     const prompt = `PASTE-BEGIN-${"x".repeat(4 * 1024 * 1024 + 1)}-PASTE-END`;
 
     await waitForModelRequest();
@@ -485,7 +485,7 @@ tmuxTest(
 tmuxTest(
   "expanded paste accepts the exact composer byte limit",
   async () => {
-    const active = await startFx(true, 1, false, "input");
+    const active = await startPf(true, 1, false, "input");
     const rune = "🧪";
     const runeBytes = Buffer.byteLength(rune);
     const firstPasteBytes = COMPOSER_BYTE_LIMIT / 2 - runeBytes;
@@ -525,7 +525,7 @@ tmuxTest(
 tmuxTest(
   "expanded paste rejects one byte over the composer limit and recovers",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await waitForModelRequest();
     await active.pasteText("x".repeat(COMPOSER_BYTE_LIMIT + 1));
@@ -545,12 +545,12 @@ tmuxTest(
 tmuxTest(
   "long paste submitted at a full bottom edge leaves no preview fragment in scrollback",
   async () => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), "fx-paste-submit-")));
+    root = realpathSync(mkdtempSync(join(tmpdir(), "pf-paste-submit-")));
     const home = join(root, "home");
     const workspace = join(root, "workspace");
-    mkdirSync(join(home, ".fx"), { recursive: true });
+    mkdirSync(join(home, ".pf"), { recursive: true });
     mkdirSync(workspace);
-    writeFileSync(join(home, ".fx", "settings.json"), JSON.stringify({}));
+    writeFileSync(join(home, ".pf", "settings.json"), JSON.stringify({}));
     stderrPath = join(root, "stderr.log");
     writeFileSync(stderrPath, "");
 
@@ -573,7 +573,7 @@ tmuxTest(
     pasteLines.push("", "- PENDING_PROBE_LAST_LINE");
 
     session = await TmuxSession.create({
-      cmd: FX_BIN,
+      cmd: PF_BIN,
       cwd: workspace,
       width: 168,
       height: 75,
@@ -586,17 +586,17 @@ tmuxTest(
         HOME: home,
         AI_GATEWAY_API_KEY: "fake-paste-submit-key",
         VERCEL_OIDC_TOKEN: undefined,
-        FX_DISABLE_KEYCHAIN: "1",
-        FX_E2E_DISABLE_DOTENV: "1",
-        FX_MODEL: FAKE_GATEWAY_MODEL,
-        FX_AUTO_UPGRADE: "0",
-        FX_SOUND: "0",
-        FX_SKIP_ONBOARDING: "1",
-        FX_PERMISSION_MODE: "full-access",
-        FX_GATEWAY_BASE_URL: dynamicGateway.baseUrl,
-        FX_GATEWAY_CHAT_URL: dynamicGateway.chatUrl,
-        FX_E2E_GATEWAY_CHAT_URL: dynamicGateway.chatUrl,
-        FX_E2E_GATEWAY_MODELS_URL: `${dynamicGateway.baseUrl}/coding-agent/v1/models`,
+        PF_DISABLE_KEYCHAIN: "1",
+        PF_E2E_DISABLE_DOTENV: "1",
+        PF_MODEL: FAKE_GATEWAY_MODEL,
+        PF_AUTO_UPGRADE: "0",
+        PF_SOUND: "0",
+        PF_SKIP_ONBOARDING: "1",
+        PF_PERMISSION_MODE: "full-access",
+        PF_GATEWAY_BASE_URL: dynamicGateway.baseUrl,
+        PF_GATEWAY_CHAT_URL: dynamicGateway.chatUrl,
+        PF_E2E_GATEWAY_CHAT_URL: dynamicGateway.chatUrl,
+        PF_E2E_GATEWAY_MODELS_URL: `${dynamicGateway.baseUrl}/coding-agent/v1/models`,
       },
     });
     try {
@@ -646,7 +646,7 @@ tmuxTest(
 tmuxTest(
   "terminal characters stay atomic and Ctrl+K joins at EOL",
   async () => {
-    const active = await startFx(false);
+    const active = await startPf(false);
 
     await active.sendLiteralText("A🇺🇸B");
     await active.sendKeys("Left BSpace");
@@ -671,7 +671,7 @@ tmuxTest(
 tmuxTest(
   "Home End and control aliases stay on the current logical line",
   async () => {
-    const active = await startFx(true, 2);
+    const active = await startPf(true, 2);
 
     await pasteExact(active, "FIRST\nSECOND\nTHIRD");
     await active.sendKeys("Up Home");
@@ -702,7 +702,7 @@ tmuxTest(
 tmuxTest(
   "oversized paste edits occur outside the registered placeholder",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const pasted = "P".repeat(1001);
 
     await pasteExact(active, pasted);
@@ -721,7 +721,7 @@ tmuxTest(
 tmuxTest(
   "vertical movement stays outside an oversized paste placeholder",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const pasted = "V".repeat(1001);
 
     await pasteExact(active, "x\n");
@@ -741,7 +741,7 @@ tmuxTest(
 tmuxTest(
   "Ctrl+U and Ctrl+Y preserve oversized paste backing text",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const pasted = "Y".repeat(1001);
 
     await pasteExact(active, pasted);
@@ -760,7 +760,7 @@ tmuxTest(
 tmuxTest(
   "Ctrl+U and repeated Ctrl+Y restore image attachments with fresh ids",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await pasteExact(active, fixtureImagePath!);
     await active.waitForText("[Image 1]", TIMEOUT);
@@ -779,7 +779,7 @@ tmuxTest(
 tmuxTest(
   "Ctrl+K and Ctrl+Y restore an image attachment",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await pasteExact(active, fixtureImagePath!);
     await active.waitForText("[Image 1]", TIMEOUT);
@@ -798,7 +798,7 @@ tmuxTest(
 tmuxTest(
   "Ctrl+U and Ctrl+Y preserve the selected duplicate skill source",
   async () => {
-    const active = await startFx(true, 1, true);
+    const active = await startPf(true, 1, true);
 
     await selectReviewSkill(active, true);
     await active.sendLiteralText("inspect");
@@ -818,7 +818,7 @@ tmuxTest(
 tmuxTest(
   "history recall keeps an oversized paste compact and editable",
   async () => {
-    const active = await startFx(true, 2);
+    const active = await startPf(true, 2);
     const pasted = "H".repeat(4138);
 
     await pasteExact(active, pasted);
@@ -849,7 +849,7 @@ tmuxTest(
 tmuxTest(
   "history recall resubmits a real image under a fresh id",
   async () => {
-    const active = await startFx(true, 2);
+    const active = await startPf(true, 2);
 
     await pasteExact(active, fixtureImagePath!);
     await active.waitForText("[Image 1]", TIMEOUT);
@@ -899,7 +899,7 @@ for (
   tmuxTest(
     `history recall preserves the composer when an image snapshot is ${scenario.name}`,
     async () => {
-      const active = await startFx(true, 1, false, "prompt_history");
+      const active = await startPf(true, 1, false, "prompt_history");
 
       await pasteExact(active, fixtureImagePath!);
       await active.waitForText("[Image 1]", TIMEOUT);
@@ -934,7 +934,7 @@ for (
 tmuxTest(
   "history recall preserves duplicate skill provenance without showing it",
   async () => {
-    const active = await startFx(true, 2, true);
+    const active = await startPf(true, 2, true);
 
     await selectReviewSkill(active, true);
     await active.waitForPane(
@@ -977,7 +977,7 @@ tmuxTest(
 tmuxTest(
   "typed space claims a skill separator before forward deletion",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await selectReviewSkill(active);
     await active.sendLiteralText(" ");
@@ -996,7 +996,7 @@ tmuxTest(
 tmuxTest(
   "typed paste lookalikes remain literal",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
     const pasted = "L".repeat(1001);
     const lookalike = "[Pasted text #1, 999 lines]";
 
@@ -1014,7 +1014,7 @@ tmuxTest(
 tmuxTest(
   "image paths keep sentence punctuation and submit a file",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await active.sendLiteralText("inspect i.png,");
     await active.sendKeys("Enter");
@@ -1030,7 +1030,7 @@ tmuxTest(
 tmuxTest(
   "typed image lookalikes do not alias registered attachments",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await pasteExact(active, fixtureImagePath!);
     await active.waitForText("[Image 1]", TIMEOUT);
@@ -1048,7 +1048,7 @@ tmuxTest(
 tmuxTest(
   "Alt+D stops before an adjacent registered image",
   async () => {
-    const active = await startFx(true);
+    const active = await startPf(true);
 
     await pasteExact(active, `HEAD ${fixtureImagePath!} TAIL`);
     await active.waitForText("[Image 1]", TIMEOUT);
@@ -1067,7 +1067,7 @@ tmuxTest(
 tmuxTest(
   "skill entities survive file completion and stay atomic under word edits",
   async () => {
-    const active = await startFx(true, 4);
+    const active = await startPf(true, 4);
 
     await selectReviewSkill(active);
     expect(await active.capturePane()).not.toContain("review ·");

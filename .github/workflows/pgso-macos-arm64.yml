@@ -26,7 +26,7 @@ permissions:
 env:
   AI_GATEWAY_API_KEY: ""
   VERCEL_OIDC_TOKEN: ""
-  FX_SOUND: "0"
+  PF_SOUND: "0"
 
 jobs:
   seed:
@@ -62,7 +62,7 @@ jobs:
         run: |
           python3 -m scripts.pgso build \
             --llvm-bin "${{ steps.setup.outputs.llvm-bin }}" \
-            --output-dir "$RUNNER_TEMP/fx-pgso-seed" \
+            --output-dir "$RUNNER_TEMP/pf-pgso-seed" \
             --target aarch64-macos \
             --update-channel stable \
             --bun "${{ steps.setup.outputs.bun-bin }}" \
@@ -93,12 +93,12 @@ jobs:
           name: pgso-seed-${{ github.sha }}-attempt-${{ github.run_attempt }}
           overwrite: true
           path: |
-            ${{ runner.temp }}/fx-pgso-seed/manifest.json
-            ${{ runner.temp }}/fx-pgso-seed/control/bin/fx
-            ${{ runner.temp }}/fx-pgso-seed/ir/pgso/fx.bc
-            ${{ runner.temp }}/fx-pgso-seed/instrumented/fx
-            ${{ runner.temp }}/fx-pgso-seed/profiles/merged.profdata
-            ${{ runner.temp }}/fx-pgso-seed/logs
+            ${{ runner.temp }}/pf-pgso-seed/manifest.json
+            ${{ runner.temp }}/pf-pgso-seed/control/bin/pf
+            ${{ runner.temp }}/pf-pgso-seed/ir/pgso/pf.bc
+            ${{ runner.temp }}/pf-pgso-seed/instrumented/pf
+            ${{ runner.temp }}/pf-pgso-seed/profiles/merged.profdata
+            ${{ runner.temp }}/pf-pgso-seed/logs
           if-no-files-found: error
           retention-days: 14
 
@@ -135,16 +135,16 @@ jobs:
         with:
           artifact-ids: ${{ needs.seed.outputs.artifact-id }}
           merge-multiple: true
-          path: ${{ runner.temp }}/fx-pgso-seed
+          path: ${{ runner.temp }}/pf-pgso-seed
 
       - name: Restore executable mode
-        run: chmod +x "$RUNNER_TEMP/fx-pgso-seed/instrumented/fx" "$RUNNER_TEMP/fx-pgso-seed/control/bin/fx"
+        run: chmod +x "$RUNNER_TEMP/pf-pgso-seed/instrumented/pf" "$RUNNER_TEMP/pf-pgso-seed/control/bin/pf"
 
       - name: Run assigned training scenarios
         run: |
           python3 -m scripts.pgso.distributed train-shard \
-            --seed-dir "$RUNNER_TEMP/fx-pgso-seed" \
-            --output-dir "$RUNNER_TEMP/fx-pgso-training-${{ matrix.id }}" \
+            --seed-dir "$RUNNER_TEMP/pf-pgso-seed" \
+            --output-dir "$RUNNER_TEMP/pf-pgso-training-${{ matrix.id }}" \
             --shard-id "${{ matrix.id }}" \
             --scenarios "${{ matrix.scenarios }}" \
             --llvm-bin "${{ steps.setup.outputs.llvm-bin }}" \
@@ -157,10 +157,10 @@ jobs:
           name: pgso-training-${{ github.sha }}-${{ matrix.id }}-attempt-${{ github.run_attempt }}
           overwrite: true
           path: |
-            ${{ runner.temp }}/fx-pgso-training-${{ matrix.id }}/manifest.json
-            ${{ runner.temp }}/fx-pgso-training-${{ matrix.id }}/failure.json
-            ${{ runner.temp }}/fx-pgso-training-${{ matrix.id }}/profile.profdata
-            ${{ runner.temp }}/fx-pgso-training-${{ matrix.id }}/logs
+            ${{ runner.temp }}/pf-pgso-training-${{ matrix.id }}/manifest.json
+            ${{ runner.temp }}/pf-pgso-training-${{ matrix.id }}/failure.json
+            ${{ runner.temp }}/pf-pgso-training-${{ matrix.id }}/profile.profdata
+            ${{ runner.temp }}/pf-pgso-training-${{ matrix.id }}/logs
           if-no-files-found: error
           retention-days: 14
 
@@ -190,23 +190,23 @@ jobs:
         with:
           artifact-ids: ${{ needs.seed.outputs.artifact-id }}
           merge-multiple: true
-          path: ${{ runner.temp }}/fx-pgso-seed
+          path: ${{ runner.temp }}/pf-pgso-seed
 
       - name: Download all training shards
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: pgso-training-${{ github.sha }}-*
-          path: ${{ runner.temp }}/fx-pgso-training
+          path: ${{ runner.temp }}/pf-pgso-training
 
       - name: Restore executable mode
-        run: chmod +x "$RUNNER_TEMP/fx-pgso-seed/instrumented/fx" "$RUNNER_TEMP/fx-pgso-seed/control/bin/fx"
+        run: chmod +x "$RUNNER_TEMP/pf-pgso-seed/instrumented/pf" "$RUNNER_TEMP/pf-pgso-seed/control/bin/pf"
 
       - name: Build the one production candidate
         run: |
           python3 -m scripts.pgso.distributed candidate \
-            --seed-dir "$RUNNER_TEMP/fx-pgso-seed" \
-            --shards-dir "$RUNNER_TEMP/fx-pgso-training" \
-            --output-dir "$RUNNER_TEMP/fx-pgso-candidate" \
+            --seed-dir "$RUNNER_TEMP/pf-pgso-seed" \
+            --shards-dir "$RUNNER_TEMP/pf-pgso-training" \
+            --output-dir "$RUNNER_TEMP/pf-pgso-candidate" \
             --llvm-bin "${{ steps.setup.outputs.llvm-bin }}"
 
       - name: Upload candidate and build evidence
@@ -217,28 +217,28 @@ jobs:
           name: pgso-candidate-${{ github.sha }}-attempt-${{ github.run_attempt }}
           overwrite: true
           path: |
-            ${{ runner.temp }}/fx-pgso-candidate/manifest.json
-            ${{ runner.temp }}/fx-pgso-candidate/failure.json
-            ${{ runner.temp }}/fx-pgso-candidate/control/bin/fx
-            ${{ runner.temp }}/fx-pgso-candidate/candidate/fx
-            ${{ runner.temp }}/fx-pgso-candidate/profiles/merged.profdata
-            ${{ runner.temp }}/fx-pgso-candidate/profiles/supplements
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/file_index/external-control/file-index-bench
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/file_index/candidate/file-index-bench
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/file_index/profiles/merged.profdata
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/file_index/profiles/production.profdata
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/file_index/profiles/production.proftext
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/ui_activity/external-control/ui-activity-progress-bench
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/ui_activity/candidate/ui-activity-progress-bench
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/ui_activity/profiles/merged.profdata
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/ui_activity/profiles/production.profdata
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/ui_activity/profiles/production.proftext
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/approval_review/external-control/approval-review-bench
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/approval_review/candidate/approval-review-bench
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/approval_review/profiles/merged.profdata
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/approval_review/profiles/production.profdata
-            ${{ runner.temp }}/fx-pgso-candidate/heavy/approval_review/profiles/production.proftext
-            ${{ runner.temp }}/fx-pgso-candidate/logs
+            ${{ runner.temp }}/pf-pgso-candidate/manifest.json
+            ${{ runner.temp }}/pf-pgso-candidate/failure.json
+            ${{ runner.temp }}/pf-pgso-candidate/control/bin/pf
+            ${{ runner.temp }}/pf-pgso-candidate/candidate/pf
+            ${{ runner.temp }}/pf-pgso-candidate/profiles/merged.profdata
+            ${{ runner.temp }}/pf-pgso-candidate/profiles/supplements
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/file_index/external-control/file-index-bench
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/file_index/candidate/file-index-bench
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/file_index/profiles/merged.profdata
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/file_index/profiles/production.profdata
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/file_index/profiles/production.proftext
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/ui_activity/external-control/ui-activity-progress-bench
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/ui_activity/candidate/ui-activity-progress-bench
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/ui_activity/profiles/merged.profdata
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/ui_activity/profiles/production.profdata
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/ui_activity/profiles/production.proftext
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/approval_review/external-control/approval-review-bench
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/approval_review/candidate/approval-review-bench
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/approval_review/profiles/merged.profdata
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/approval_review/profiles/production.profdata
+            ${{ runner.temp }}/pf-pgso-candidate/heavy/approval_review/profiles/production.proftext
+            ${{ runner.temp }}/pf-pgso-candidate/logs
           if-no-files-found: error
           retention-days: 14
 
@@ -275,16 +275,16 @@ jobs:
         with:
           artifact-ids: ${{ needs.candidate.outputs.artifact-id }}
           merge-multiple: true
-          path: ${{ runner.temp }}/fx-pgso-candidate
+          path: ${{ runner.temp }}/pf-pgso-candidate
 
       - name: Restore executable mode
-        run: chmod +x "$RUNNER_TEMP/fx-pgso-candidate/candidate/fx" "$RUNNER_TEMP/fx-pgso-candidate/control/bin/fx"
+        run: chmod +x "$RUNNER_TEMP/pf-pgso-candidate/candidate/pf" "$RUNNER_TEMP/pf-pgso-candidate/control/bin/pf"
 
       - name: Run assigned behavior scenarios
         run: |
           python3 -m scripts.pgso.distributed behavior-shard \
-            --candidate-dir "$RUNNER_TEMP/fx-pgso-candidate" \
-            --output-dir "$RUNNER_TEMP/fx-pgso-behavior-${{ matrix.id }}" \
+            --candidate-dir "$RUNNER_TEMP/pf-pgso-candidate" \
+            --output-dir "$RUNNER_TEMP/pf-pgso-behavior-${{ matrix.id }}" \
             --shard-id "${{ matrix.id }}" \
             --scenarios "${{ matrix.scenarios }}" \
             --bun "${{ steps.setup.outputs.bun-bin }}"
@@ -296,11 +296,11 @@ jobs:
           name: pgso-behavior-${{ github.sha }}-${{ matrix.id }}-attempt-${{ github.run_attempt }}
           overwrite: true
           path: |
-            ${{ runner.temp }}/fx-pgso-behavior-${{ matrix.id }}/manifest.json
-            ${{ runner.temp }}/fx-pgso-behavior-${{ matrix.id }}/failure.json
-            ${{ runner.temp }}/fx-pgso-behavior-${{ matrix.id }}/behavior/logs
-            ${{ runner.temp }}/fx-pgso-behavior-${{ matrix.id }}/behavior/traces
-            ${{ runner.temp }}/fx-pgso-behavior-${{ matrix.id }}/driver-logs
+            ${{ runner.temp }}/pf-pgso-behavior-${{ matrix.id }}/manifest.json
+            ${{ runner.temp }}/pf-pgso-behavior-${{ matrix.id }}/failure.json
+            ${{ runner.temp }}/pf-pgso-behavior-${{ matrix.id }}/behavior/logs
+            ${{ runner.temp }}/pf-pgso-behavior-${{ matrix.id }}/behavior/traces
+            ${{ runner.temp }}/pf-pgso-behavior-${{ matrix.id }}/driver-logs
           if-no-files-found: error
           retention-days: 14
 
@@ -332,18 +332,18 @@ jobs:
         with:
           artifact-ids: ${{ needs.candidate.outputs.artifact-id }}
           merge-multiple: true
-          path: ${{ runner.temp }}/fx-pgso-candidate
+          path: ${{ runner.temp }}/pf-pgso-candidate
 
       - name: Restore executable mode
-        run: chmod +x "$RUNNER_TEMP/fx-pgso-candidate/candidate/fx" "$RUNNER_TEMP/fx-pgso-candidate/control/bin/fx"
+        run: chmod +x "$RUNNER_TEMP/pf-pgso-candidate/candidate/pf" "$RUNNER_TEMP/pf-pgso-candidate/control/bin/pf"
 
       - name: Measure same-runner control and candidate
         run: |
           python3 -m scripts.pgso.distributed measure \
             --kind startup \
             --name "${{ matrix.name }}" \
-            --candidate-dir "$RUNNER_TEMP/fx-pgso-candidate" \
-            --output-dir "$RUNNER_TEMP/fx-pgso-startup-${{ matrix.name }}" \
+            --candidate-dir "$RUNNER_TEMP/pf-pgso-candidate" \
+            --output-dir "$RUNNER_TEMP/pf-pgso-startup-${{ matrix.name }}" \
             --hyperfine "${{ steps.setup.outputs.hyperfine-bin }}" \
             --samples 50
 
@@ -354,10 +354,10 @@ jobs:
           name: pgso-startup-${{ github.sha }}-${{ matrix.name }}-attempt-${{ github.run_attempt }}
           overwrite: true
           path: |
-            ${{ runner.temp }}/fx-pgso-startup-${{ matrix.name }}/manifest.json
-            ${{ runner.temp }}/fx-pgso-startup-${{ matrix.name }}/failure.json
-            ${{ runner.temp }}/fx-pgso-startup-${{ matrix.name }}/measurements/logs
-            ${{ runner.temp }}/fx-pgso-startup-${{ matrix.name }}/driver-logs
+            ${{ runner.temp }}/pf-pgso-startup-${{ matrix.name }}/manifest.json
+            ${{ runner.temp }}/pf-pgso-startup-${{ matrix.name }}/failure.json
+            ${{ runner.temp }}/pf-pgso-startup-${{ matrix.name }}/measurements/logs
+            ${{ runner.temp }}/pf-pgso-startup-${{ matrix.name }}/driver-logs
           if-no-files-found: error
           retention-days: 14
 
@@ -383,19 +383,19 @@ jobs:
         with:
           artifact-ids: ${{ needs.candidate.outputs.artifact-id }}
           merge-multiple: true
-          path: ${{ runner.temp }}/fx-pgso-candidate
+          path: ${{ runner.temp }}/pf-pgso-candidate
 
       - name: Restore executable mode
         run: |
           chmod +x \
-            "$RUNNER_TEMP/fx-pgso-candidate/candidate/fx" \
-            "$RUNNER_TEMP/fx-pgso-candidate/control/bin/fx" \
-            "$RUNNER_TEMP/fx-pgso-candidate/heavy/file_index/external-control/file-index-bench" \
-            "$RUNNER_TEMP/fx-pgso-candidate/heavy/file_index/candidate/file-index-bench" \
-            "$RUNNER_TEMP/fx-pgso-candidate/heavy/ui_activity/external-control/ui-activity-progress-bench" \
-            "$RUNNER_TEMP/fx-pgso-candidate/heavy/ui_activity/candidate/ui-activity-progress-bench" \
-            "$RUNNER_TEMP/fx-pgso-candidate/heavy/approval_review/external-control/approval-review-bench" \
-            "$RUNNER_TEMP/fx-pgso-candidate/heavy/approval_review/candidate/approval-review-bench"
+            "$RUNNER_TEMP/pf-pgso-candidate/candidate/pf" \
+            "$RUNNER_TEMP/pf-pgso-candidate/control/bin/pf" \
+            "$RUNNER_TEMP/pf-pgso-candidate/heavy/file_index/external-control/file-index-bench" \
+            "$RUNNER_TEMP/pf-pgso-candidate/heavy/file_index/candidate/file-index-bench" \
+            "$RUNNER_TEMP/pf-pgso-candidate/heavy/ui_activity/external-control/ui-activity-progress-bench" \
+            "$RUNNER_TEMP/pf-pgso-candidate/heavy/ui_activity/candidate/ui-activity-progress-bench" \
+            "$RUNNER_TEMP/pf-pgso-candidate/heavy/approval_review/external-control/approval-review-bench" \
+            "$RUNNER_TEMP/pf-pgso-candidate/heavy/approval_review/candidate/approval-review-bench"
 
       - name: Setup pinned Hyperfine
         id: setup
@@ -408,8 +408,8 @@ jobs:
           python3 -m scripts.pgso.distributed measure \
             --kind heavy \
             --name "${{ matrix.name }}" \
-            --candidate-dir "$RUNNER_TEMP/fx-pgso-candidate" \
-            --output-dir "$RUNNER_TEMP/fx-pgso-heavy-${{ matrix.name }}" \
+            --candidate-dir "$RUNNER_TEMP/pf-pgso-candidate" \
+            --output-dir "$RUNNER_TEMP/pf-pgso-heavy-${{ matrix.name }}" \
             --hyperfine "${{ steps.setup.outputs.hyperfine-bin }}" \
             --samples 50
 
@@ -420,10 +420,10 @@ jobs:
           name: pgso-heavy-${{ github.sha }}-${{ matrix.name }}-attempt-${{ github.run_attempt }}
           overwrite: true
           path: |
-            ${{ runner.temp }}/fx-pgso-heavy-${{ matrix.name }}/manifest.json
-            ${{ runner.temp }}/fx-pgso-heavy-${{ matrix.name }}/failure.json
-            ${{ runner.temp }}/fx-pgso-heavy-${{ matrix.name }}/measurements/logs
-            ${{ runner.temp }}/fx-pgso-heavy-${{ matrix.name }}/driver-logs
+            ${{ runner.temp }}/pf-pgso-heavy-${{ matrix.name }}/manifest.json
+            ${{ runner.temp }}/pf-pgso-heavy-${{ matrix.name }}/failure.json
+            ${{ runner.temp }}/pf-pgso-heavy-${{ matrix.name }}/measurements/logs
+            ${{ runner.temp }}/pf-pgso-heavy-${{ matrix.name }}/driver-logs
           if-no-files-found: error
           retention-days: 14
 
@@ -447,37 +447,37 @@ jobs:
         with:
           artifact-ids: ${{ needs.candidate.outputs.artifact-id }}
           merge-multiple: true
-          path: ${{ runner.temp }}/fx-pgso-candidate
+          path: ${{ runner.temp }}/pf-pgso-candidate
 
       - name: Download behavior evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: pgso-behavior-${{ github.sha }}-*
-          path: ${{ runner.temp }}/fx-pgso-behavior
+          path: ${{ runner.temp }}/pf-pgso-behavior
 
       - name: Download startup evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: pgso-startup-${{ github.sha }}-*
-          path: ${{ runner.temp }}/fx-pgso-startup
+          path: ${{ runner.temp }}/pf-pgso-startup
 
       - name: Download heavy-workload evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: pgso-heavy-${{ github.sha }}-*
-          path: ${{ runner.temp }}/fx-pgso-heavy
+          path: ${{ runner.temp }}/pf-pgso-heavy
 
       - name: Restore executable mode
-        run: chmod +x "$RUNNER_TEMP/fx-pgso-candidate/candidate/fx" "$RUNNER_TEMP/fx-pgso-candidate/control/bin/fx"
+        run: chmod +x "$RUNNER_TEMP/pf-pgso-candidate/candidate/pf" "$RUNNER_TEMP/pf-pgso-candidate/control/bin/pf"
 
       - name: Aggregate fail-closed evidence
         run: |
           python3 -m scripts.pgso.distributed aggregate \
-            --candidate-dir "$RUNNER_TEMP/fx-pgso-candidate" \
-            --behavior-dir "$RUNNER_TEMP/fx-pgso-behavior" \
-            --startup-dir "$RUNNER_TEMP/fx-pgso-startup" \
-            --heavy-dir "$RUNNER_TEMP/fx-pgso-heavy" \
-            --output-dir "$RUNNER_TEMP/fx-pgso-aggregate"
+            --candidate-dir "$RUNNER_TEMP/pf-pgso-candidate" \
+            --behavior-dir "$RUNNER_TEMP/pf-pgso-behavior" \
+            --startup-dir "$RUNNER_TEMP/pf-pgso-startup" \
+            --heavy-dir "$RUNNER_TEMP/pf-pgso-heavy" \
+            --output-dir "$RUNNER_TEMP/pf-pgso-aggregate"
 
       - name: Upload aggregate evidence
         id: upload
@@ -486,6 +486,6 @@ jobs:
         with:
           name: pgso-evidence-macos-arm64-${{ github.sha }}-attempt-${{ github.run_attempt }}
           overwrite: true
-          path: ${{ runner.temp }}/fx-pgso-aggregate
+          path: ${{ runner.temp }}/pf-pgso-aggregate
           if-no-files-found: error
           retention-days: 14

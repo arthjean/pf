@@ -15,7 +15,7 @@ const value = (name, fallback) => {
 };
 const serverInput = value("--server", null);
 const piInput = value("--pi-root", null);
-const outDir = resolve(value("--out", "benchmarks/results/libfx"));
+const outDir = resolve(value("--out", "benchmarks/results/libpf"));
 const samples = Number(value("--samples", "100"));
 const warmups = Number(value("--warmups", "3"));
 const rounds = Number(value("--rounds", "3"));
@@ -26,7 +26,7 @@ const serverPath = resolve(serverInput);
 const piRoot = resolve(piInput);
 
 const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const targetScript = resolve(root, "benchmarks/libfx/bench-competitive-target.mjs");
+const targetScript = resolve(root, "benchmarks/libpf/bench-competitive-target.mjs");
 const piPackage = JSON.parse(await readFile(resolve(piRoot, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
 if (piPackage.version !== "0.84.4") throw new Error("competitive benchmark requires Pi 0.84.4");
 await mkdir(outDir, { recursive: true });
@@ -79,10 +79,10 @@ try {
   }
   gatewayOrigin = `http://${address.host}:${address.port}`;
   for (const runtime of ["node", "bun"]) {
-    const reports = { libfx: [], pi: [] };
+    const reports = { libpf: [], pi: [] };
     const roundReports = [];
     for (let round = 0; round < rounds; round += 1) {
-      const order = round % 2 === 0 ? ["libfx", "pi"] : ["pi", "libfx"];
+      const order = round % 2 === 0 ? ["libpf", "pi"] : ["pi", "libpf"];
       const completed = {};
       for (const target of order) {
         const report = await execute(runtime, target);
@@ -95,7 +95,7 @@ try {
       }
       roundReports.push({
         order,
-        libfx_request_count: completed.libfx.request_count,
+        libpf_request_count: completed.libpf.request_count,
         pi_request_count: completed.pi.request_count,
       });
     }
@@ -106,7 +106,7 @@ try {
       samples_per_round: samples,
       warmups_per_round: warmups,
       rounds: roundReports,
-      libfx: summarize(reports.libfx),
+      libpf: summarize(reports.libpf),
       pi: summarize(reports.pi),
     };
     await writeFile(resolve(outDir, `competitive-${runtime}.json`), `${JSON.stringify(report, null, 2)}\n`);
@@ -119,4 +119,4 @@ try {
 }
 if (serverError) throw new Error(serverError);
 
-console.log("wrote three alternating 100-sample native libfx versus Pi rounds for Node and Bun");
+console.log("wrote three alternating 100-sample native libpf versus Pi rounds for Node and Bun");

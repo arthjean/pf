@@ -9,7 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import test from 'node:test'
 
 test('documented Nuxt dev setup loads the key and chat route', { timeout: 90000 }, async (t) => {
-  const fixture = await mkdtemp(join(tmpdir(), 'fx-nuxt-dev-'))
+  const fixture = await mkdtemp(join(tmpdir(), 'pf-nuxt-dev-'))
   let server, stopped
   t.after(async () => {
     if (server && server.exitCode === null && server.signalCode === null) process.kill(-server.pid, 'SIGTERM')

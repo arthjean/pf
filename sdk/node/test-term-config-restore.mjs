@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import xtermHeadless from "@xterm/headless";
-import { createFxTerminal, supportsJspi, xtermAdapter } from "../node.js";
+import { createPfTerminal, supportsJspi, xtermAdapter } from "../node.js";
 
 const { Terminal } = xtermHeadless;
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/fx-term.wasm"));
+const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/pf-term.wasm"));
 if (!supportsJspi()) process.exit(2);
 
 const wasm = await readFile(wasmPath);
@@ -26,14 +26,14 @@ async function verifyStartup(label, configStore, expectedEvent, trigger, expecte
   const stderrDecoder = new TextDecoder();
   let stderrText = "";
   let exited;
-  const runtime = await createFxTerminal({
+  const runtime = await createPfTerminal({
   backend: "wasm",
     wasm,
     terminal: xtermAdapter(terminal),
     env: {
       AI_GATEWAY_API_KEY: "config-restore-test-key",
-      FX_TRACE_STDERR: "1",
-      FX_TRACE_SCOPES: "host_config",
+      PF_TRACE_STDERR: "1",
+      PF_TRACE_SCOPES: "host_config",
     },
     configStore,
     stderr(chunk) { stderrText += stderrDecoder.decode(chunk, { stream: true }); },

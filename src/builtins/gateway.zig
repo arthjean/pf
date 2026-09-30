@@ -48,10 +48,10 @@ pub const default_chat_url = "https://ai-gateway.vercel.sh/v4/ai/language-model"
 pub const models_path = "/coding-agent/v1/models";
 const credits_path = "/coding-agent/v1/credits";
 pub const retry_count: usize = 3;
-pub const chat_url_env = "FX_GATEWAY_CHAT_URL";
+pub const chat_url_env = "PF_GATEWAY_CHAT_URL";
 pub const default_model_catalog_base_url = "https://ai-gateway.vercel.sh";
-const base_url_env = "FX_GATEWAY_BASE_URL";
-const e2e_gateway_models_url_env = "FX_E2E_GATEWAY_MODELS_URL";
+const base_url_env = "PF_GATEWAY_BASE_URL";
+const e2e_gateway_models_url_env = "PF_E2E_GATEWAY_MODELS_URL";
 const oauth_request_timeout_ms: i64 = 15_000;
 const oauth_response_max_bytes: usize = 64 * 1024;
 
@@ -156,7 +156,7 @@ pub const agent_stream_provider = agent_stream_provider_contract.Provider{
 };
 
 pub const provider_bundle = provider_set.Bundle{
-    .capabilities = .{ .gateway_prompt_caching = true, .fx_search = true, .vision_fallback = true },
+    .capabilities = .{ .gateway_prompt_caching = true, .pf_search = true, .vision_fallback = true },
     .presentation = provider_catalog.find(.gateway),
     .auth_strategy = .vercel,
     .title_model = title_model,
@@ -167,7 +167,7 @@ pub const provider_bundle = provider_set.Bundle{
     .permission_reviewer = permission_reviewer.provider,
     .deferred_usage = generation_usage_provider,
     .credits = credits_provider,
-    .fx_search = default_web_search_provider,
+    .pf_search = default_web_search_provider,
 };
 
 pub const provider = gateway_provider.Provider{
@@ -741,7 +741,7 @@ fn fetchCredits(
     );
 }
 
-/// An fx login can reach several teams, so `/v1/credits` rejects it outright
+/// An pf login can reach several teams, so `/v1/credits` rejects it outright
 /// unless the request names one. The endpoint reads the team from a `teamId`
 /// query value and ignores `x-vercel-ai-gateway-team`, which is the reverse of
 /// the inference endpoint. An API key carries its own team and resolves to no
@@ -897,8 +897,8 @@ const OAuthHttpOperation = struct {
 };
 
 test "oauth transport user agent uses the product version" {
-    try std.testing.expect(std.mem.startsWith(u8, gateway_client.user_agent, "fx/"));
-    try std.testing.expect(gateway_client.user_agent.len > "fx/".len);
+    try std.testing.expect(std.mem.startsWith(u8, gateway_client.user_agent, "pf/"));
+    try std.testing.expect(gateway_client.user_agent.len > "pf/".len);
     try std.testing.expect(std.mem.find(u8, gateway_client.user_agent, "zig") == null);
     try std.testing.expect(std.mem.find(u8, gateway_client.user_agent, "std.http") == null);
 }
@@ -941,14 +941,14 @@ pub fn preferredWebSearchBackendsOverride(raw: ?[]const u8) !?[]const web_search
 }
 
 pub fn selectedWebSearchBackend() !web_search_contract.SearchBackendId {
-    if (try preferredWebSearchBackendsOverride(io_mod.getenv("FX_WEB_SEARCH_BACKEND"))) |backends| {
+    if (try preferredWebSearchBackendsOverride(io_mod.getenv("PF_WEB_SEARCH_BACKEND"))) |backends| {
         return backends[0];
     }
     return default_web_search_backend_order[0];
 }
 
 fn resolvePreferredWebSearchBackends(_: ?*anyopaque) !?[]const web_search_contract.SearchBackendId {
-    return preferredWebSearchBackendsOverride(io_mod.getenv("FX_WEB_SEARCH_BACKEND"));
+    return preferredWebSearchBackendsOverride(io_mod.getenv("PF_WEB_SEARCH_BACKEND"));
 }
 
 fn executeWebSearchProvider(
@@ -2058,7 +2058,7 @@ test "built-in gateway defaults preserve active provider policy" {
     try std.testing.expectEqualStrings("https://ai-gateway.vercel.sh/v4/ai/language-model", default_chat_url);
     try std.testing.expectEqualStrings("/coding-agent/v1/models", models_path);
     try std.testing.expectEqual(@as(usize, 3), retry_count);
-    try std.testing.expectEqualStrings("FX_GATEWAY_CHAT_URL", chat_url_env);
+    try std.testing.expectEqualStrings("PF_GATEWAY_CHAT_URL", chat_url_env);
 }
 
 fn stubFetchCreditsError(
@@ -2494,14 +2494,14 @@ fn modelCatalogTeamPath(
     path: []const u8,
     access: credentials.CatalogAccess,
 ) Allocator.Error!?[]u8 {
-    if (access.credentialSource() != .fx_login) return null;
+    if (access.credentialSource() != .pf_login) return null;
     const team = access.teamContext() orelse return null;
     if (!shared_types.validGatewayTeam(team)) return null;
     return try std.fmt.allocPrint(alloc, "{s}?teamId={s}", .{ path, team });
 }
 
 fn modelCatalogHeaderTeam(access: credentials.CatalogAccess) ?[]const u8 {
-    if (access.credentialSource() == .fx_login) return null;
+    if (access.credentialSource() == .pf_login) return null;
     return access.teamContext();
 }
 
@@ -2743,7 +2743,7 @@ test "model catalog GET omits team header for null and empty team" {
     try expectModelCatalogTeamHeaderOmitted("");
 }
 
-test "model catalog GET sends fx user agent without attribution headers" {
+test "model catalog GET sends pf user agent without attribution headers" {
     var fixture = try gateway_client.TestModelCatalogFixture.init();
     defer fixture.deinit();
     try fixture.start();

@@ -38,7 +38,7 @@ export function createSkillsAdapter(records) {
   }
   const instructions = sections.join("\n\n");
   if (new TextEncoder().encode(instructions).length > maxInstructionsBytes) {
-    throw new RangeError(`skill instructions exceed the ${maxInstructionsBytes} byte libfx limit`);
+    throw new RangeError(`skill instructions exceed the ${maxInstructionsBytes} byte libpf limit`);
   }
   return { instructions, tools };
 }

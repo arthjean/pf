@@ -3,14 +3,14 @@ import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FX_BIN } from '../evals/eval-helpers';
+import { PF_BIN } from '../evals/eval-helpers';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
 const access = 'xoxb-test-private-access';
 const refresh = 'xoxe-test-private-refresh';
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'fx-slack-'));
+  const home = mkdtempSync(join(tmpdir(), 'pf-slack-'));
   cleanup.push(() => rmSync(home, { recursive: true, force: true }));
   let exchange: Record<string, any> = { ok: true, app_id: 'AFX', team: { id: 'TVERCEL' }, bot_user_id: 'WBOT', token_type: 'bot', scope: 'app_mentions:read', authed_user: { id: 'UINSTALLER', access_token: 'user-token-must-not-save' }, access_token: access, refresh_token: refresh, expires_in: 43200 };
   let identity: Record<string, any> = { ok: true, team_id: 'TVERCEL', user_id: 'WBOT', bot_id: 'BBOT' };
@@ -47,10 +47,10 @@ function fixture() {
   } });
   cleanup.push(() => server.stop(true));
   const origin = `http://127.0.0.1:${server.port}`;
-  const env = { ...process.env, HOME: home, FX_NO_OPEN_BROWSER: '1', FX_E2E_SLACK_ORIGIN: origin, FX_DISABLE_KEYCHAIN: '1', FX_AUTO_UPGRADE: '0', FX_SKIP_ONBOARDING: '1', FX_SOUND: '0', AI_GATEWAY_API_KEY: undefined, VERCEL_OIDC_TOKEN: undefined };
-  const file = join(home, '.fx/slack/installation.json');
+  const env = { ...process.env, HOME: home, PF_NO_OPEN_BROWSER: '1', PF_E2E_SLACK_ORIGIN: origin, PF_DISABLE_KEYCHAIN: '1', PF_AUTO_UPGRADE: '0', PF_SKIP_ONBOARDING: '1', PF_SOUND: '0', AI_GATEWAY_API_KEY: undefined, VERCEL_OIDC_TOKEN: undefined };
+  const file = join(home, '.pf/slack/installation.json');
   function spawn(action: string) {
-    const proc = Bun.spawn([FX_BIN, 'slack', action, '--json'], { env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
+    const proc = Bun.spawn([PF_BIN, 'slack', action, '--json'], { env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
     cleanup.push(() => { try { proc.kill(); } catch {} });
     let stderr = '';
     const reading = (async () => { for await (const chunk of proc.stderr) stderr += new TextDecoder().decode(chunk); })();
@@ -64,7 +64,7 @@ function fixture() {
     while (Date.now() < until) {
       const match = run.stderr.match(/Open on this computer: (\S+)/);
       if (match) { url = new URL(match[1]); break; }
-      if (run.proc.exitCode !== null) throw new Error(`fx exited: ${run.stderr}`);
+      if (run.proc.exitCode !== null) throw new Error(`pf exited: ${run.stderr}`);
       await Bun.sleep(10);
     }
     if (!url) throw new Error(`No authorization URL: ${run.stderr}`);
@@ -99,7 +99,7 @@ test('installs through a real loopback POST, validates PKCE, and saves only bot 
   expect(JSON.parse(result.stdout)).toMatchObject({ installed: true, team_id: 'TVERCEL', bot_user_id: 'WBOT' });
   expect(result.stdout + result.stderr + JSON.stringify([...response.headers]) + await response.text()).not.toMatch(/xoxb-test|xoxe-test|test-authorization-code/);
   expect(statSync(f.file).mode & 0o777).toBe(0o600);
-  expect(statSync(join(f.home, '.fx/slack')).mode & 0o777).toBe(0o700);
+  expect(statSync(join(f.home, '.pf/slack')).mode & 0o777).toBe(0o700);
   const stored = readFileSync(f.file, 'utf8');
   expect(stored).toContain(access);
   expect(stored).not.toMatch(/user-token-must-not-save|code_verifier|test-authorization-code/);
@@ -107,7 +107,7 @@ test('installs through a real loopback POST, validates PKCE, and saves only bot 
   expect(status.code).toBe(0);
   expect(status.stdout).not.toContain(access);
   expect(f.calls).toHaveLength(2);
-  expect(existsSync(join(f.home, '.fx/mcp'))).toBe(false);
+  expect(existsSync(join(f.home, '.pf/mcp'))).toBe(false);
 }, 20000);
 
 test('wrong origin and mismatched state cannot consume the waiting CLI transaction', async () => {

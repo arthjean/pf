@@ -20,9 +20,9 @@ const FindGenericPasswordFn = *const fn (
     item_ref: ?*?*anyopaque,
 ) callconv(.c) i32;
 
-pub const service_name = "FX_AI_GATEWAY_API_KEY";
-const mcp_credentials_service_name = "FX_MCP_OAUTH_CREDENTIALS_V1";
-pub const oauth_session_service_name = "FX_OAUTH_SESSION_V1";
+pub const service_name = "PF_AI_GATEWAY_API_KEY";
+const mcp_credentials_service_name = "PF_MCP_OAUTH_CREDENTIALS_V1";
+pub const oauth_session_service_name = "PF_OAUTH_SESSION_V1";
 
 /// Backing store for a resolved account name. Must outlive any argv built from it.
 pub const AccountBuffer = [256]u8;
@@ -52,7 +52,7 @@ pub fn isAvailable() bool {
 }
 
 pub fn isDisabled() bool {
-    const value = io_mod.getenv("FX_DISABLE_KEYCHAIN") orelse return false;
+    const value = io_mod.getenv("PF_DISABLE_KEYCHAIN") orelse return false;
     return std.mem.eql(u8, value, "1") or std.ascii.eqlIgnoreCase(value, "true");
 }
 
@@ -765,7 +765,7 @@ fn deleteServiceItem(
     return error.KeychainDeleteFailed;
 }
 
-const test_service_name = "FX_TEST_AI_GATEWAY_API_KEY";
+const test_service_name = "PF_TEST_AI_GATEWAY_API_KEY";
 
 fn deleteTestServiceItem(alloc: std.mem.Allocator) void {
     _ = deleteServiceItem(alloc, test_service_name) catch {};
@@ -808,7 +808,7 @@ test "MCP Keychain storage round-trips values beyond the security prompt limit" 
     if (isDisabled()) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    const test_mcp_service = "FX_TEST_MCP_OAUTH_CREDENTIALS_V1";
+    const test_mcp_service = "PF_TEST_MCP_OAUTH_CREDENTIALS_V1";
     const written = "mcp-credential-section-" ** 32;
 
     storeMcpValueMac(test_mcp_service, written) catch return error.SkipZigTest;

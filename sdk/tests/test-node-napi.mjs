@@ -25,7 +25,7 @@ const scripts = [
   "test-native-host-tool-late-settle.mjs",
   "test-default-import.mjs",
   "test-list-models.mjs",
-  "test-libfx-loader.mjs",
+  "test-libpf-loader.mjs",
   "test-agent-bootstrap.mjs",
   "test-agent-step-limit.mjs",
   "test-agent-effort.mjs",

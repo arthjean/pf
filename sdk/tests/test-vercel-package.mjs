@@ -12,18 +12,18 @@ import { serializeError } from "./package-report.mjs";
 const input = process.argv[2];
 const next15 = process.argv.includes("--next15");
 const webpack = next15 || process.argv.includes("--webpack");
-assert.ok(input, "provide a published libfx version or local tarball");
-const projectId = process.env.LIBFX_VERCEL_PROJECT_ID;
-const orgId = process.env.LIBFX_VERCEL_ORG_ID;
-assert.ok(projectId && orgId, "LIBFX_VERCEL_PROJECT_ID and LIBFX_VERCEL_ORG_ID are required");
+assert.ok(input, "provide a published libpf version or local tarball");
+const projectId = process.env.LIBPF_VERCEL_PROJECT_ID;
+const orgId = process.env.LIBPF_VERCEL_ORG_ID;
+assert.ok(projectId && orgId, "LIBPF_VERCEL_PROJECT_ID and LIBPF_VERCEL_ORG_ID are required");
 assert.ok(process.env.AI_GATEWAY_API_KEY, "AI_GATEWAY_API_KEY is required for live verification");
-const artifactRoot = process.env.LIBFX_TEST_ARTIFACT_ROOT || tmpdir();
+const artifactRoot = process.env.LIBPF_TEST_ARTIFACT_ROOT || tmpdir();
 await mkdir(artifactRoot, { recursive: true });
-const directory = await mkdtemp(resolve(artifactRoot, "libfx-vercel-"));
+const directory = await mkdtemp(resolve(artifactRoot, "libpf-vercel-"));
 const app = resolve(directory, "app");
 const secret = randomUUID();
-const tokenArgs = process.env.LIBFX_VERCEL_TOKEN ? ["--token", process.env.LIBFX_VERCEL_TOKEN] : [];
-const redact = (text) => [secret, process.env.AI_GATEWAY_API_KEY, process.env.LIBFX_VERCEL_TOKEN]
+const tokenArgs = process.env.LIBPF_VERCEL_TOKEN ? ["--token", process.env.LIBPF_VERCEL_TOKEN] : [];
+const redact = (text) => [secret, process.env.AI_GATEWAY_API_KEY, process.env.LIBPF_VERCEL_TOKEN]
   .filter(Boolean).reduce((value, credential) => value.replaceAll(credential, "[redacted]"), text);
 const results = [];
 let deployment;
@@ -55,11 +55,11 @@ try {
   });
   const manifest = JSON.parse(await readFile(resolve(app, "package.json"), "utf8"));
   if (input.endsWith(".tgz")) {
-    await cp(resolve(input), resolve(app, "libfx.tgz"));
-    manifest.dependencies.libfx = "file:./libfx.tgz";
+    await cp(resolve(input), resolve(app, "libpf.tgz"));
+    manifest.dependencies.libpf = "file:./libpf.tgz";
   } else {
     assert.match(input, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, "pin an immutable version, not a tag");
-    manifest.dependencies.libfx = input;
+    manifest.dependencies.libpf = input;
   }
   if (next15) manifest.dependencies.next = "15.5.25";
   if (webpack && !next15) manifest.scripts.build = "next build --webpack";
@@ -69,10 +69,10 @@ try {
   await writeFile(resolve(app, ".vercel/project.json"), JSON.stringify({ projectId, orgId }));
   const output = await vercel([
     "deploy", "--yes", "--no-wait", "--force", "--target", "preview",
-    "--env", `LIBFX_SMOKE_TOKEN=${secret}`,
-    "--env", "LIBFX_LIVE=1",
+    "--env", `LIBPF_SMOKE_TOKEN=${secret}`,
+    "--env", "LIBPF_LIVE=1",
     "--env", `AI_GATEWAY_API_KEY=${process.env.AI_GATEWAY_API_KEY}`,
-    "--env", `LIBFX_TEST_MODEL=${process.env.LIBFX_TEST_MODEL || "openai/gpt-5.4-mini"}`,
+    "--env", `LIBPF_TEST_MODEL=${process.env.LIBPF_TEST_MODEL || "openai/gpt-5.4-mini"}`,
   ], "deploy");
   try {
     const result = JSON.parse(output).deployment;
@@ -83,12 +83,12 @@ try {
   assert.ok(deployment, `No deployment URL returned; see ${directory}/deploy.log`);
   deploymentRef ??= deployment;
   await vercel(["inspect", deploymentRef, "--wait", "--timeout", "5m"], "inspect");
-  const unauthorized = await fetch(`${deployment}/api/fx`);
+  const unauthorized = await fetch(`${deployment}/api/pf`);
   assert.equal(unauthorized.status, 401, "live tool endpoint must require its verification token");
   for (let round = 0; round < 3; round++) {
     for (const backend of ["native", "auto"]) {
       for (const scenario of ["host", "mcp"]) {
-        const response = await fetch(`${deployment}/api/fx?backend=${backend}&scenario=${scenario}`, {
+        const response = await fetch(`${deployment}/api/pf?backend=${backend}&scenario=${scenario}`, {
           headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(60_000),
         });
         const result = await response.json();
@@ -111,7 +111,7 @@ try {
     try { await vercel(["inspect", deploymentRef, "--logs"], "build"); } catch {}
   }
 } finally {
-  if (deployment && process.env.LIBFX_KEEP_DEPLOYMENT !== "1") {
+  if (deployment && process.env.LIBPF_KEEP_DEPLOYMENT !== "1") {
     try { await vercel(["remove", deploymentRef, "--yes"], "cleanup"); }
     catch (error) { failure = failure ? new AggregateError([failure, error], "Verification and cleanup failed") : error; }
   }

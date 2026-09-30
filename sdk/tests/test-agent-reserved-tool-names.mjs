@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const backend = process.argv[2] || "native";
@@ -29,8 +29,8 @@ const sse = (...events) => new Response(
 // The two most natural names an embedder picks for file tools are the kernel's
 // builtin file-mutation names. Host tools must still execute under them.
 const calls = [];
-const writeResult = { type: "libfx.tool-result", text: "wrote it", images: [] };
-const editResult = { type: "libfx.tool-result", text: "edited it", images: [] };
+const writeResult = { type: "libpf.tool-result", text: "wrote it", images: [] };
+const editResult = { type: "libpf.tool-result", text: "edited it", images: [] };
 
 const tools = [
   {
@@ -68,7 +68,7 @@ const gateway = {
   },
 };
 
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   backend,
   apiKey: "sdk-reserved-names-key",
   model: "sdk/tool-model",
@@ -77,8 +77,8 @@ const agent = await createFxAgent({
   // File mutations need a permission decision; answer allow for the test.
   onPermission: () => "allow-once",
   ...(backend === "native"
-    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node") }
-    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }),
+    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node") }
+    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }),
 });
 
 const events = [];

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const backend = process.argv[2] || "native";
 if (!new Set(["native", "wasm"]).has(backend)) throw new Error("usage: test-agent-steering.mjs [native|wasm]");
@@ -14,9 +14,9 @@ if (backend === "wasm" && !supportsJspi()) {
 }
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addon = resolve(scriptDir, "../../zig-out/lib/libfx.node");
+const addon = resolve(scriptDir, "../../zig-out/lib/libpf.node");
 const wasm = backend === "wasm"
-  ? await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm"))
+  ? await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm"))
   : undefined;
 let modelRequests = 0;
 
@@ -91,7 +91,7 @@ const options = (checkpoint) => ({
 
 let agent;
 try {
-  agent = await createFxAgent(options());
+  agent = await createPfAgent(options());
   const turn = agent.prompt("start work");
   const events = [];
   let steered = false;
@@ -118,7 +118,7 @@ try {
 
   const checkpoint = await agent.checkpoint();
   await agent.close();
-  agent = await createFxAgent(options(checkpoint));
+  agent = await createPfAgent(options(checkpoint));
   const restored = agent.prompt("continue saved work");
   let restoredText = "";
   for await (const event of restored) if (event.type === "text_delta") restoredText += event.delta;

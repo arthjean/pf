@@ -4,7 +4,7 @@ const builtin_gateway = @import("../builtins/gateway.zig");
 
 const Allocator = std.mem.Allocator;
 
-extern "fx" fn fx_http_request(
+extern "pf" fn pf_http_request(
     method_ptr: [*]const u8,
     method_len: usize,
     url_ptr: [*]const u8,
@@ -59,7 +59,7 @@ fn fetch(
     defer alloc.free(response);
     var status: u16 = 0;
     const method = "GET";
-    const response_len = fx_http_request(
+    const response_len = pf_http_request(
         method.ptr,
         method.len,
         url.ptr,

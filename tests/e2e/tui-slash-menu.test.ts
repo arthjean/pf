@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import {
   composerContains,
   FAKE_GATEWAY_MODEL,
@@ -63,7 +63,7 @@ function selectedSlashRowIndex(escapes: string): number {
 }
 
 test("slash menu selection index ignores the welcome header help hint", () => {
-  const header = `${SELECTED_COMPLETION_SGR}𝒇x\x1b[0m${DIM_SGR} v0.3.27 · Run /help for commands`;
+  const header = `${SELECTED_COMPLETION_SGR}𝒑f\x1b[0m${DIM_SGR} v0.3.27 · Run /help for commands`;
   const unselected = "\x1b[38;5;245m/help show available slash commands";
   const selected = `${SELECTED_COMPLETION_SGR}  /clear\x1b[38;5;245m start a fresh session and keep background processes`;
 
@@ -85,9 +85,9 @@ function captureViewportEscapes(session: TmuxSession): string {
 }
 
 function runningBinaryTitle(workspace: string): string {
-  const version = execFileSync(FX_BIN, ["--version"], { encoding: "utf8" }).trim();
+  const version = execFileSync(PF_BIN, ["--version"], { encoding: "utf8" }).trim();
   expect(version).toMatch(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/);
-  return `fx v${version} | ${basename(workspace)}`;
+  return `pf v${version} | ${basename(workspace)}`;
 }
 
 async function waitForPaneTitle(
@@ -339,17 +339,17 @@ function fileMarkerCount(path: string, marker: string): number {
 }
 
 function createSkillsMenuFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-skills-menu-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-skills-menu-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const stderrPath = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx", "skills", "managed-menu"), { recursive: true });
+  mkdirSync(join(home, ".pf", "skills", "managed-menu"), { recursive: true });
   mkdirSync(join(home, ".codex", "skills", "codex-menu"), { recursive: true });
   mkdirSync(join(home, ".agents", "skills", "compat-menu"), { recursive: true });
   mkdirSync(join(workspace, "skills", "workspace-menu"), { recursive: true });
   writeFileSync(
-    join(home, ".fx", "skills", "managed-menu", "SKILL.md"),
+    join(home, ".pf", "skills", "managed-menu", "SKILL.md"),
     "---\nname: managed-menu\ndescription: |\n  managed menu first line\n  managed menu second line\n---\n\nManaged body\n",
   );
   writeFileSync(
@@ -369,16 +369,16 @@ function createSkillsMenuFixture() {
 }
 
 function createSkillRankingFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-skill-rank-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-skill-rank-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const stderrPath = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx", "skills", "workflow-helper"), { recursive: true });
+  mkdirSync(join(home, ".pf", "skills", "workflow-helper"), { recursive: true });
   mkdirSync(join(home, ".codex", "skills", "zig-best-practices"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   writeFileSync(
-    join(home, ".fx", "skills", "workflow-helper", "SKILL.md"),
+    join(home, ".pf", "skills", "workflow-helper", "SKILL.md"),
     "---\nname: workflow-helper\ndescription: simplify Zig workflows\n---\n\nWorkflow body\n",
   );
   writeFileSync(
@@ -390,17 +390,17 @@ function createSkillRankingFixture() {
 }
 
 function createLinkedSkillsMenuFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-linked-skills-menu-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-linked-skills-menu-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const source = join(workspace, "skill-source", "linked-menu");
   const skillsRoot = join(workspace, ".codex", "skills");
   const stderrPath = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(source, { recursive: true });
   mkdirSync(skillsRoot, { recursive: true });
-  writeFileSync(join(home, ".fx", "settings.json"), "{}\n");
+  writeFileSync(join(home, ".pf", "settings.json"), "{}\n");
   writeFileSync(
     join(source, "SKILL.md"),
     "---\nname: linked-menu\ndescription: linked menu skill\n---\n\nLINKED_MENU_BODY\n",
@@ -415,17 +415,17 @@ function createLinkedSkillsMenuFixture() {
 }
 
 function createLinkedMetadataSkillsMenuFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-linked-skill-metadata-menu-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-linked-skill-metadata-menu-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const source = join(workspace, "skill-source", "linked-leaf");
   const candidate = join(workspace, ".codex", "skills", "linked-leaf");
   const stderrPath = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(source, { recursive: true });
   mkdirSync(candidate, { recursive: true });
-  writeFileSync(join(home, ".fx", "settings.json"), "{}\n");
+  writeFileSync(join(home, ".pf", "settings.json"), "{}\n");
   writeFileSync(
     join(source, "SKILL.md"),
     "---\nname: linked-leaf\ndescription: linked metadata skill\n---\n\nLINKED_METADATA_BODY\n",
@@ -440,15 +440,15 @@ function createLinkedMetadataSkillsMenuFixture() {
 }
 
 function createUnavailableLinkedSkillFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-unavailable-linked-skill-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-unavailable-linked-skill-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const skillsRoot = join(workspace, ".codex", "skills");
   const stderrPath = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(skillsRoot, { recursive: true });
-  writeFileSync(join(home, ".fx", "settings.json"), "{}\n");
+  writeFileSync(join(home, ".pf", "settings.json"), "{}\n");
   symlinkSync(
     "../../skill-source/missing-skill",
     join(skillsRoot, "missing-skill"),
@@ -459,14 +459,14 @@ function createUnavailableLinkedSkillFixture() {
 }
 
 function createModelsMenuFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-models-menu-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-models-menu-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  const settingsPath = join(home, ".fx", "settings.json");
-  const tapePath = join(root, "models-menu.fxtape");
+  const settingsPath = join(home, ".pf", "settings.json");
+  const tapePath = join(root, "models-menu.pftape");
   const stderrPath = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   writeFileSync(settingsPath, "{}\n");
   writeFileSync(stderrPath, "");
@@ -477,14 +477,14 @@ function createModelsMenuFixture() {
 // not contain the substring "home": a "home" path segment would make the
 // query HOME match every installed skill.
 function createMentionGuardFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-mention-guard-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-mention-guard-")));
   workDirs.push(root);
   const home = join(root, "hq");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx", "skills", "managed-menu"), { recursive: true });
+  mkdirSync(join(home, ".pf", "skills", "managed-menu"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   writeFileSync(
-    join(home, ".fx", "skills", "managed-menu", "SKILL.md"),
+    join(home, ".pf", "skills", "managed-menu", "SKILL.md"),
     "---\nname: managed-menu\ndescription: managed menu skill\n---\n\nManaged body\n",
   );
   if (home.toLowerCase().includes("home")) {
@@ -494,11 +494,11 @@ function createMentionGuardFixture() {
 }
 
 function createExactSkillsMenuFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-exact-skills-menu-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-exact-skills-menu-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  const managed = join(home, ".fx", "skills", "exact-picker-managed");
+  const managed = join(home, ".pf", "skills", "exact-picker-managed");
   const workspaceSkill = join(workspace, "skills", "exact-picker-workspace");
   const malformed = join(home, ".agents", "skills", "malformed-picker");
   const bodyA = "EXACT_PICKER_MANAGED_BODY";
@@ -533,16 +533,16 @@ function createExactSkillsMenuFixture() {
 }
 
 function createManySkillsMenuFixture(count: number) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-skills-menu-many-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-skills-menu-many-")));
   workDirs.push(root);
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const stderrPath = join(root, "stderr.log");
   for (let i = 0; i < count; i += 1) {
     const name = `skill-${String(i).padStart(3, "0")}`;
-    mkdirSync(join(home, ".fx", "skills", name), { recursive: true });
+    mkdirSync(join(home, ".pf", "skills", name), { recursive: true });
     writeFileSync(
-      join(home, ".fx", "skills", name, "SKILL.md"),
+      join(home, ".pf", "skills", name, "SKILL.md"),
       `---\nname: ${name}\ndescription: generated skill ${i}\n---\n\nGenerated body\n`,
     );
   }
@@ -550,9 +550,9 @@ function createManySkillsMenuFixture(count: number) {
   return { home, workspace, stderrPath };
 }
 
-function visibleFxSkillNames(grid: string[]): string[] {
+function visiblePfSkillNames(grid: string[]): string[] {
   return grid
-    .filter((line) => line.includes("skill-") && line.includes("fx · Global"))
+    .filter((line) => line.includes("skill-") && line.includes("pf · Global"))
     .map((line) => line.match(/skill-\d+/)?.[0])
     .filter((name): name is string => name !== undefined);
 }
@@ -635,10 +635,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-linked-menu-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -685,10 +685,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-linked-metadata-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -733,7 +733,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -776,7 +776,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -809,17 +809,17 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "terminal tab title shows the session title across rename, resume, and new session",
     async () => {
-      const workDir = mkdtempSync(join(tmpdir(), "fx-title-rename-e2e-"));
+      const workDir = mkdtempSync(join(tmpdir(), "pf-title-rename-e2e-"));
       workDirs.push(workDir);
       const home = join(workDir, "home");
-      const workspace = join(workDir, "fx");
+      const workspace = join(workDir, "pf");
       const resumedWorkspace = join(workDir, "another project é");
       const fallbackTitle = (dir: string) => runningBinaryTitle(dir);
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
       mkdirSync(resumedWorkspace, { recursive: true });
       writeFileSync(
-        join(home, ".fx", "settings.json"),
+        join(home, ".pf", "settings.json"),
         JSON.stringify({ sandbox: "none", permission: {} }),
       );
 
@@ -832,15 +832,15 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         HOME: home,
         AI_GATEWAY_API_KEY: "fake-title-rename-key",
         VERCEL_OIDC_TOKEN: undefined,
-        FX_GATEWAY_BASE_URL: gateway.baseUrl,
-        FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-        FX_MODEL: model,
-        FX_AUTO_UPGRADE: "0",
+        PF_GATEWAY_BASE_URL: gateway.baseUrl,
+        PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+        PF_MODEL: model,
+        PF_AUTO_UPGRADE: "0",
         NO_COLOR: "1",
       };
 
       session = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: workspace,
         env,
         stderrPath,
@@ -874,7 +874,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.kill();
       session = null;
 
-      const sessionIds = readdirSync(join(home, ".fx", "sessions"), {
+      const sessionIds = readdirSync(join(home, ".pf", "sessions"), {
         withFileTypes: true,
       })
         .filter((entry) => entry.name !== "latest" && entry.isDirectory())
@@ -885,12 +885,12 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       gateway.stop();
       gateway = startFakeGateway([]);
       session = await TmuxSession.create({
-        cmd: `${FX_BIN} resume ${sessionIds[0]}`,
+        cmd: `${PF_BIN} resume ${sessionIds[0]}`,
         cwd: resumedWorkspace,
         env: {
           ...env,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         stderrPath: resumedStderrPath,
         width: 120,
@@ -922,31 +922,31 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "slash picker growth preserves displaced transcript history",
     async () => {
-      const workDir = mkdtempSync(join(tmpdir(), "fx-slash-footer-e2e-"));
+      const workDir = mkdtempSync(join(tmpdir(), "pf-slash-footer-e2e-"));
       workDirs.push(workDir);
       const home = join(workDir, "home");
       const workspace = join(workDir, "workspace");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), JSON.stringify({ sandbox: "none", permission: {} }));
+      writeFileSync(join(home, ".pf", "settings.json"), JSON.stringify({ sandbox: "none", permission: {} }));
 
       const tracePath = join(workDir, "trace.log");
-      const tapePath = join(workDir, "resumed.fxtape");
+      const tapePath = join(workDir, "resumed.pftape");
       const stderrPath = join(workDir, "stderr.log");
       const resumedStderrPath = join(workDir, "resumed-stderr.log");
       gateway = startFakeGateway([fakeGatewayFinalText(longAssistantResponse())]);
 
       session = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: workspace,
         env: {
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-slash-footer-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: "openai/gpt-5",
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: "openai/gpt-5",
+          PF_AUTO_UPGRADE: "0",
           NO_COLOR: "1",
         },
         stderrPath,
@@ -969,7 +969,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       session = null;
       expect(readFileSync(stderrPath, "utf8")).toBe("");
 
-      const sessionIds = readdirSync(join(home, ".fx", "sessions"), {
+      const sessionIds = readdirSync(join(home, ".pf", "sessions"), {
         withFileTypes: true,
       })
         .filter((entry) => entry.name !== "latest" && entry.isDirectory())
@@ -978,20 +978,20 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       gateway.stop();
       gateway = startFakeGateway([]);
       session = await TmuxSession.create({
-        cmd: `${FX_BIN} resume ${sessionIds[0]}`,
+        cmd: `${PF_BIN} resume ${sessionIds[0]}`,
         cwd: workspace,
         env: {
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-slash-footer-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: "openai/gpt-5",
-          FX_AUTO_UPGRADE: "0",
-          FX_RECORD: tapePath,
-          FX_RECORD_INPUT: "1",
-          FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: "frame_plan,frame_layout,scroll,render,paint,frame_diff,frame_commit",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: "openai/gpt-5",
+          PF_AUTO_UPGRADE: "0",
+          PF_RECORD: tapePath,
+          PF_RECORD_INPUT: "1",
+          PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: "frame_plan,frame_layout,scroll,render,paint,frame_diff,frame_commit",
           NO_COLOR: "1",
         },
         stderrPath: resumedStderrPath,
@@ -1054,7 +1054,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.waitForPane(
         (pane) =>
           composerContains(pane, "/feedback") &&
-          !pane.includes("open the fx feedback form"),
+          !pane.includes("open the pf feedback form"),
         5_000,
       );
       const afterDismiss = await capture("after-dismiss");
@@ -1065,7 +1065,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.waitForPane(
         (pane) =>
           composerContains(pane, "/feedbackx") &&
-          !pane.includes("open the fx feedback form"),
+          !pane.includes("open the pf feedback form"),
         5_000,
       );
       const afterDismissEdit = await capture("after-dismiss-edit");
@@ -1175,7 +1175,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       expect(closeFrame).toMatch(/full_repaint=true invalidation=external_clear/);
       expect(readFileSync(resumedStderrPath, "utf8")).toBe("");
 
-      const replayOutput = execFileSync(FX_BIN, ["replay", tapePath, "--json"], {
+      const replayOutput = execFileSync(PF_BIN, ["replay", tapePath, "--json"], {
         encoding: "utf8",
       });
       writeFileSync(join(workDir, "replay.json"), replayOutput);
@@ -1189,7 +1189,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "slash menu renders its header described rows categories and controls",
     async () => {
-      const workDir = mkdtempSync(join(tmpdir(), "fx-slash-main-menu-e2e-"));
+      const workDir = mkdtempSync(join(tmpdir(), "pf-slash-main-menu-e2e-"));
       workDirs.push(workDir);
       const home = join(workDir, "home");
       const workspace = join(workDir, "workspace");
@@ -1202,7 +1202,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -1252,7 +1252,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
     "settings can hide slash menu metadata and persist the choice",
     async () => {
       const { home, workspace } = createSkillsMenuFixture();
-      const settingsPath = join(home, ".fx", "settings.json");
+      const settingsPath = join(home, ".pf", "settings.json");
 
       const launch = () =>
         TmuxSession.create({
@@ -1261,7 +1261,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
             HOME: home,
             AI_GATEWAY_API_KEY: undefined,
             VERCEL_OIDC_TOKEN: undefined,
-            FX_AUTO_UPGRADE: "0",
+            PF_AUTO_UPGRADE: "0",
           },
           width: 100,
           height: 30,
@@ -1307,7 +1307,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       grid = await session.capturePaneGrid();
       const skillRow = grid.find((line) => line.includes("managed menu first line"));
       expect(skillRow).toContain("managed-menu");
-      expect(skillRow).not.toContain("global .fx");
+      expect(skillRow).not.toContain("global .pf");
 
       await session.sendKeys("C-u");
       await session.sendText("/quit");
@@ -1340,7 +1340,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "Escape closes slash picker until the slash trigger restarts",
     async () => {
-      const workDir = mkdtempSync(join(tmpdir(), "fx-slash-escape-e2e-"));
+      const workDir = mkdtempSync(join(tmpdir(), "pf-slash-escape-e2e-"));
       workDirs.push(workDir);
       const home = join(workDir, "home");
       const workspace = join(workDir, "workspace");
@@ -1354,7 +1354,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         stderrPath,
         width: 100,
@@ -1399,11 +1399,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "slash query lifecycle keeps eligibility projection and submission aligned",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-slash-lifecycle-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-slash-lifecycle-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
-      const skillDir = join(home, ".fx", "skills", "resume-helper");
+      const skillDir = join(home, ".pf", "skills", "resume-helper");
       const stderrPath = join(root, "stderr.log");
       mkdirSync(skillDir, { recursive: true });
       mkdirSync(workspace, { recursive: true });
@@ -1418,7 +1418,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         stderrPath,
         width: 88,
@@ -1477,7 +1477,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
 
       await session.sendKeys("Escape");
       await session.waitForPane(
-        (current) => hasEmptyComposer(current) && current.includes("𝒇x") && !current.includes("Commands"),
+        (current) => hasEmptyComposer(current) && current.includes("𝒑f") && !current.includes("Commands"),
         5_000,
       );
       await session.sendLiteralText("/resume ");
@@ -1494,7 +1494,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
 
       await session.sendKeys("Escape");
       await session.waitForPane(
-        (current) => hasEmptyComposer(current) && current.includes("𝒇x") && !current.includes("Sessions"),
+        (current) => hasEmptyComposer(current) && current.includes("𝒑f") && !current.includes("Sessions"),
         5_000,
       );
       for (const retired of ["/appearance", "/input", "/maxxing"]) {
@@ -1523,7 +1523,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         (current) =>
           current.includes("resume-helper") &&
           !current.includes("enter use") &&
-          !current.includes("fx needs access to Vercel AI Gateway"),
+          !current.includes("pf needs access to Vercel AI Gateway"),
         5_000,
       );
       expect(composerContains(pane, "resume-helper")).toBe(true);
@@ -1540,7 +1540,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "help command filters the catalog and opens selected commands",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-help-menu-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-help-menu-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
@@ -1553,7 +1553,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -1563,7 +1563,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendText("/help");
       let grid = await waitForHelpMenu(session, 34);
       let pane = grid.join("\n");
-      expect(pane).toContain("𝒇x");
+      expect(pane).toContain("𝒑f");
       expect(pane).toContain("Run /help for commands");
       expect(pane).toContain("[All]");
       expect(pane).toContain("/help");
@@ -1610,7 +1610,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           composerContains(current, "/workspace") &&
           current.includes("list") &&
           current.includes("add") &&
-          current.includes("𝒇x"),
+          current.includes("𝒑f"),
         5_000,
       );
       expect(pane).not.toContain("Commands 1");
@@ -1623,7 +1623,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.waitForText("No commands found.", 5_000);
       await session.sendKeys("Escape");
       await session.waitForPane(
-        (current) => hasEmptyComposer(current) && current.includes("𝒇x") && !current.includes("enter open"),
+        (current) => hasEmptyComposer(current) && current.includes("𝒑f") && !current.includes("enter open"),
         5_000,
       );
 
@@ -1637,12 +1637,12 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "settings command opens the inline list and saves selected values",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-settings-menu-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-settings-menu-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace-statusline-visible");
-      const settingsPath = join(home, ".fx", "settings.json");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      const settingsPath = join(home, ".pf", "settings.json");
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
       writeFileSync(
         settingsPath,
@@ -1657,7 +1657,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -1667,7 +1667,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendText("/settings");
       const grid = await waitForSettingsMenu(session);
       let pane = grid.join("\n");
-      expect(pane).toContain("𝒇x");
+      expect(pane).toContain("𝒑f");
       expect(pane).toContain("Run /help for commands");
       expect(pane).toContain("Settings");
       expect(pane).toContain("Interface");
@@ -1695,7 +1695,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       pane = await session.waitForPane(
         (current) =>
           hasEmptyComposer(current) &&
-          current.includes("𝒇x") &&
+          current.includes("𝒑f") &&
           current.includes("workspace-statusline-visible") &&
           !current.includes("←→ change"),
         5_000,
@@ -1712,11 +1712,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "compact catalogs keep their actionable rows visible",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-compact-catalogs-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-compact-catalogs-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
 
       session = await TmuxSession.create({
@@ -1725,7 +1725,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 60,
         height: 6,
@@ -1764,12 +1764,12 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "statusline command toggles independent items from a compact inline panel",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-statusline-menu-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-statusline-menu-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "compact-statusline-workspace");
-      const settingsPath = join(home, ".fx", "settings.json");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      const settingsPath = join(home, ".pf", "settings.json");
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
       writeFileSync(
         settingsPath,
@@ -1784,7 +1784,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -1827,7 +1827,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.waitForPane(
         (current) =>
           hasEmptyComposer(current) &&
-          current.includes("𝒇x") &&
+          current.includes("𝒑f") &&
           current.includes("compact-statusline-workspace") &&
           !current.includes("←→ change"),
         5_000,
@@ -1852,11 +1852,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "usage and cost commands open one compact inline dashboard",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-cost-menu-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-cost-menu-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
 
       session = await TmuxSession.create({
@@ -1865,7 +1865,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -1897,16 +1897,16 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "usage dashboard preserves ledger totals when recovery storage is unsafe",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-usage-recovery-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-usage-recovery-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
-      const fxDir = join(home, ".fx");
-      mkdirSync(fxDir, { recursive: true, mode: 0o700 });
+      const pfDir = join(home, ".pf");
+      mkdirSync(pfDir, { recursive: true, mode: 0o700 });
       mkdirSync(workspace, { recursive: true });
       const now = Date.now();
       writeFileSync(
-        join(fxDir, "usage.jsonl"),
+        join(pfDir, "usage.jsonl"),
         JSON.stringify({
           schema_version: 1,
           kind: "coverage",
@@ -1914,10 +1914,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         }) + "\n",
         { mode: 0o600 },
       );
-      writeFileSync(join(fxDir, "usage.lock"), "", { mode: 0o600 });
+      writeFileSync(join(pfDir, "usage.lock"), "", { mode: 0o600 });
       const outside = join(root, "outside");
       writeFileSync(outside, "not a session directory");
-      symlinkSync(outside, join(fxDir, "sessions"));
+      symlinkSync(outside, join(pfDir, "sessions"));
 
       session = await TmuxSession.create({
         cwd: workspace,
@@ -1925,7 +1925,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -1949,7 +1949,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "usage dashboard reopen discovers usage created after its initial snapshot",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-usage-late-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-usage-late-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
@@ -1962,7 +1962,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -1973,10 +1973,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendKeys("Escape");
       await session.waitForComposer(5_000);
 
-      const fxDir = join(home, ".fx");
+      const pfDir = join(home, ".pf");
       const now = Date.now();
       writeFileSync(
-        join(fxDir, "usage.jsonl"),
+        join(pfDir, "usage.jsonl"),
         [
           JSON.stringify({
             schema_version: 1,
@@ -2001,7 +2001,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         ].join("\n") + "\n",
         { mode: 0o600 },
       );
-      writeFileSync(join(fxDir, "usage.lock"), "", { mode: 0o600 });
+      writeFileSync(join(pfDir, "usage.lock"), "", { mode: 0o600 });
 
       await session.sendText("/usage");
       const pane = await session.waitForText(/12 tokens/, TIMEOUT);
@@ -2019,7 +2019,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "usage dashboard retry recovers after profile initialization becomes safe",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-usage-retry-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-usage-retry-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
@@ -2027,7 +2027,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       mkdirSync(workspace, { recursive: true });
       const unsafeTarget = join(root, "unsafe-profile");
       mkdirSync(unsafeTarget, { mode: 0o700 });
-      symlinkSync(unsafeTarget, join(home, ".fx"));
+      symlinkSync(unsafeTarget, join(home, ".pf"));
 
       session = await TmuxSession.create({
         cwd: workspace,
@@ -2035,7 +2035,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -2047,12 +2047,12 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         TIMEOUT,
       );
 
-      rmSync(join(home, ".fx"));
-      const fxDir = join(home, ".fx");
-      mkdirSync(fxDir, { mode: 0o700 });
+      rmSync(join(home, ".pf"));
+      const pfDir = join(home, ".pf");
+      mkdirSync(pfDir, { mode: 0o700 });
       const now = Date.now();
       writeFileSync(
-        join(fxDir, "usage.jsonl"),
+        join(pfDir, "usage.jsonl"),
         [
           JSON.stringify({
             schema_version: 1,
@@ -2077,7 +2077,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         ].join("\n") + "\n",
         { mode: 0o600 },
       );
-      writeFileSync(join(fxDir, "usage.lock"), "", { mode: 0o600 });
+      writeFileSync(join(pfDir, "usage.lock"), "", { mode: 0o600 });
 
       await session.sendLiteral("R");
       const pane = await session.waitForText(/12 tokens/, TIMEOUT);
@@ -2095,17 +2095,17 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "usage dashboard reaches Session when every rolling scope is unavailable",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-usage-corrupt-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-usage-corrupt-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
-      const fxDir = join(home, ".fx");
-      mkdirSync(fxDir, { recursive: true, mode: 0o700 });
+      const pfDir = join(home, ".pf");
+      mkdirSync(pfDir, { recursive: true, mode: 0o700 });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(fxDir, "usage.jsonl"), "{\"broken\":true}\n", {
+      writeFileSync(join(pfDir, "usage.jsonl"), "{\"broken\":true}\n", {
         mode: 0o600,
       });
-      writeFileSync(join(fxDir, "usage.lock"), "", { mode: 0o600 });
+      writeFileSync(join(pfDir, "usage.lock"), "", { mode: 0o600 });
 
       session = await TmuxSession.create({
         cwd: workspace,
@@ -2113,7 +2113,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -2149,12 +2149,12 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "usage dashboard changes scope, selects and expands models, and refreshes",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-usage-menu-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-usage-menu-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
-      const fxDir = join(home, ".fx");
-      mkdirSync(fxDir, { recursive: true, mode: 0o700 });
+      const pfDir = join(home, ".pf");
+      mkdirSync(pfDir, { recursive: true, mode: 0o700 });
       mkdirSync(workspace, { recursive: true });
       const now = Date.now();
       const fact = (
@@ -2179,7 +2179,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           total_cost: cost,
         },
       });
-      const usagePath = join(fxDir, "usage.jsonl");
+      const usagePath = join(pfDir, "usage.jsonl");
       writeFileSync(
         usagePath,
         [
@@ -2221,7 +2221,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         ].join("\n") + "\n",
         { mode: 0o600 },
       );
-      writeFileSync(join(fxDir, "usage.lock"), "", { mode: 0o600 });
+      writeFileSync(join(pfDir, "usage.lock"), "", { mode: 0o600 });
 
       session = await TmuxSession.create({
         cwd: workspace,
@@ -2229,7 +2229,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 36,
@@ -2303,18 +2303,18 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "workspace command opens a compact inline manager and prepares existing commands",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-workspace-menu-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-workspace-menu-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const shared = join(root, "shared");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
       mkdirSync(shared, { recursive: true });
       const workspaceRoot = realpathSync(workspace);
       const sharedRoot = realpathSync(shared);
       writeFileSync(
-        join(home, ".fx", "settings.json"),
+        join(home, ".pf", "settings.json"),
         `${JSON.stringify({
           workspaces: {
             [workspaceRoot]: {
@@ -2330,7 +2330,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 30,
@@ -2384,15 +2384,15 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
     "command and completion menus stay inline with the composer",
     async () => {
       const fixture = createSkillsMenuFixture();
-      const tapePath = join(fixture.home, "dollar-inline.fxtape");
+      const tapePath = join(fixture.home, "dollar-inline.pftape");
       session = await TmuxSession.create({
         cwd: fixture.workspace,
         env: {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_RECORD: tapePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_RECORD: tapePath,
         },
         width: 120,
         height: 32,
@@ -2407,26 +2407,26 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendKeys("-l '/sk'");
       await session.waitForText("browse and manage skills", 5_000);
       let grid = await session.capturePaneGrid();
-      expect(grid.join("\n")).toContain("𝒇x");
+      expect(grid.join("\n")).toContain("𝒑f");
       expect(grid.join("\n")).not.toContain("Skills 4");
       await session.sendKeys("Enter");
       grid = await waitForSkillsMenu(session, 4);
       const pane = grid.join("\n");
-      expect(pane).toContain("𝒇x");
+      expect(pane).toContain("𝒑f");
       expect(pane).toContain("Run /help for commands");
       expect(alternateCount("\x1b[?1049h")).toBe(entersBeforeSkills);
       expect(alternateCount("\x1b[?1049l")).toBe(leavesBeforeSkills);
       expect(pane).toContain("[All]");
-      expect(pane).toContain("fx");
-      expect(pane).not.toContain("[Fx]");
+      expect(pane).toContain("pf");
+      expect(pane).not.toContain("[Pf]");
       expect(pane).toContain("Workspace");
       expect(pane).toContain("Claude");
       expect(pane).toContain("Codex");
       expect(pane).toContain("Agents");
       expect(pane).toContain("managed-menu");
-      expect(pane).toContain("fx · Global");
+      expect(pane).toContain("pf · Global");
       expect(pane).toContain("workspace-menu");
-      expect(pane).toContain("fx · Workspace");
+      expect(pane).toContain("pf · Workspace");
       expect(pane).toContain("↑↓ navigate");
       expect(pane).toContain("enter use");
 
@@ -2435,9 +2435,9 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       expect(deep_history).not.toContain("Visible skills (");
       expect(deep_history).not.toContain("skill discovery warning:");
       expect(leadingBlankLineCount(tail_history)).toBeLessThan(3);
-      expect(tail_history).not.toContain("𝒇x v0.3.7");
+      expect(tail_history).not.toContain("𝒑f v0.3.7");
       const escapes = await session.capturePaneEscapes();
-      expect(escapes).not.toContain(`${DIM_SGR}fx-review`);
+      expect(escapes).not.toContain(`${DIM_SGR}pf-review`);
       expect(deep_history).not.toMatch(/┃ \/sk/);
 
       await session.sendLiteralText("work");
@@ -2450,7 +2450,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.waitForPane(
         (current) =>
           hasEmptyComposer(current) &&
-          current.includes("𝒇x") &&
+          current.includes("𝒑f") &&
           !current.includes("↑↓ navigate"),
         5_000,
       );
@@ -2461,14 +2461,14 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendLiteralText("$work");
       grid = await waitForSkillsMenu(session, 1);
       expect(composerContains(grid.join("\n"), "$work")).toBe(true);
-      expect(grid.join("\n")).toContain("𝒇x");
+      expect(grid.join("\n")).toContain("𝒑f");
       expect(alternateCount("\x1b[?1049h")).toBe(entersBeforeDollar);
       expect(alternateCount("\x1b[?1049l")).toBe(leavesBeforeDollar);
       await session.sendKeys("C-[");
       await session.waitForPane(
         (current) =>
           composerContains(current, "$work") &&
-          current.includes("𝒇x") &&
+          current.includes("𝒑f") &&
           !current.includes("↑↓ navigate"),
         5_000,
       );
@@ -2493,7 +2493,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.waitForPane(
         (current) =>
           composerContains(current, "hello $") &&
-          current.includes("𝒇x") &&
+          current.includes("𝒑f") &&
           !current.includes("Skills 4"),
         5_000,
       );
@@ -2615,7 +2615,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendText("/skills");
       await waitForSkillsMenu(session, 4);
       await session.sendKeys("Tab");
-      await session.waitForText("[fx]", 5_000);
+      await session.waitForText("[pf]", 5_000);
       await session.sendKeys("BTab");
       await session.waitForText("[All]", 5_000);
       await session.sendLiteralText("workspace");
@@ -2623,7 +2623,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendKeys("Enter");
       grid = await session.capturePaneGrid();
       expect(composerContains(grid.join("\n"), "workspace-menu")).toBe(true);
-      expect(grid.join("\n")).toContain("𝒇x");
+      expect(grid.join("\n")).toContain("𝒑f");
       expect(grid.join("\n")).not.toContain("↑↓ navigate");
       expect(capturePaneHistory(session, -1000)).not.toContain("Unknown command");
       expect(session.isAlive()).toBe(true);
@@ -2700,7 +2700,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 28,
@@ -2709,7 +2709,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
 
       await session.sendLiteralText("$");
       let grid = await waitForSkillsMenu(session, 220);
-      const initialNames = visibleFxSkillNames(grid);
+      const initialNames = visiblePfSkillNames(grid);
       expect(initialNames).toHaveLength(6);
 
       for (let i = 0; i < initialNames.length - 1; i += 1) {
@@ -2717,32 +2717,32 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       }
 
       grid = await session.capturePaneGrid();
-      expect(visibleFxSkillNames(grid)[0]).toBe(initialNames[0]);
+      expect(visiblePfSkillNames(grid)[0]).toBe(initialNames[0]);
       expect(selectedSkillName(await session.capturePaneEscapes())).toBe(
         initialNames[initialNames.length - 1],
       );
 
       await session.resizeWindow(72, 16);
       grid = await waitForSkillsMenu(session, 220);
-      expect(visibleFxSkillNames(grid)).toHaveLength(4);
+      expect(visiblePfSkillNames(grid)).toHaveLength(4);
       expect(selectedSkillName(await session.capturePaneEscapes())).toBe(
         initialNames[initialNames.length - 1],
       );
 
       await session.resizeWindow(120, 28);
       grid = await waitForSkillsMenu(session, 220);
-      expect(visibleFxSkillNames(grid)).toHaveLength(6);
+      expect(visiblePfSkillNames(grid)).toHaveLength(6);
       expect(selectedSkillName(await session.capturePaneEscapes())).toBe(
         initialNames[initialNames.length - 1],
       );
 
       await session.sendKeys("Down");
       grid = await session.capturePaneGrid();
-      expect(visibleFxSkillNames(grid)[0]).toBe(initialNames[1]);
+      expect(visiblePfSkillNames(grid)[0]).toBe(initialNames[1]);
 
       await session.sendKeys("Up");
       grid = await session.capturePaneGrid();
-      expect(visibleFxSkillNames(grid)[0]).toBe(initialNames[1]);
+      expect(visiblePfSkillNames(grid)[0]).toBe(initialNames[1]);
       expect(selectedSkillName(await session.capturePaneEscapes())).toBe(
         initialNames[initialNames.length - 1],
       );
@@ -2808,13 +2808,13 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-models-menu-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
-          FX_MODEL: currentModel,
-          FX_AUTO_UPGRADE: "0",
-          FX_RECORD: fixture.tapePath,
-          FX_RECORD_INPUT: "1",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+          PF_MODEL: currentModel,
+          PF_AUTO_UPGRADE: "0",
+          PF_RECORD: fixture.tapePath,
+          PF_RECORD_INPUT: "1",
         },
         width: 120,
         height: 32,
@@ -2856,7 +2856,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       await session.sendText("/model");
       let grid = await waitForModelsMenu(session, 4);
       let pane = grid.join("\n");
-      expect(pane).toContain("𝒇x");
+      expect(pane).toContain("𝒑f");
       expect(pane).toContain("Run /help for commands");
       expect(alternateCount("\x1b[?1049h")).toBe(entersBeforeModelMenu);
       expect(alternateCount("\x1b[?1049l")).toBe(leavesBeforeModelMenu);
@@ -2909,7 +2909,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
 
       await session.sendKeys("C-[");
       await session.waitForPane(
-        (current) => hasEmptyComposer(current) && current.includes("𝒇x") && !current.includes("tab provider"),
+        (current) => hasEmptyComposer(current) && current.includes("𝒑f") && !current.includes("tab provider"),
         5_000,
       );
 
@@ -2943,7 +2943,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
       session = null;
       expect(existsSync(fixture.tapePath)).toBe(true);
       const replay = JSON.parse(
-        execFileSync(FX_BIN, ["replay", fixture.tapePath, "--json"], { encoding: "utf8" }),
+        execFileSync(PF_BIN, ["replay", fixture.tapePath, "--json"], { encoding: "utf8" }),
       ) as { frame_count: number; stdout_bytes: number };
       expect(replay.frame_count).toBeGreaterThan(0);
       expect(replay.stdout_bytes).toBeGreaterThan(0);
@@ -2984,11 +2984,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-model-shortcut-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
-          FX_MODEL: currentModel,
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+          PF_MODEL: currentModel,
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -3118,11 +3118,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-models-menu-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
-          FX_MODEL: modelIds[0],
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+          PF_MODEL: modelIds[0],
+          PF_AUTO_UPGRADE: "0",
         },
         width: 40,
         height: 24,
@@ -3169,11 +3169,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-model-picker-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
-          FX_MODEL: "openai/gpt-4o",
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+          PF_MODEL: "openai/gpt-4o",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -3240,11 +3240,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
             HOME: fixture.home,
             AI_GATEWAY_API_KEY: "fake-in-flight-model-picker-key",
             VERCEL_OIDC_TOKEN: undefined,
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
-            FX_MODEL: currentModel,
-            FX_AUTO_UPGRADE: "0",
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+            PF_MODEL: currentModel,
+            PF_AUTO_UPGRADE: "0",
           },
           width: 120,
           height: 32,
@@ -3307,7 +3307,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -3349,10 +3349,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-active-skills-stream-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -3398,10 +3398,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-active-slash-stream-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_AUTO_UPGRADE: "0",
         },
         width: 72,
         height: 16,
@@ -3461,11 +3461,11 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-catalog-approval-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_PERMISSION_MODE: "ask",
-          FX_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_PERMISSION_MODE: "ask",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 120,
         height: 32,
@@ -3510,10 +3510,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           env: {
             HOME: fixture.home,
             AI_GATEWAY_API_KEY: "fake-skill-token-key",
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_MODEL: FAKE_GATEWAY_MODEL,
-            FX_AUTO_UPGRADE: "0",
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_MODEL: FAKE_GATEWAY_MODEL,
+            PF_AUTO_UPGRADE: "0",
           },
           width: 120,
           height: 32,
@@ -3535,7 +3535,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         expect(gateway.requests).toHaveLength(1);
         expect(gateway.requests[0]!.body).toContain("$managed-menu please");
         expect(gateway.requests[0]!.body).toContain(
-          join(fixture.home, ".fx", "skills", "managed-menu"),
+          join(fixture.home, ".pf", "skills", "managed-menu"),
         );
 
         let history = capturePaneHistory(session, -200);
@@ -3576,10 +3576,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           env: {
             HOME: fixture.home,
             AI_GATEWAY_API_KEY: "fake-mention-guard-key",
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_MODEL: FAKE_GATEWAY_MODEL,
-            FX_AUTO_UPGRADE: "0",
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_MODEL: FAKE_GATEWAY_MODEL,
+            PF_AUTO_UPGRADE: "0",
           },
           width: 120,
           height: 32,
@@ -3591,7 +3591,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         await session.waitForPane(
           (pane) =>
             composerContains(pane, "Explain echo $HOME") &&
-            pane.includes("𝒇x") &&
+            pane.includes("𝒑f") &&
             !pane.includes("No skills found."),
           5_000,
         );
@@ -3625,10 +3625,10 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           env: {
             HOME: fixture.home,
             AI_GATEWAY_API_KEY: "fake-mention-space-key",
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_MODEL: FAKE_GATEWAY_MODEL,
-            FX_AUTO_UPGRADE: "0",
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_MODEL: FAKE_GATEWAY_MODEL,
+            PF_AUTO_UPGRADE: "0",
           },
           width: 120,
           height: 32,
@@ -3670,12 +3670,12 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
         env: {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-exact-picker-key",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_AUTO_UPGRADE: "0",
-          FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: "skill,skills,agent,core",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_AUTO_UPGRADE: "0",
+          PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: "skill,skills,agent,core",
         },
         stderrPath,
         width: 120,
@@ -3768,7 +3768,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "slash menu highlight reaches bottom before the list scrolls",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-slash-highlight-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-slash-highlight-")));
       workDirs.push(root);
       const home = join(root, "home");
       const workspace = join(root, "workspace");
@@ -3780,7 +3780,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 100,
         height: 30,
@@ -3835,7 +3835,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
   test(
     "slash menu remains alive when descriptions clip in a narrow terminal",
     async () => {
-      const workDir = mkdtempSync(join(tmpdir(), "fx-slash-narrow-menu-e2e-"));
+      const workDir = mkdtempSync(join(tmpdir(), "pf-slash-narrow-menu-e2e-"));
       workDirs.push(workDir);
       const home = join(workDir, "home");
       const workspace = join(workDir, "workspace");
@@ -3848,7 +3848,7 @@ describe.skipIf(SKIP)("tui: slash menu", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
         width: 42,
         height: 18,

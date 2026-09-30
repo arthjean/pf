@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runFx } from "../evals/eval-helpers";
+import { runPf } from "../evals/eval-helpers";
 import {
   FAKE_GATEWAY_MODEL,
   fakeGatewayFinalText,
@@ -21,7 +21,7 @@ import {
 } from "./tmux-helpers";
 import { expectPermissionModeContext } from "./permission-mode-context";
 
-const WARNING = "Full access enabled: fx permission checks disabled";
+const WARNING = "Full access enabled: pf permission checks disabled";
 const COMPACT_WARNING = "Full access";
 const QUIT_HINT = "press ctrl+c again to exit";
 const COMMAND_APPROVAL_PROMPT = "Would you like to run the following command?";
@@ -48,14 +48,14 @@ function createFixture(prefix: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace);
   tempRoots.push(root);
   return {
     root,
     home,
     workspace: realpathSync(workspace),
-    settingsPath: join(home, ".fx", "settings.json"),
+    settingsPath: join(home, ".pf", "settings.json"),
   };
 }
 
@@ -77,7 +77,7 @@ describe("yolo permission mode", () => {
   test.each(["--full-access", "--yolo"])(
     "%s warns once, bypasses configured denial, and keeps stdout clean",
     async (flag) => {
-      const fixture = createFixture("fx-yolo-headless-");
+      const fixture = createFixture("pf-yolo-headless-");
       const markerPath = join(fixture.workspace, "yolo-command.txt");
       const tracePath = join(fixture.root, "permission-trace.log");
       writeFileSync(
@@ -100,7 +100,7 @@ describe("yolo permission mode", () => {
       ]);
       gateway = fake;
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", flag, "--json", "--no-save", "Run the fixture command exactly once."],
         {
           cwd: fixture.workspace,
@@ -108,12 +108,12 @@ describe("yolo permission mode", () => {
             HOME: fixture.home,
             AI_GATEWAY_API_KEY: "fake-yolo-key",
             VERCEL_OIDC_TOKEN: undefined,
-            FX_AUTO_UPGRADE: "0",
-            FX_GATEWAY_BASE_URL: fake.baseUrl,
-            FX_GATEWAY_CHAT_URL: fake.chatUrl,
-            FX_MODEL: FAKE_GATEWAY_MODEL,
-            FX_TRACE_LOG: tracePath,
-            FX_TRACE_SCOPES: "permission",
+            PF_AUTO_UPGRADE: "0",
+            PF_GATEWAY_BASE_URL: fake.baseUrl,
+            PF_GATEWAY_CHAT_URL: fake.chatUrl,
+            PF_MODEL: FAKE_GATEWAY_MODEL,
+            PF_TRACE_LOG: tracePath,
+            PF_TRACE_SCOPES: "permission",
           },
           timeoutMs: TIMEOUT,
         },
@@ -153,27 +153,27 @@ describe("yolo permission mode", () => {
   test.each(["full-access", "full access", "yolo"])(
     "status accepts %s in settings and environment without changing JSON",
     async (mode) => {
-      const fixture = createFixture("fx-full-access-status-");
+      const fixture = createFixture("pf-full-access-status-");
       writeFileSync(fixture.settingsPath, JSON.stringify({ permission_mode: mode }));
       const env = {
         HOME: fixture.home,
-        FX_PERMISSION_MODE: undefined,
-        FX_AUTO_UPGRADE: "0",
+        PF_PERMISSION_MODE: undefined,
+        PF_AUTO_UPGRADE: "0",
       };
-      const configured = await runFx(["status", "--json"], { cwd: fixture.workspace, env });
+      const configured = await runPf(["status", "--json"], { cwd: fixture.workspace, env });
       expect(configured.code).toBe(0);
       expect(configured.stderr).toBe("");
       expect(JSON.parse(configured.stdout).permission_mode).toBe("yolo");
       const fake = startFakeGateway([fakeGatewayFinalText("ALIAS_WRITE_DONE")]);
       gateway = fake;
-      const request = await runFx(["ask", "--no-save", "--json", "Reply once."], {
+      const request = await runPf(["ask", "--no-save", "--json", "Reply once."], {
         cwd: fixture.workspace,
         env: {
           ...env,
           AI_GATEWAY_API_KEY: "fake-alias-key",
-          FX_GATEWAY_BASE_URL: fake.baseUrl,
-          FX_GATEWAY_CHAT_URL: fake.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
+          PF_GATEWAY_BASE_URL: fake.baseUrl,
+          PF_GATEWAY_CHAT_URL: fake.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
         },
         timeoutMs: TIMEOUT,
       });
@@ -185,15 +185,15 @@ describe("yolo permission mode", () => {
         yolo_acknowledged: true,
       });
       writeFileSync(fixture.settingsPath, JSON.stringify({ permission_mode: "ask" }));
-      const overridden = await runFx(["status", "--json"], {
+      const overridden = await runPf(["status", "--json"], {
         cwd: fixture.workspace,
-        env: { ...env, FX_PERMISSION_MODE: mode },
+        env: { ...env, PF_PERMISSION_MODE: mode },
       });
       expect(overridden.code).toBe(0);
       expect(JSON.parse(overridden.stdout).permission_mode).toBe("yolo");
-      const text = await runFx(["permissions"], {
+      const text = await runPf(["permissions"], {
         cwd: fixture.workspace,
-        env: { ...env, FX_PERMISSION_MODE: mode },
+        env: { ...env, PF_PERMISSION_MODE: mode },
       });
       expect(text.code).toBe(0);
       expect(text.stdout).toContain("mode=full access");
@@ -205,7 +205,7 @@ describe("yolo permission mode", () => {
   test(
     "status omits sandbox while preserving the legacy configured value",
     async () => {
-      const fixture = createFixture("fx-yolo-status-");
+      const fixture = createFixture("pf-yolo-status-");
       writeFileSync(
         fixture.settingsPath,
         JSON.stringify({
@@ -215,13 +215,13 @@ describe("yolo permission mode", () => {
         }) + "\n",
       );
 
-      const result = await runFx(["status", "--json"], {
+      const result = await runPf(["status", "--json"], {
         cwd: fixture.workspace,
         env: {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_PERMISSION_MODE: undefined,
+          PF_PERMISSION_MODE: undefined,
         },
       });
 
@@ -239,7 +239,7 @@ describe("yolo permission mode", () => {
   test(
     "legacy sandbox config is inert and ps executes once",
     async () => {
-      const fixture = createFixture("fx-legacy-sandbox-ps-");
+      const fixture = createFixture("pf-legacy-sandbox-ps-");
       const psPath = join(fixture.workspace, "ps.txt");
       const attemptsPath = join(fixture.workspace, "attempts.txt");
       writeFileSync(
@@ -261,7 +261,7 @@ describe("yolo permission mode", () => {
       ]);
       gateway = fake;
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--yolo", "--json", "--no-save", "Run the ps fixture once."],
         {
           cwd: fixture.workspace,
@@ -269,10 +269,10 @@ describe("yolo permission mode", () => {
             HOME: fixture.home,
             AI_GATEWAY_API_KEY: "fake-yolo-key",
             VERCEL_OIDC_TOKEN: undefined,
-            FX_AUTO_UPGRADE: "0",
-            FX_GATEWAY_BASE_URL: fake.baseUrl,
-            FX_GATEWAY_CHAT_URL: fake.chatUrl,
-            FX_MODEL: FAKE_GATEWAY_MODEL,
+            PF_AUTO_UPGRADE: "0",
+            PF_GATEWAY_BASE_URL: fake.baseUrl,
+            PF_GATEWAY_CHAT_URL: fake.chatUrl,
+            PF_MODEL: FAKE_GATEWAY_MODEL,
           },
           timeoutMs: TIMEOUT,
         },
@@ -292,7 +292,7 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
   test(
     "Shift+Tab cycles through yolo and warning time pauses behind menus",
     async () => {
-      const fixture = createFixture("fx-yolo-tui-");
+      const fixture = createFixture("pf-yolo-tui-");
       const stderrPath = join(fixture.root, "stderr.log");
       writeFileSync(
         fixture.settingsPath,
@@ -313,8 +313,8 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_PERMISSION_MODE: undefined,
+          PF_AUTO_UPGRADE: "0",
+          PF_PERMISSION_MODE: undefined,
         },
       });
 
@@ -372,7 +372,7 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
   test(
     "Shift+Tab applies auto to a later tool call in the active turn",
     async () => {
-      const fixture = createFixture("fx-live-permission-auto-");
+      const fixture = createFixture("pf-live-permission-auto-");
       const markerPath = join(fixture.workspace, "auto-marker.txt");
       const stderrPath = join(fixture.root, "stderr.log");
       const tracePath = join(fixture.root, "trace.log");
@@ -412,13 +412,13 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-live-permission-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: fake.baseUrl,
-          FX_GATEWAY_CHAT_URL: fake.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_PERMISSION_MODE: undefined,
-          FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: "permission",
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: fake.baseUrl,
+          PF_GATEWAY_CHAT_URL: fake.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_PERMISSION_MODE: undefined,
+          PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: "permission",
         },
       });
 
@@ -451,7 +451,7 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
   test(
     "Shift+Tab tightening to ask gates a later tool call in the active turn",
     async () => {
-      const fixture = createFixture("fx-live-permission-ask-");
+      const fixture = createFixture("pf-live-permission-ask-");
       const markerPath = join(fixture.workspace, "ask-marker.txt");
       const stderrPath = join(fixture.root, "stderr.log");
       const tracePath = join(fixture.root, "trace.log");
@@ -491,13 +491,13 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-live-permission-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: fake.baseUrl,
-          FX_GATEWAY_CHAT_URL: fake.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_PERMISSION_MODE: undefined,
-          FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: "permission",
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: fake.baseUrl,
+          PF_GATEWAY_CHAT_URL: fake.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_PERMISSION_MODE: undefined,
+          PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: "permission",
         },
       });
 
@@ -536,7 +536,7 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
   test(
     "a pending ctrl+c keeps its quit hint intact and pauses the warning at 60 columns",
     async () => {
-      const fixture = createFixture("fx-yolo-ctrl-c-");
+      const fixture = createFixture("pf-yolo-ctrl-c-");
       const stderrPath = join(fixture.root, "stderr.log");
       writeFileSync(
         fixture.settingsPath,
@@ -557,8 +557,8 @@ describe.skipIf(!tmuxAvailable())("yolo interactive mode", () => {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_PERMISSION_MODE: undefined,
+          PF_AUTO_UPGRADE: "0",
+          PF_PERMISSION_MODE: undefined,
         },
       });
 

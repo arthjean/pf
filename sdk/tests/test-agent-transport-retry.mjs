@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const backend = process.argv[2] || "native";
 if (!new Set(["native", "wasm"]).has(backend)) {
@@ -39,11 +39,11 @@ const fetchOnceThenSucceed = async (_url, init) => {
   }), { status: 200, headers: { "content-type": "text/event-stream" } });
 };
 
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   backend,
-  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
+  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"
-    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }
+    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }
     : {}),
   fetch: fetchOnceThenSucceed,
   apiKey: "transport-retry-key",
@@ -57,7 +57,7 @@ try {
   for await (const event of turn) if (event.type === "text_delta") output += event.delta;
   assert.equal(output, "recovered once", "the successful retry must publish output exactly once");
   assert.equal((await turn.result).stopReason, "end_turn");
-  assert.equal(fetchCalls, 2, "libfx must make exactly one bounded retry");
+  assert.equal(fetchCalls, 2, "libpf must make exactly one bounded retry");
   assert.deepEqual(
     events.filter((event) => event.type === "transport.start").map((event) => [event.method, event.attempt]),
     [["GET", 1], ["POST", 2], ["POST", 3]],
@@ -87,11 +87,11 @@ const cancelEvents = [];
 let cancelFetchCalls = 0;
 let fetchStartedResolve;
 const fetchStarted = new Promise((resolveStarted) => { fetchStartedResolve = resolveStarted; });
-const cancelledAgent = await createFxAgent({
+const cancelledAgent = await createPfAgent({
   backend,
-  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
+  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"
-    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }
+    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }
     : {}),
   fetch: async (_url, init) => {
     if (init.method === "GET") return catalogResponse();
@@ -127,11 +127,11 @@ console.log(`${process.versions.bun ? "Bun" : "Node"} ${backend} Agent cancellat
 const retryBoundaryEvents = [];
 const retryBoundaryController = new AbortController();
 let retryBoundaryFetchCalls = 0;
-const retryBoundaryAgent = await createFxAgent({
+const retryBoundaryAgent = await createPfAgent({
   backend,
-  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
+  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"
-    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }
+    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }
     : {}),
   fetch(_url, init) {
     if (init.method === "GET") return catalogResponse();

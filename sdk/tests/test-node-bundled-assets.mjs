@@ -4,9 +4,9 @@ import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createFxAgent, getBackendInfo } from "../node.js";
+import { createPfAgent, getBackendInfo } from "../node.js";
 
-const root = await mkdtemp(join(tmpdir(), "libfx bundled assets "));
+const root = await mkdtemp(join(tmpdir(), "libpf bundled assets "));
 const media = join(root, "static", "media");
 const originalBase = Object.getOwnPropertyDescriptor(globalThis, "__webpack_base_uri__");
 const originalPublicPath = Object.getOwnPropertyDescriptor(globalThis, "__webpack_public_path__");
@@ -23,10 +23,10 @@ function relativeUrl(href) {
 
 try {
   await mkdir(media, { recursive: true });
-  const nativeName = `libfx.${process.platform}-${process.arch}.fixture.node`;
-  await cp(new URL("../../zig-out/lib/libfx.node", import.meta.url), join(media, nativeName));
+  const nativeName = `libpf.${process.platform}-${process.arch}.fixture.node`;
+  await cp(new URL("../../zig-out/lib/libpf.node", import.meta.url), join(media, nativeName));
   for (const surface of ["core", "term"]) {
-    await cp(new URL(`../../zig-out/bin/fx-${surface}.wasm`, import.meta.url), join(media, `fx-${surface}.fixture.wasm`));
+    await cp(new URL(`../../zig-out/bin/pf-${surface}.wasm`, import.meta.url), join(media, `pf-${surface}.fixture.wasm`));
   }
   globalThis.__webpack_base_uri__ = pathToFileURL(`${root}/`).href;
   for (const publicPath of ["/_next/", "https://cdn.example.test/assets/"]) {
@@ -35,16 +35,16 @@ try {
     assert.ok(nativeAddon instanceof URL);
     assert.throws(() => fileURLToPath(nativeAddon), { code: "ERR_INVALID_ARG_TYPE" });
     assert.equal((await getBackendInfo({ backend: "native", nativeAddon })).backend, "native");
-    const agent = await createFxAgent({ backend: "native", nativeAddon, apiKey: "fixture-key" });
+    const agent = await createPfAgent({ backend: "native", nativeAddon, apiKey: "fixture-key" });
     try { assert.ok((await agent.checkpoint()).length > 48); }
     finally { await agent.close(); }
     for (const [surface, artifact] of [["agent", "core"], ["terminal", "term"]]) {
-      const wasm = relativeUrl(`${publicPath}static/media/fx-${artifact}.fixture.wasm`);
+      const wasm = relativeUrl(`${publicPath}static/media/pf-${artifact}.fixture.wasm`);
       const info = await getBackendInfo({ backend: "wasm", surface, wasm });
       assert.equal(info.backend, "wasm-jspi", JSON.stringify(info));
     }
     const missing = await getBackendInfo({ backend: "native", nativeAddon: relativeUrl(`${publicPath}static/media/missing.node`) });
-    assert.equal(missing.attempts[0].reason.code, "LIBFX_NATIVE_ARTIFACT_MISSING");
+    assert.equal(missing.attempts[0].reason.code, "LIBPF_NATIVE_ARTIFACT_MISSING");
   }
   const path = join(media, nativeName);
   for (const nativeAddon of [path, pathToFileURL(path)]) {
@@ -52,7 +52,7 @@ try {
   }
   const unmapped = await getBackendInfo({ backend: "native", nativeAddon: relativeUrl("/different/asset.node") });
   assert.equal(unmapped.backend, "unavailable");
-  assert.equal(unmapped.attempts[0].reason.code, "LIBFX_NATIVE_LOAD_FAILED");
+  assert.equal(unmapped.attempts[0].reason.code, "LIBPF_NATIVE_LOAD_FAILED");
   delete globalThis.__webpack_base_uri__;
   const unavailable = await getBackendInfo({ backend: "native", nativeAddon: relativeUrl("https://cdn.example.test/assets/static/media/asset.node") });
   assert.equal(unavailable.backend, "unavailable");

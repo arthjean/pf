@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { CoreOutput } from "../core-output.js";
-import { createFxAgent } from "../fx-sdk.js";
+import { createPfAgent } from "../pf-sdk.js";
 
 const encoder = new TextEncoder();
 const message = { text: "¢€\u{1f600}界\nsecond line", escaped: '"\\' };
@@ -78,7 +78,7 @@ for (const cancelAt of ["permission.request", "permission.resolve"]) {
       const message = JSON.parse(data);
       const deliver = (value) => queueMicrotask(() => handler(value));
       if (message.method === "initialize") deliver({ id: message.id, result: {} });
-      if (message.method === "libfx/new") deliver({ id: message.id, result: { sessionId: "session" } });
+      if (message.method === "libpf/new") deliver({ id: message.id, result: { sessionId: "session" } });
       if (message.method === "session/prompt") {
         promptId = message.id;
         deliver({ id: 100, method: "session/request_permission", params: { sessionId: "session", options: [] } });
@@ -89,7 +89,7 @@ for (const cancelAt of ["permission.request", "permission.resolve"]) {
     abortHostEffects() {},
     closeStdin() { exit(0); },
   };
-  const agent = await createFxAgent({
+  const agent = await createPfAgent({
     apiKey: "callback-fixture", runtimeFactory: () => runtime,
     onEvent(event) { if (event.type === cancelAt) turn.cancel(); },
     onPermission() { permissionCalls++; return "allow-once"; },

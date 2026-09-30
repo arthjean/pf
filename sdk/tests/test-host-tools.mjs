@@ -4,12 +4,12 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const backend = process.argv[2] || "native";
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addon = resolve(scriptDir, "../../zig-out/lib/libfx.node");
-const wasmPath = resolve(scriptDir, "../../zig-out/bin/fx-core.wasm");
+const addon = resolve(scriptDir, "../../zig-out/lib/libpf.node");
+const wasmPath = resolve(scriptDir, "../../zig-out/bin/pf-core.wasm");
 const encoded = new TextEncoder();
 let modelRequests = 0;
 let toolCalls = 0;
@@ -55,7 +55,7 @@ const { port } = server.address();
 
 let agent;
 try {
-  agent = await createFxAgent({
+  agent = await createPfAgent({
     backend,
     nativeAddon: addon,
     ...(backend === "wasm" ? { wasm: await readFile(wasmPath) } : {}),
@@ -81,7 +81,7 @@ try {
     }],
   });
   const initialize = sdkEvents.find((event) => event.type === "acp.send" && event.message?.method === "initialize");
-  assert.equal(initialize?.message.params.clientCapabilities.libfx.tools[0].name, "lookup");
+  assert.equal(initialize?.message.params.clientCapabilities.libpf.tools[0].name, "lookup");
   const turn = agent.prompt("use lookup");
   let text = "";
   for await (const update of turn) {

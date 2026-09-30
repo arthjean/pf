@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const backend = process.argv[2] || "native";
@@ -13,13 +13,13 @@ if (backend === "wasm" && !supportsJspi()) throw new Error("WebAssembly backend 
 const toolSteps = 65;
 let requests = 0;
 let executions = 0;
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   backend,
   apiKey: "step-limit-test-key",
   model: "sdk/step-model",
   ...(backend === "native"
-    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node") }
-    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }),
+    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node") }
+    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }),
   fetch(_url, init = {}) {
     if (init.method === "GET") {
       return Response.json({ object: "list", data: [{ id: "sdk/step-model", type: "language", tags: ["tool-use"] }] });

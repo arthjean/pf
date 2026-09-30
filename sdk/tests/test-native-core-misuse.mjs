@@ -9,13 +9,13 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addonPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libfx.node"));
-const ambientTraceChild = process.env.LIBFX_AMBIENT_TRACE_CHILD === "1";
+const addonPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libpf.node"));
+const ambientTraceChild = process.env.LIBPF_AMBIENT_TRACE_CHILD === "1";
 if (!ambientTraceChild) {
-  delete process.env.FX_TRACE;
-  delete process.env.FX_TRACE_LOG;
-  delete process.env.FX_TRACE_SCOPES;
-  delete process.env.FX_TRACE_STDERR;
+  delete process.env.PF_TRACE;
+  delete process.env.PF_TRACE_LOG;
+  delete process.env.PF_TRACE_SCOPES;
+  delete process.env.PF_TRACE_STDERR;
 }
 const addon = require(addonPath);
 
@@ -53,7 +53,7 @@ for (const [name, args] of [
 ]) {
   assert.throws(() => addon[name](...args), {
     name: "TypeError",
-    code: "LIBFX_INVALID_ARGUMENT",
+    code: "LIBPF_INVALID_ARGUMENT",
     message: "missing required argument",
   });
 }
@@ -82,21 +82,21 @@ for (const [options, message] of [
 for (const fakeHandle of [null, undefined, {}, Buffer.alloc(0), 0, "handle"]) {
   assert.throws(
     () => addon.coreExited(fakeHandle),
-    (error) => error instanceof TypeError || error.code === "LIBFX_INVALID_ARGUMENT" || error.code === "LIBFX_NAPI",
+    (error) => error instanceof TypeError || error.code === "LIBPF_INVALID_ARGUMENT" || error.code === "LIBPF_NAPI",
   );
 }
 
 const core = addon.createCore({ apiKey: "misuse-test-key", home: "/tmp", workspaceRoot: "/tmp" });
 assert.throws(
   () => addon.writeCore(core, Buffer.alloc(8 * 1024 * 1024 + 1)),
-  (error) => error.code === "LIBFX_NATIVE_BACKPRESSURE",
+  (error) => error.code === "LIBPF_NATIVE_BACKPRESSURE",
 );
 addon.writeCore(core, Buffer.alloc(0));
 addon.closeCore(core);
 addon.destroyCore(core);
 assert.throws(
   () => addon.coreExited(core),
-  (error) => error.code === "LIBFX_NATIVE_CLOSED",
+  (error) => error.code === "LIBPF_NATIVE_CLOSED",
 );
 
 const lifecycleCore = addon.createCore({
@@ -205,7 +205,7 @@ try {
   ]) {
     assert.throws(() => addon[name](...args), {
       name: "TypeError",
-      code: "LIBFX_INVALID_ARGUMENT",
+      code: "LIBPF_INVALID_ARGUMENT",
     });
   }
 } finally {
@@ -213,7 +213,7 @@ try {
   addon.destroyCore(lifecycleCore);
 }
 
-const traceDir = mkdtempSync(resolve(tmpdir(), "libfx-ambient-trace-"));
+const traceDir = mkdtempSync(resolve(tmpdir(), "libpf-ambient-trace-"));
 const traceLog = resolve(traceDir, "trace.log");
 try {
   const isolated = spawnSync(process.execPath, [fileURLToPath(import.meta.url), addonPath], {
@@ -221,17 +221,17 @@ try {
     encoding: "utf8",
     env: {
       ...process.env,
-      LIBFX_AMBIENT_TRACE_CHILD: "1",
-      FX_TRACE: "1",
-      FX_TRACE_LOG: traceLog,
-      FX_TRACE_SCOPES: "napi,acp,interrupt",
-      FX_TRACE_STDERR: "1",
+      LIBPF_AMBIENT_TRACE_CHILD: "1",
+      PF_TRACE: "1",
+      PF_TRACE_LOG: traceLog,
+      PF_TRACE_SCOPES: "napi,acp,interrupt",
+      PF_TRACE_STDERR: "1",
     },
   });
   assert.equal(isolated.status, 0, isolated.stderr || isolated.stdout);
-  assert.equal(isolated.stdout, "", "ambient fx tracing must not change libfx stdout");
-  assert.equal(isolated.stderr, "", "ambient fx tracing must not change libfx stderr");
-  assert.equal(existsSync(traceLog), false, "ambient fx tracing must not create a libfx trace file");
+  assert.equal(isolated.stdout, "", "ambient pf tracing must not change libpf stdout");
+  assert.equal(isolated.stderr, "", "ambient pf tracing must not change libpf stderr");
+  assert.equal(existsSync(traceLog), false, "ambient pf tracing must not create a libpf trace file");
 } finally {
   rmSync(traceDir, { recursive: true, force: true });
 }

@@ -36,7 +36,7 @@ if (requestedProtocol && !supportedProtocols.has(requestedProtocol)) {
 }
 const conformanceEnv = {
   ...process.env,
-  FX_MCP_PROTOCOL_VERSION: requestedProtocol ?? "2026-07-28",
+  PF_MCP_PROTOCOL_VERSION: requestedProtocol ?? "2026-07-28",
 };
 let configuredServerUrl = serverUrl;
 let legacyProbeProxy: LegacyProbeProxy | null = null;
@@ -86,15 +86,15 @@ for (const call of toolCalls) {
   permission[`mcp_conformance_${call.name}`] = "allow";
 }
 
-const fxBin = resolve(import.meta.dirname, "../../../zig-out/bin/fx");
-const root = mkdtempSync(join(tmpdir(), "fx-mcp-conformance-client-"));
+const pfBin = resolve(import.meta.dirname, "../../../zig-out/bin/pf");
+const root = mkdtempSync(join(tmpdir(), "pf-mcp-conformance-client-"));
 const home = join(root, "home");
 const workspace = join(root, "workspace");
-mkdirSync(join(home, ".fx", "skills"), { recursive: true, mode: 0o700 });
+mkdirSync(join(home, ".pf", "skills"), { recursive: true, mode: 0o700 });
 mkdirSync(workspace, { recursive: true });
 
 writeFileSync(
-  join(home, ".fx", "mcp.json"),
+  join(home, ".pf", "mcp.json"),
   JSON.stringify({
     mcp: {
       conformance: {
@@ -108,7 +108,7 @@ writeFileSync(
             ? { client_id: scenarioContext.client_id }
             : {}),
           ...(scenarioContext.client_secret
-            ? { client_secret_env: "FX_MCP_CONFORMANCE_CLIENT_SECRET" }
+            ? { client_secret_env: "PF_MCP_CONFORMANCE_CLIENT_SECRET" }
             : {}),
         },
       },
@@ -116,7 +116,7 @@ writeFileSync(
   }),
 );
 writeFileSync(
-  join(home, ".fx", "settings.json"),
+  join(home, ".pf", "settings.json"),
   JSON.stringify({
     permission_mode: "auto",
     permission,
@@ -145,7 +145,7 @@ const gateway = startFakeGateway(gatewaySteps);
 try {
   const child = Bun.spawn(
     [
-      fxBin,
+      pfBin,
       "ask",
       "--json",
       "--auto",
@@ -159,20 +159,20 @@ try {
         HOME: home,
         AI_GATEWAY_API_KEY: "mcp-conformance-placeholder",
         VERCEL_OIDC_TOKEN: "",
-        FX_AUTO_UPGRADE: "0",
-        FX_DISABLE_KEYCHAIN: "1",
-        FX_E2E_MCP_AUTH_AUTOMATE: "1",
+        PF_AUTO_UPGRADE: "0",
+        PF_DISABLE_KEYCHAIN: "1",
+        PF_E2E_MCP_AUTH_AUTOMATE: "1",
         ...(scenarioContext.client_secret
           ? {
-              FX_MCP_CONFORMANCE_CLIENT_SECRET:
+              PF_MCP_CONFORMANCE_CLIENT_SECRET:
                 scenarioContext.client_secret,
             }
           : {}),
-        FX_GATEWAY_BASE_URL: gateway.baseUrl,
-        FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-        FX_MODEL: FAKE_GATEWAY_MODEL,
-        FX_SKIP_ONBOARDING: "1",
-        FX_SOUND: "0",
+        PF_GATEWAY_BASE_URL: gateway.baseUrl,
+        PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+        PF_MODEL: FAKE_GATEWAY_MODEL,
+        PF_SKIP_ONBOARDING: "1",
+        PF_SOUND: "0",
         NO_COLOR: "1",
       },
       stdout: "pipe",

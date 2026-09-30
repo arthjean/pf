@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 export const runtime = "nodejs";
 
 export async function POST(request) {
-  const token = process.env.LIBFX_SMOKE_TOKEN;
+  const token = process.env.LIBPF_SMOKE_TOKEN;
   if (token && request.headers.get("authorization") !== `Bearer ${token}`) {
     return new Response(null, { status: 401 });
   }

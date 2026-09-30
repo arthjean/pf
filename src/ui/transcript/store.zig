@@ -3775,8 +3775,8 @@ fn retintTokens(
     to: shared_theme.Theme,
     buf: *[theme_retint_field_count]ThemeToken,
 ) []const ThemeToken {
-    const from_builtin = std.mem.eql(u8, from.name, shared_theme.fx_dark.name) or std.mem.eql(u8, from.name, shared_theme.fx_light.name);
-    const to_builtin = std.mem.eql(u8, to.name, shared_theme.fx_dark.name) or std.mem.eql(u8, to.name, shared_theme.fx_light.name);
+    const from_builtin = std.mem.eql(u8, from.name, shared_theme.pf_dark.name) or std.mem.eql(u8, from.name, shared_theme.pf_light.name);
+    const to_builtin = std.mem.eql(u8, to.name, shared_theme.pf_dark.name) or std.mem.eql(u8, to.name, shared_theme.pf_light.name);
     if (from_builtin and to_builtin) {
         return if (to.light) dark_to_light_theme_tokens[0..] else light_to_dark_theme_tokens[0..];
     }

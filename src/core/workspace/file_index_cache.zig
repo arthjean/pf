@@ -1,6 +1,6 @@
 //! Persisted workspace file index for instant @-completion on launch.
 //!
-//! One file per workspace scope under `<home>/.fx/file-index/<sha>.idx`:
+//! One file per workspace scope under `<home>/.pf/file-index/<sha>.idx`:
 //! magic + SHA-256 of the payload + JSON payload listing the scope roots and
 //! every indexed path with its kind. Freshness is advisory only: a background
 //! rescan always follows a cache load and replaces it, and the index is a
@@ -15,7 +15,7 @@ const file_index = @import("file_index.zig");
 const Allocator = std.mem.Allocator;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 
-const magic = "fx-file-index-v1\n";
+const magic = "pf-file-index-v1\n";
 pub const max_bytes = 64 * 1024 * 1024;
 
 const Candidate = file_index.Candidate;
@@ -58,7 +58,7 @@ fn cacheKeyHex(alloc: Allocator, roots: []const []const u8) ![]u8 {
 fn cachePath(alloc: Allocator, home: []const u8, roots: []const []const u8) ![]u8 {
     const key = try cacheKeyHex(alloc, roots);
     defer alloc.free(key);
-    return try std.fmt.allocPrint(alloc, "{s}/.fx/file-index/{s}.idx", .{ home, key });
+    return try std.fmt.allocPrint(alloc, "{s}/.pf/file-index/{s}.idx", .{ home, key });
 }
 
 /// Loads the persisted index for `roots` under `$HOME`, or null when absent,

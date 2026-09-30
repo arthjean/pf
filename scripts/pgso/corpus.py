@@ -41,9 +41,9 @@ ISOLATED_ENVIRONMENT_KEYS = (
     "TMUX",
     "TMUX_PANE",
     "TMUX_TMPDIR",
-    "FX_TRACE_LOG",
-    "FX_TRACE_SCOPES",
-    "FX_E2E_DISABLE_DOTENV",
+    "PF_TRACE_LOG",
+    "PF_TRACE_SCOPES",
+    "PF_E2E_DISABLE_DOTENV",
 )
 
 @dataclasses.dataclass(frozen=True)
@@ -390,7 +390,7 @@ def _installed_training_binary(
 ) -> Iterator[pathlib.Path]:
     if not binary.is_file() or binary.stat().st_size == 0:
         raise PgsoError(f"training binary is missing or empty: {binary}")
-    canonical = corpus.repo_root / "zig-out" / "bin" / "fx"
+    canonical = corpus.repo_root / "zig-out" / "bin" / "pf"
     canonical.parent.mkdir(parents=True, exist_ok=True)
     if canonical.is_symlink():
         raise PgsoError(f"canonical training binary cannot be a symlink: {canonical}")
@@ -485,7 +485,7 @@ def _new_tmux_dir() -> pathlib.Path:
 
 def _scenario_environment(runtime_home: pathlib.Path) -> dict[str, str]:
     environment = hermetic_environment(runtime_home)
-    environment["FX_E2E_DISABLE_DOTENV"] = "1"
+    environment["PF_E2E_DISABLE_DOTENV"] = "1"
     return environment
 
 
@@ -561,7 +561,7 @@ def _execute_scenario(
         environment.pop(key, None)
     environment.update(dict(scenario.env_set))
     environment["HOME"] = str(scenario_home)
-    environment["FX_E2E_DISABLE_DOTENV"] = "1"
+    environment["PF_E2E_DISABLE_DOTENV"] = "1"
     tmux_dir: pathlib.Path | None = None
     if scenario.requires_tmux:
         tmux_dir = _new_tmux_dir()
@@ -616,7 +616,7 @@ def _reset_failed_tmux_e2e_attempt(
                 raise PgsoError(f"refusing to remove unsafe profile path: {profile}")
             profile.unlink()
 
-    trace_path = environment.get("FX_TRACE_LOG")
+    trace_path = environment.get("PF_TRACE_LOG")
     if trace_path is not None:
         pathlib.Path(trace_path).unlink(missing_ok=True)
 
@@ -792,7 +792,7 @@ def run_behavior_corpus(
     def prepare(scenario: Scenario, environment: dict[str, str]) -> object:
         trace_path = trace_dir / f"{scenario.name}.log"
         trace_path.unlink(missing_ok=True)
-        environment["FX_TRACE_LOG"] = str(trace_path)
+        environment["PF_TRACE_LOG"] = str(trace_path)
         return None
 
     def finish(
@@ -817,7 +817,7 @@ def run_behavior_corpus(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Inspect the fx PGSO corpus")
+    parser = argparse.ArgumentParser(description="Inspect the pf PGSO corpus")
     parser.add_argument(
         "--manifest",
         required=True,

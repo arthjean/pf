@@ -158,7 +158,7 @@ const skill_description =
 const capability_search_description =
     "Find installed skills and configured MCP tools for a described capability. Optionally restrict MCP results to one exact configured server. Results describe this query; no_match does not rule out another query. Use returned skill locations with skill. Matching MCP schemas are loaded automatically within the schema budget; call advertised tools directly or use mcp_select_tool for explicit selection. Do not guess identities.";
 const install_skill_description =
-    "Install a reusable skill from a supported source into fx managed skill storage. When to use: the user asks to install a skill or pastes a skills install command. When NOT to use: no installation is required, install packages, fetch unrelated repos, or modify project code.";
+    "Install a reusable skill from a supported source into pf managed skill storage. When to use: the user asks to install a skill or pastes a skills install command. When NOT to use: no installation is required, install packages, fetch unrelated repos, or modify project code.";
 const mcp_select_tool_description =
     "Exact-select one configured MCP/dynamic tool by name so its executable schema is advertised on the next model step. When to use: after discovering the exact specialized tool name in configured metadata. When NOT to use: guessing partial names, selecting built-in tools, or executing the dynamic tool directly.";
 const mcp_features_description =
@@ -181,7 +181,7 @@ const ask_user_question_question_schema = model_tool_schema.ObjectSchema{
 };
 
 const subagent_description =
-    "Delegate work and receive one terminal child result. Use run for one temporary child and one task. Use message with a stable name to create or continue a persistent conversation in this parent session. A plain message to a working child queues feedback for its next safe boundary without cancelling its current tool. A delivery receipt is not the child's final result; that result arrives separately. Optional instructions replace only that child's system overlay between turns; fx preserves its trusted base prompt. Optional model and effort apply only when a child is created and are rejected for an existing child. fx owns timing, worker identities, cancellation, permissions, persistence, and cleanup.";
+    "Delegate work and receive one terminal child result. Use run for one temporary child and one task. Use message with a stable name to create or continue a persistent conversation in this parent session. A plain message to a working child queues feedback for its next safe boundary without cancelling its current tool. A delivery receipt is not the child's final result; that result arrives separately. Optional instructions replace only that child's system overlay between turns; pf preserves its trusted base prompt. Optional model and effort apply only when a child is created and are rejected for an existing child. pf owns timing, worker identities, cancellation, permissions, persistence, and cleanup.";
 
 const subagent_model_run_properties = [_]model_tool_schema.Property{
     .{ .name = "action", .json_type = .string, .shape = &.{ .enum_values = &.{"run"} } },
@@ -193,7 +193,7 @@ const subagent_model_run_properties = [_]model_tool_schema.Property{
 const subagent_model_message_properties = [_]model_tool_schema.Property{
     .{ .name = "action", .json_type = .string, .shape = &.{ .enum_values = &.{"message"} } },
     .{ .name = "agent", .json_type = .string, .bounds = &.{ .min_length = 1, .max_length = subagent_domain.max_agent_name_bytes }, .description = "Stable lowercase name for one persistent conversation in this parent session. A new valid name creates it; later calls continue it." },
-    .{ .name = "instructions", .json_type = .string, .bounds = &.{ .min_length = 1, .max_length = subagent_domain.max_instructions_bytes }, .description = "Optional persistent instructions for this child. Replaces its child-specific system overlay before this message when idle; rejected while the child is working. Omit to preserve the overlay or send live feedback. Cannot replace fx's trusted base prompt or widen authority." },
+    .{ .name = "instructions", .json_type = .string, .bounds = &.{ .min_length = 1, .max_length = subagent_domain.max_instructions_bytes }, .description = "Optional persistent instructions for this child. Replaces its child-specific system overlay before this message when idle; rejected while the child is working. Omit to preserve the overlay or send live feedback. Cannot replace pf's trusted base prompt or widen authority." },
     .{ .name = "message", .json_type = .string, .bounds = &.{ .min_length = 1, .max_length = subagent_domain.max_message_bytes }, .description = "Message for that named agent: creates it on first use, continues an idle conversation, or queues feedback for a working child. Do not resend merely to poll for completion." },
     .{ .name = "model", .json_type = .string, .bounds = &.{ .min_length = 1, .max_length = subagent_domain.max_model_bytes }, .description = "Optional model applied when this message creates the child, as a catalog model ID such as openai/gpt-5.6-terra. Unambiguous partial names resolve to catalog IDs; unknown or ambiguous names are rejected with candidate IDs. Inherits the parent's model when omitted. Rejected when the named child already exists." },
     .{ .name = "effort", .json_type = .string, .bounds = &.{ .min_length = 1, .max_length = types.ReasoningEffort.max_name_bytes }, .description = "Optional reasoning effort applied when this message creates the child. Inherits the parent's effort when omitted. Rejected when the named child already exists." },
@@ -933,7 +933,7 @@ test "built-in model-facing tool contract stays byte exact" {
 
     const actual_hex = std.fmt.bytesToHex(hasher.finalResult(), .lower);
     try std.testing.expectEqualStrings(
-        "51b79260638620ff5f046a835b16f37d50dead5156206b600d0357177edf23d7",
+        "69ffaae21a60b322fb800934b40dcb2d982733d0b2941ce2f18e371af8a3b1a8",
         &actual_hex,
     );
 }

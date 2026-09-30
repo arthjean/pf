@@ -18,15 +18,15 @@ If you cannot run the binary in your environment, say so explicitly and ask the 
 
 ### Always use the built binary in this repo
 
-When running fx for verification, **always use the freshly-built binary at** **`./zig-out/bin/fx`** from this checkout. Never run `fx` from `PATH`, never rely on whatever is at `~/.fx/bin/fx`, and never assume an installed copy reflects your change.
+When running pf for verification, **always use the freshly-built binary at** **`./zig-out/bin/pf`** from this checkout. Never run `pf` from `PATH`, never rely on whatever is at `~/.pf/bin/pf`, and never assume an installed copy reflects your change.
 
-* The user may have an older `fx` on their PATH (e.g. installed via `fx upgrade` or the CDN install script). Running that one will not exercise your edits.
+* The user may have an older `pf` on their PATH (e.g. installed via `pf upgrade` or the CDN install script). Running that one will not exercise your edits.
 
-* `zig build` writes to `zig-out/bin/fx`. That is the only binary that contains your latest change.
+* `zig build` writes to `zig-out/bin/pf`. That is the only binary that contains your latest change.
 
-* When a user reports "still not working" after you believe you fixed something, do not assume they are running the wrong binary. Assume your fix is incomplete and investigate further. If you genuinely suspect a PATH mismatch, ask — do not silently copy binaries into `~/.fx/bin/`.
+* When a user reports "still not working" after you believe you fixed something, do not assume they are running the wrong binary. Assume your fix is incomplete and investigate further. If you genuinely suspect a PATH mismatch, ask — do not silently copy binaries into `~/.pf/bin/`.
 
-* In any shell invocation — tmux, direct run, scripts — reference fx as `/Users/<you>/path/to/repo/zig-out/bin/fx` (absolute) or `./zig-out/bin/fx` (when cwd is the repo root). Bare `fx` is always wrong for dev verification.
+* In any shell invocation — tmux, direct run, scripts — reference pf as `/Users/<you>/path/to/repo/zig-out/bin/pf` (absolute) or `./zig-out/bin/pf` (when cwd is the repo root). Bare `pf` is always wrong for dev verification.
 
 ## Language and Toolchain
 
@@ -51,7 +51,7 @@ The test suites under `tests/` use Bun but are separate from the Zig codebase. S
 
 * In documentation, never use double hyphens (`--`) as a dash. Use an emdash (—) sparingly, or rewrite to avoid dashes.
 
-* Use the `technical-writer` skill (`.fx/skills/technical-writer/SKILL.md`) when you write or edit prose, including documentation, commit messages, PR titles and descriptions, and issues. Where the skill and this section differ, such as on em dashes, this section takes precedence.
+* Use the `technical-writer` skill (`.pf/skills/technical-writer/SKILL.md`) when you write or edit prose, including documentation, commit messages, PR titles and descriptions, and issues. Where the skill and this section differ, such as on em dashes, this section takes precedence.
 
 * CLI flags use kebab-case (e.g. `--no-save`, `--json`). Never use camelCase for flags.
 
@@ -118,25 +118,25 @@ Do not scatter help text or argument parsing across multiple files.
 
 ## Configuration and State
 
-Profile configuration and runtime state lives under `~/.fx/`. Project `.fx.json` contains committed project defaults only.
+Profile configuration and runtime state lives under `~/.pf/`. Project `.pf.json` contains committed project defaults only.
 
 Config precedence (highest wins):
 
-1. Environment variables such as `FX_PROVIDER`, `FX_MODEL`, `FX_PERMISSION_MODE`, and `FX_MAX_AGENT_STEPS`
-2. `~/.fx/settings.json` → `workspaces["<workspace_path>"]` (profile workspace overrides)
-3. `~/.fx/settings.json` top-level (profile global settings)
-4. `<workspace>/.fx.json` (committed project defaults)
+1. Environment variables such as `PF_PROVIDER`, `PF_MODEL`, `PF_PERMISSION_MODE`, and `PF_MAX_AGENT_STEPS`
+2. `~/.pf/settings.json` → `workspaces["<workspace_path>"]` (profile workspace overrides)
+3. `~/.pf/settings.json` top-level (profile global settings)
+4. `<workspace>/.pf.json` (committed project defaults)
 5. Built-in defaults
 
-Project `.fx.json` accepts only repo-safe defaults: `sandbox`, `max_agent_steps`, `max_tool_result_bytes`, `context`, `provider_order`, and `provider_strict`. Profile-owned keys such as `provider`, `providers`, `models`, `model`, `effort`, `fast_mode`, `slash_menu_categories`, `startup_scrollback`, `prompt_history`, `statusLine`, `skill_match_fuzzy`, `first_call_tool_choice`, `auto_upgrade`, `permission_mode`, `credential_source`, `permission`, and `skill_symlink_authorities` are ignored from project config before their values are parsed.
+Project `.pf.json` accepts only repo-safe defaults: `sandbox`, `max_agent_steps`, `max_tool_result_bytes`, `context`, `provider_order`, and `provider_strict`. Profile-owned keys such as `provider`, `providers`, `models`, `model`, `effort`, `fast_mode`, `slash_menu_categories`, `startup_scrollback`, `prompt_history`, `statusLine`, `skill_match_fuzzy`, `first_call_tool_choice`, `auto_upgrade`, `permission_mode`, `credential_source`, `permission`, and `skill_symlink_authorities` are ignored from project config before their values are parsed.
 
-Runtime state lives under `~/.fx/sessions/<session-id>/` (`session.json`, `background/`, `subagent/`, `logs/`). Sessions are global and portable across workspaces. Each session tracks its `workspace_root`, which updates when resumed in a different workspace. A subagent child is an internal ordinary session with its own history. Its parent owns one bounded `subagent/children.json` registry, and the child carries only an immutable owner marker. Child sessions stay out of ordinary session discovery and cannot be resumed directly. A first `subagent.message` creates a named persistent child in that parent; later messages continue it, and optional instructions replace only its child-specific system overlay.
+Runtime state lives under `~/.pf/sessions/<session-id>/` (`session.json`, `background/`, `subagent/`, `logs/`). Sessions are global and portable across workspaces. Each session tracks its `workspace_root`, which updates when resumed in a different workspace. A subagent child is an internal ordinary session with its own history. Its parent owns one bounded `subagent/children.json` registry, and the child carries only an immutable owner marker. Child sessions stay out of ordinary session discovery and cannot be resumed directly. A first `subagent.message` creates a named persistent child in that parent; later messages continue it, and optional instructions replace only its child-specific system overlay.
 
 ## Permissions
 
 Security is permission-first. All sensitive tool behavior must integrate with `src/core/permissions/permissions.zig`.
 
-* `permission_mode` controls baseline (`ask`, `auto`, or `full-access`; `yolo` remains an alias). Full access bypasses fx permission policy and uses an effective sandbox of `none` without rewriting saved sandbox configuration
+* `permission_mode` controls baseline (`ask`, `auto`, or `full-access`; `yolo` remains an alias). Full access bypasses pf permission policy and uses an effective sandbox of `none` without rewriting saved sandbox configuration
 
 * Configured denies are evaluated before saved-session rules; an exact saved-session deny can narrow a configured allow, while an exact saved-session allow can satisfy an unresolved configured ask
 
@@ -228,7 +228,7 @@ Two test suites live under `tests/`, both using Bun:
 
 ### `tests/evals/` — LLM Evals
 
-Eval scenarios that exercise the agent through `fx ask --json`. Require `AI_GATEWAY_API_KEY`.
+Eval scenarios that exercise the agent through `pf ask --json`. Require `AI_GATEWAY_API_KEY`.
 
 ```bash
 cd tests/evals && bun install && bun test           # run all evals
@@ -272,7 +272,7 @@ Keep PR titles as clean imperative sentences, such as `Restore feedback report f
 
 ## Full CI on Feature Branches
 
-Do not run the complete deterministic test suite locally as the default development loop. Run the focused test for the changed path, build the binary, and exercise that path with `./zig-out/bin/fx`.
+Do not run the complete deterministic test suite locally as the default development loop. Run the focused test for the changed path, build the binary, and exercise that path with `./zig-out/bin/pf`.
 
 After the focused checks pass, create a clean checkpoint commit, push the non-`main` feature branch, and open a draft PR immediately. `.github/workflows/full-ci.yml` runs the following on all four supported native runner architectures:
 
@@ -287,7 +287,7 @@ A Full CI result is valid only when it belongs to the exact current commit and a
 
 ## Reproducing Render Bugs
 
-fx's rendering is inline by default and deliberately emits a small ANSI subset. Three owner classes are the narrow exceptions, and each takes the alternate buffer exclusively through `AlternateScreenOwner` in `src/ui/shell_runtime.zig`: interactive permission review, the full-transcript screen, and catalog menus. Only one class may own the buffer at a time, and each must leave it and restore the main grid, composer, cursor, paste, mouse, focus, and keyboard modes when it closes. Transcript rendering, question prompts, command-output expansion, and subagent delegation remain inline. Three tools exist for reproducing and regression-proofing render bugs:
+pf's rendering is inline by default and deliberately emits a small ANSI subset. Three owner classes are the narrow exceptions, and each takes the alternate buffer exclusively through `AlternateScreenOwner` in `src/ui/shell_runtime.zig`: interactive permission review, the full-transcript screen, and catalog menus. Only one class may own the buffer at a time, and each must leave it and restore the main grid, composer, cursor, paste, mouse, focus, and keyboard modes when it closes. Transcript rendering, question prompts, command-output expansion, and subagent delegation remain inline. Three tools exist for reproducing and regression-proofing render bugs:
 
 ### tmux (live TTY repros)
 
@@ -299,21 +299,21 @@ cd tests/e2e && bun test tui-resize.test.ts
 
 ### Debug terminal recording and replay
 
-Set `FX_DEBUG_RECORD=1` to create an automatic private tape under
-`~/.fx/recordings/`. Set `FX_DEBUG_RECORD_SILENT_BANNER=1` as well when the
+Set `PF_DEBUG_RECORD=1` to create an automatic private tape under
+`~/.pf/recordings/`. Set `PF_DEBUG_RECORD_SILENT_BANNER=1` as well when the
 developer-only recording notice must stay out of the inline transcript during
 a screen share. The notice remains available in the Ctrl+O full transcript.
-Use `FX_RECORD=<path>` when a test or investigation needs an exact destination.
-Recording dumps every byte fx writes and every resize into a framed binary tape.
+Use `PF_RECORD=<path>` when a test or investigation needs an exact destination.
+Recording dumps every byte pf writes and every resize into a framed binary tape.
 Replay the tape through the built-in virtual terminal:
 
 ```bash
-FX_DEBUG_RECORD=1 ./zig-out/bin/fx
-FX_RECORD=/tmp/bug.fxtape ./zig-out/bin/fx
-./zig-out/bin/fx replay /tmp/bug.fxtape
-./zig-out/bin/fx replay /tmp/bug.fxtape --frames
-./zig-out/bin/fx replay /tmp/bug.fxtape --json
-./zig-out/bin/fx replay /tmp/bug.fxtape --golden out.txt
+PF_DEBUG_RECORD=1 ./zig-out/bin/pf
+PF_RECORD=/tmp/bug.pftape ./zig-out/bin/pf
+./zig-out/bin/pf replay /tmp/bug.pftape
+./zig-out/bin/pf replay /tmp/bug.pftape --frames
+./zig-out/bin/pf replay /tmp/bug.pftape --json
+./zig-out/bin/pf replay /tmp/bug.pftape --golden out.txt
 ```
 
 The tape is deterministic — any reviewer can replay it without a TTY, and a golden file can be checked in as a regression test.
@@ -339,7 +339,7 @@ Startup latency benchmarks live in `benchmarks/` and run in CI via `.github/work
 
 The CI workflow builds a ReleaseSafe binary, measures six CLI paths with hyperfine, and enforces per-command latency budgets. PRs that exceed a budget fail the check. On `main`, results are uploaded to Vercel Blob for historical tracking.
 
-The startup benchmark uses `FX_BENCH=1`, an environment variable that runs through arg parsing and CLI dispatch, then exits before TTY initialization. This lives in `src/core/app/app_entry_runtime.zig`.
+The startup benchmark uses `PF_BENCH=1`, an environment variable that runs through arg parsing and CLI dispatch, then exits before TTY initialization. This lives in `src/core/app/app_entry_runtime.zig`.
 
 Current raw wall-clock contract:
 
@@ -347,11 +347,11 @@ Current raw wall-clock contract:
 * Non-Linux local runs: informational raw means
 
 The Linux CI runner is the authoritative product budget. Local macOS process
-and dynamic-loader floors vary enough to exceed 2ms independently of fx, so
+and dynamic-loader floors vary enough to exceed 2ms independently of pf, so
 local runs report raw means without assigning a substitute product budget. The
 process baseline is diagnostic only and is never subtracted.
 
-When adding features, consider their impact on startup latency. The `fx help` path is the baseline cold-start benchmark.
+When adding features, consider their impact on startup latency. The `pf help` path is the baseline cold-start benchmark.
 
 ## Binary Size Observability
 
@@ -410,7 +410,7 @@ Whether automated or manual, the changelog is public product copy. Describe obse
 
 Public changelog entries must:
 
-* Spell the product name `fx`. Preserve different casing only when it is part of an exact code identifier such as `FX_MODEL`.
+* Spell the product name `pf`. Preserve different casing only when it is part of an exact code identifier such as `PF_MODEL`.
 * Use only relevant sections from `### Breaking Changes`, `### New Features`, `### Improvements`, `### Bug Fixes`, and `### Security`. Omit empty sections.
 * Bold a short feature or fix name, then describe the user-visible change after a colon.
 * Omit pull request numbers, issue numbers, commit hashes, contributor names, and author attribution.
@@ -441,7 +441,7 @@ Do not create version tags manually. Do not change `build.zig.zon` version (it i
 
 ## Repository and License
 
-The canonical repository is `vercel-labs/fx` on GitHub. All URLs, links, and references to the repo must use `vercel-labs/fx` (not `vercel/fx`, `user/fx`, or any other org/owner). Licensed under Apache-2.0.
+The canonical repository is `vercel-labs/fx` on GitHub. All URLs, links, and references to the repo must use `vercel-labs/fx` (not `vercel/pf`, `user/pf`, or any other org/owner). Licensed under Apache-2.0.
 
 ## What Not To Do
 
@@ -451,7 +451,7 @@ The canonical repository is `vercel-labs/fx` on GitHub. All URLs, links, and ref
 
 * Do not add a second execution path for the same feature without a clear reason
 
-* Do not commit generated state from `.fx/`, `.zig-cache/`, or `zig-out/`
+* Do not commit generated state from `.pf/`, `.zig-cache/`, or `zig-out/`
 
 * Do not add dependencies outside the Zig standard library without discussion
 
@@ -466,7 +466,7 @@ The canonical repository is `vercel-labs/fx` on GitHub. All URLs, links, and ref
 ## Before Marking a PR Ready
 
 1. Run `zig fmt --check src/` and the focused tests for the changed path.
-2. Build and exercise the change locally with `./zig-out/bin/fx`.
+2. Build and exercise the change locally with `./zig-out/bin/pf`.
 3. Push a clean checkpoint commit and open a draft PR immediately.
 4. Require **Full CI** and the final ship gate to pass on the exact current commit across all four native runners.
 5. Update docs if behavior changed.

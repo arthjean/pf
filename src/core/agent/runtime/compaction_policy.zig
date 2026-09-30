@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 const max_artifact_bytes = 8 * 1024 * 1024;
 const max_records = 8192;
 const max_archives = 64;
-const marker = "fx-compaction-state-v1 ";
+const marker = "pf-compaction-state-v1 ";
 
 pub const Storage = union(enum) {
     unavailable,

@@ -3,11 +3,11 @@ import { strict as assert } from "node:assert";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const require = createRequire(import.meta.url);
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addonPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libfx.node"));
+const addonPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libpf.node"));
 const addon = require(addonPath);
 const core = addon.createCore({
   apiKey: "cancel-before-fetch-key",
@@ -100,7 +100,7 @@ const delayedAddon = {
     return request;
   },
 };
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   backend: "native",
   nativeAddon: delayedAddon,
   apiKey: "late-cancel-key",

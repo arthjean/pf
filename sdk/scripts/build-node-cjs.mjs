@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
-const output = resolve(process.argv[2] || resolve(repoRoot, "sdk/dist/libfx/node.cjs"));
+const output = resolve(process.argv[2] || resolve(repoRoot, "sdk/dist/libpf/node.cjs"));
 mkdirSync(dirname(output), { recursive: true });
 const result = spawnSync(process.env.BUN_BIN || "bun", [
   "build",
@@ -15,9 +15,9 @@ const result = spawnSync(process.env.BUN_BIN || "bun", [
   "--format=cjs",
   "--external=*.node",
   "--define",
-  "import.meta.url=__libfxModuleUrl",
+  "import.meta.url=__libpfModuleUrl",
   "--banner",
-  'var __libfxModuleUrl = require("node:url").pathToFileURL(__filename).href;',
+  'var __libpfModuleUrl = require("node:url").pathToFileURL(__filename).href;',
   "--outfile",
   output,
 ], {

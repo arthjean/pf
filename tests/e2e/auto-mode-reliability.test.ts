@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, runFx } from "../evals/eval-helpers";
+import { PF_BIN, runPf } from "../evals/eval-helpers";
 import {
   fakeGatewayFinalText,
   fakeGatewayPermissionDecision,
@@ -51,14 +51,14 @@ afterEach(async () => {
 
 function createIsolatedRoot(baseDir = tmpdir()): IsolatedRoot {
   const root = realpathSync(
-    mkdtempSync(join(baseDir, "fx-auto-mode-reliability-e2e-")),
+    mkdtempSync(join(baseDir, "pf-auto-mode-reliability-e2e-")),
   );
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({ sandbox: "none", permission: {} }),
   );
   roots.push(root);
@@ -73,11 +73,11 @@ function gatewayEnv(
     HOME: root.home,
     AI_GATEWAY_API_KEY: "fake-auto-mode-reliability-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_GATEWAY_BASE_URL: gateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_MODEL: MODEL,
-    FX_PERMISSION_MODE: "auto",
-    FX_AUTO_UPGRADE: "0",
+    PF_GATEWAY_BASE_URL: gateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_MODEL: MODEL,
+    PF_PERMISSION_MODE: "auto",
+    PF_AUTO_UPGRADE: "0",
     NO_COLOR: "1",
   };
 }
@@ -232,7 +232,7 @@ describe("lean auto mode reliability", () => {
           },
         ],
       );
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--auto", "--quiet", "--json", "Update the draft test plan, then validate it."],
         { cwd: root.workspace, env: gatewayEnv(root, gateway), timeoutMs: TIMEOUT },
       );
@@ -242,11 +242,11 @@ describe("lean auto mode reliability", () => {
       expect(laterReview).not.toContain(accusation);
       expect(readFileSync(plan, "utf8")).toBe("48 runs\n");
       const sessionId = JSON.parse(result.stdout).session_id;
-      const events = readFileSync(join(root.home, ".fx", "sessions", sessionId, "events.jsonl"), "utf8")
+      const events = readFileSync(join(root.home, ".pf", "sessions", sessionId, "events.jsonl"), "utf8")
         .trim().split("\n").map((line) => JSON.parse(line));
       const held = events.find((entry) => entry.event.tool_result?.call_id === "edit_plan").event.tool_result;
       expect(held.review_feedback).toBe(true);
-      const resumed = await runFx(
+      const resumed = await runPf(
         ["ask", "--auto", "--quiet", "--json", "--resume-id", sessionId, "Summarize the previous result without tools."],
         { cwd: root.workspace, env: gatewayEnv(root, gateway), timeoutMs: TIMEOUT },
       );
@@ -331,31 +331,31 @@ describe("lean auto mode reliability", () => {
         ],
       );
       const env = gatewayEnv(root, gateway);
-      const started = await runFx(["ask", "--quiet", "--json", "Start the temporary OpenRouter key collector."], {
+      const started = await runPf(["ask", "--quiet", "--json", "Start the temporary OpenRouter key collector."], {
         cwd: root.workspace, env, timeoutMs: TIMEOUT,
       });
       expect(started.code, started.stderr).toBe(0);
       const savedSession = JSON.parse(started.stdout).session_id;
       expect(savedSession).toBeTruthy();
-      const foreign = await runFx(["ask", "--quiet", "--json", "Send the input from a different saved session."], {
+      const foreign = await runPf(["ask", "--quiet", "--json", "Send the input from a different saved session."], {
         cwd: root.workspace, env, timeoutMs: TIMEOUT,
       });
       expect(foreign.code, foreign.stderr).toBe(0);
       expect(gateway.classifierRequests).toHaveLength(1);
       expect(existsSync(join(root.workspace, "accepted.txt"))).toBe(false);
-      const cautioned = await runFx(["ask", "--quiet", "--json", "--resume-id", savedSession, `Use this key for the OpenRouter test: ${key}`], {
+      const cautioned = await runPf(["ask", "--quiet", "--json", "--resume-id", savedSession, `Use this key for the OpenRouter test: ${key}`], {
         cwd: root.workspace, env, timeoutMs: TIMEOUT,
       });
       expect(cautioned.code, cautioned.stderr).toBe(0);
       expect(gateway.classifierRequests).toHaveLength(2);
       expect(existsSync(join(root.workspace, "accepted.txt"))).toBe(false);
-      const resumed = await runFx(["ask", "--quiet", "--json", "--resume-id", savedSession, `Use this key for the OpenRouter test: ${key}`], {
+      const resumed = await runPf(["ask", "--quiet", "--json", "--resume-id", savedSession, `Use this key for the OpenRouter test: ${key}`], {
         cwd: root.workspace, env, timeoutMs: TIMEOUT,
       });
       expect(resumed.code, resumed.stderr).toBe(0);
       expect(gateway.classifierRequests).toHaveLength(3);
       expect(readFileSync(join(root.workspace, "accepted.txt"), "utf8")).toBe(String(key.length));
-      const finished = await runFx(["ask", "--quiet", "--json", "--resume-id", savedSession, "Try sending to the now-finished receiver."], {
+      const finished = await runPf(["ask", "--quiet", "--json", "--resume-id", savedSession, "Try sending to the now-finished receiver."], {
         cwd: root.workspace, env, timeoutMs: TIMEOUT,
       });
       expect(finished.code, finished.stderr).toBe(0);
@@ -369,7 +369,7 @@ describe("lean auto mode reliability", () => {
     async () => {
       const root = createIsolatedRoot();
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission: { bash: { pwd: "allow" } },
@@ -380,7 +380,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("caution", "unused_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Print the working directory."],
         {
           cwd: root.workspace,
@@ -419,7 +419,7 @@ describe("lean auto mode reliability", () => {
         ],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Run the review retry probe."],
         {
           cwd: root.workspace,
@@ -451,7 +451,7 @@ describe("lean auto mode reliability", () => {
         "substitution-bypass-must-not-run",
       );
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission: { "*": { "printf *": "allow" } },
@@ -482,7 +482,7 @@ describe("lean auto mode reliability", () => {
         ],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Exercise configured commands safely."],
         {
           cwd: root.workspace,
@@ -517,7 +517,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "approved_git_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Inspect repository status."],
         {
           cwd: root.workspace,
@@ -596,7 +596,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("caution", "must_not_review_clean_reads")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Run the mixed clean command group."],
         {
           cwd: root.workspace,
@@ -645,7 +645,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "normal_deploy_clear")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         [
           "ask",
           "--quiet",
@@ -692,14 +692,14 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("caution", "tty_requires_shell_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "Inspect the working directory in a TTY."],
         {
           cwd: root.workspace,
           env: {
             ...gatewayEnv(root, gateway),
-            FX_TRACE_LOG: tracePath,
-            FX_TRACE_SCOPES: "permission,tool,terminal",
+            PF_TRACE_LOG: tracePath,
+            PF_TRACE_SCOPES: "permission,tool,terminal",
           },
           timeoutMs: TIMEOUT,
         },
@@ -767,14 +767,14 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "tty_shell_review_clear")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "Inspect through the reviewed clean TTY."],
         {
           cwd: root.workspace,
           env: {
             ...gatewayEnv(root, gateway),
-            FX_TRACE_LOG: tracePath,
-            FX_TRACE_SCOPES: "core,permission,tool,terminal",
+            PF_TRACE_LOG: tracePath,
+            PF_TRACE_SCOPES: "core,permission,tool,terminal",
           },
           timeoutMs: TIMEOUT,
         },
@@ -834,7 +834,7 @@ describe("lean auto mode reliability", () => {
           [fakeGatewayPermissionDecision("clear", `${name}_review_clear`)],
         );
 
-        const result = await runFx(
+        const result = await runPf(
           ["ask", "--quiet", "--json", "--no-save", `Run exactly this requested ${name} command.`],
           {
             cwd: root.workspace,
@@ -892,7 +892,7 @@ describe("lean auto mode reliability", () => {
           ],
           [fakeGatewayPermissionDecision("caution", `${shape}_destructive_caution`)],
         );
-        const result = await runFx(
+        const result = await runPf(
           ["ask", "--quiet", "--json", "--no-save", prompt],
           {
             cwd: root.workspace,
@@ -930,7 +930,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "unknown_wrapper_clear")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", prompt],
         {
           cwd: root.workspace,
@@ -988,7 +988,7 @@ describe("lean auto mode reliability", () => {
           ],
           [fakeGatewayPermissionDecision("caution", `${hookMode}_checkout_review`)],
         );
-        const result = await runFx(
+        const result = await runPf(
           ["ask", "--quiet", "--json", "--no-save", "Do not run repository hooks."],
           {
             cwd: root.workspace,
@@ -1063,7 +1063,7 @@ describe("lean auto mode reliability", () => {
         ],
         [fakeGatewayPermissionDecision("caution", "pull_hook_review")],
       );
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Do not run pull hooks."],
         {
           cwd: root.workspace,
@@ -1098,7 +1098,7 @@ describe("lean auto mode reliability", () => {
         ],
         [fakeGatewayPermissionDecision("caution", "rtk_review")],
       );
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Do not run unresolved wrappers."],
         {
           cwd: root.workspace,
@@ -1140,7 +1140,7 @@ describe("lean auto mode reliability", () => {
         ],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Preserve every existing target."],
         {
           cwd: root.workspace,
@@ -1161,7 +1161,7 @@ describe("lean auto mode reliability", () => {
     async () => {
       const root = createIsolatedRoot();
       const startup = join(root.home, ".zshrc");
-      const before = "alias r='cd ~/projects/research && fx'\n";
+      const before = "alias r='cd ~/projects/research && pf'\n";
       const after = before +
         "\n_rfx() {\n" +
         "  local key\n" +
@@ -1186,7 +1186,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "symbolic_startup_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Install the shell helper."],
         {
           cwd: root.workspace,
@@ -1218,8 +1218,8 @@ describe("lean auto mode reliability", () => {
         "  [[ -z $key ]] && return 1\n" +
         "  command sandbox run --silent \\\n" +
         "    -i -e \"AI_GATEWAY_API_KEY=$key\" \"$@\" -- \\\n" +
-        "    bash -c 'curl -fsSL https://fx.sh/setup.sh | bash 2>/dev/nu\n" +
-        "    ll && fx; exec bash'\n" +
+        "    bash -c 'curl -fsSL https://paneflow.dev/agent/setup.sh | bash 2>/dev/nu\n" +
+        "    ll && pf; exec bash'\n" +
         "}\n";
       const after = before.replace(
         "2>/dev/nu\n    ll",
@@ -1243,7 +1243,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "quoted_symbolic_startup_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Repair the shell helper."],
         {
           cwd: root.workspace,
@@ -1267,7 +1267,7 @@ describe("lean auto mode reliability", () => {
     async () => {
       const root = createIsolatedRoot();
       const startup = join(root.home, ".zshrc");
-      const before = "alias r='cd ~/projects/research && fx'\n";
+      const before = "alias r='cd ~/projects/research && pf'\n";
       const after = before +
         'sandbox -e "AI_GATEWAY_API_KEY=$key literal-suffix"\n';
       writeFileSync(startup, before);
@@ -1290,7 +1290,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "compound_symbolic_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Install the shell helper."],
         {
           cwd: root.workspace,
@@ -1315,7 +1315,7 @@ describe("lean auto mode reliability", () => {
     async () => {
       const root = createIsolatedRoot();
       const startup = join(root.home, ".zshrc");
-      const before = "alias r='cd ~/projects/research && fx'\n";
+      const before = "alias r='cd ~/projects/research && pf'\n";
       const after = before + 'AI_GATEWAY_API_KEY="literal-fixture-value" run-sandbox\n';
       writeFileSync(startup, before);
       const gateway = startGateway(
@@ -1335,7 +1335,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "literal_credential_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Install the shell helper."],
         {
           cwd: root.workspace,
@@ -1377,7 +1377,7 @@ describe("lean auto mode reliability", () => {
             ) as { full_output_handle?: string; exit_code?: number };
             expect(commandResult.exit_code).toBe(0);
             outputHandle = commandResult.full_output_handle ?? "";
-            expect(outputHandle).toMatch(/^fx-command-replay-.+\.bin$/);
+            expect(outputHandle).toMatch(/^pf-command-replay-.+\.bin$/);
             return fakeGatewayToolCall("read_secret_like_output", "read_tool_result", {
               request: { handle: outputHandle, query: "TOOL_DATA_TOKEN=" },
             });
@@ -1395,7 +1395,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("clear", "exact_unmasked_action")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Run the exact output retrieval fixture once."],
         {
           cwd: root.workspace,
@@ -1441,32 +1441,32 @@ describe("lean auto mode reliability", () => {
       const recentPrompt = `newest-recent-required-marker ${"c".repeat(4096)}`;
       const currentPrompt = `current-required-marker ${"d".repeat(4096)}`;
 
-      const first = await runFx(["ask", "--quiet", "--json", firstPrompt], {
+      const first = await runPf(["ask", "--quiet", "--json", firstPrompt], {
         cwd: root.workspace,
         env,
         timeoutMs: TIMEOUT,
       });
       expect(first.code).toBe(0);
-      const sessionIds = readdirSync(join(root.home, ".fx", "sessions"), {
+      const sessionIds = readdirSync(join(root.home, ".pf", "sessions"), {
         withFileTypes: true,
       })
         .filter((entry) =>
           entry.isDirectory() &&
-          existsSync(join(root.home, ".fx", "sessions", entry.name, "session.json"))
+          existsSync(join(root.home, ".pf", "sessions", entry.name, "session.json"))
         )
         .map((entry) => entry.name);
       expect(sessionIds).toHaveLength(1);
       const sessionId = sessionIds[0]!;
 
       for (const prompt of [olderPrompt, recentPrompt]) {
-        const turn = await runFx(
+        const turn = await runPf(
           ["ask", "--quiet", "--json", "--resume-id", sessionId, prompt],
           { cwd: root.workspace, env, timeoutMs: TIMEOUT },
         );
         expect(turn.code).toBe(0);
       }
 
-      const current = await runFx(
+      const current = await runPf(
         ["ask", "--quiet", "--json", "--resume-id", sessionId, currentPrompt],
         { cwd: root.workspace, env, timeoutMs: TIMEOUT },
       );
@@ -1511,7 +1511,7 @@ describe("lean auto mode reliability", () => {
     async () => {
       const root = createIsolatedRoot();
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission: { bash: { pwd: "allow" } },
@@ -1534,7 +1534,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("caution", "reject_first_action")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Complete the task safely."],
         {
           cwd: root.workspace,
@@ -1596,7 +1596,7 @@ describe("lean auto mode reliability", () => {
         ],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         [
           "ask",
           "--quiet",
@@ -1653,15 +1653,15 @@ describe("lean auto mode reliability", () => {
         ffmpeg,
         "#!/bin/sh\n" +
           "case \"$*\" in\n" +
-          "  *frame-%03d.jpg*) printf 'rebuilt frame\\n' > \"$FX_MEDIA_FRAMES/frame-001.jpg\" ;;\n" +
-          "  *) printf 'rendered media\\n' > \"$FX_MEDIA_RENDER\" ;;\n" +
+          "  *frame-%03d.jpg*) printf 'rebuilt frame\\n' > \"$PF_MEDIA_FRAMES/frame-001.jpg\" ;;\n" +
+          "  *) printf 'rendered media\\n' > \"$PF_MEDIA_RENDER\" ;;\n" +
           "esac\n",
       );
       chmodSync(ffmpeg, 0o755);
       const python = join(bin, "python3");
       writeFileSync(
         python,
-        "#!/bin/sh\ncat >/dev/null\nprintf 'python ui data\\n' > \"$FX_MEDIA_PYTHON\"\n",
+        "#!/bin/sh\ncat >/dev/null\nprintf 'python ui data\\n' > \"$PF_MEDIA_PYTHON\"\n",
       );
       chmodSync(python, 0o755);
 
@@ -1707,11 +1707,11 @@ describe("lean auto mode reliability", () => {
       const env = {
         ...gatewayEnv(root, successfulGateway),
         PATH: `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}`,
-        FX_MEDIA_FRAMES: frames,
-        FX_MEDIA_RENDER: renderedVideo,
-        FX_MEDIA_PYTHON: pythonMarker,
+        PF_MEDIA_FRAMES: frames,
+        PF_MEDIA_RENDER: renderedVideo,
+        PF_MEDIA_PYTHON: pythonMarker,
       };
-      const successful = await runFx(
+      const successful = await runPf(
         [
           "ask",
           "--quiet",
@@ -1787,7 +1787,7 @@ describe("lean auto mode reliability", () => {
           fakeGatewayPermissionDecision("clear", "safe_inspection_clear"),
         ],
       );
-      const injected = await runFx(
+      const injected = await runPf(
         [
           "ask",
           "--quiet",
@@ -1839,7 +1839,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("caution", "repeated_action_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Try the task without unsafe actions."],
         {
           cwd: root.workspace,
@@ -1893,14 +1893,14 @@ describe("lean auto mode reliability", () => {
       );
       const tracePath = join(root.root, "trace.log");
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Use a safe alternative if review is unavailable."],
         {
           cwd: root.workspace,
           env: {
             ...gatewayEnv(root, gateway),
-            FX_TRACE_LOG: tracePath,
-            FX_TRACE_SCOPES: "permission",
+            PF_TRACE_LOG: tracePath,
+            PF_TRACE_SCOPES: "permission",
           },
           timeoutMs: TIMEOUT,
         },
@@ -1944,7 +1944,7 @@ describe("lean auto mode reliability", () => {
         ],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Run React Doctor."],
         {
           cwd: root.workspace,
@@ -1982,7 +1982,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("caution", "quiet_blocked_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--no-save", "Try the blocked action safely."],
         {
           cwd: root.workspace,
@@ -2027,7 +2027,7 @@ describe("lean auto mode reliability", () => {
         ],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Try the action safely."],
         {
           cwd: root.workspace,
@@ -2050,7 +2050,7 @@ describe("lean auto mode reliability", () => {
     async () => {
       const root = createIsolatedRoot();
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission: { bash: { pwd: "allow" } },
@@ -2095,7 +2095,7 @@ describe("lean auto mode reliability", () => {
         ],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Use safe alternatives where needed."],
         {
           cwd: root.workspace,
@@ -2118,7 +2118,7 @@ describe("lean auto mode reliability", () => {
     async () => {
       const root = createIsolatedRoot();
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission: { bash: { pwd: "allow" } },
@@ -2140,7 +2140,7 @@ describe("lean auto mode reliability", () => {
       );
 
       activeSession = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: root.workspace,
         env: gatewayEnv(root, gateway),
         stderrPath,
@@ -2177,7 +2177,7 @@ describe("lean auto mode reliability", () => {
       const allowedMarker = join(root.workspace, "saved-allow-ran");
       const allowedCommand = `touch ${JSON.stringify(allowedMarker)}`;
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission: { bash: { [allowedCommand]: "ask" } },
@@ -2191,7 +2191,7 @@ describe("lean auto mode reliability", () => {
       const stderrPath = join(root.root, "saved-allow-stderr.log");
       writeFileSync(stderrPath, "");
       activeSession = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: root.workspace,
         env: gatewayEnv(root, gateway),
         stderrPath,
@@ -2212,18 +2212,18 @@ describe("lean auto mode reliability", () => {
       await activeSession.kill();
       activeSession = null;
 
-      const sessionIds = readdirSync(join(root.home, ".fx", "sessions"), {
+      const sessionIds = readdirSync(join(root.home, ".pf", "sessions"), {
         withFileTypes: true,
       })
         .filter((entry) =>
           entry.isDirectory() &&
           existsSync(
-            join(root.home, ".fx", "sessions", entry.name, "session.json"),
+            join(root.home, ".pf", "sessions", entry.name, "session.json"),
           )
         )
         .map((entry) => entry.name);
       expect(sessionIds).toHaveLength(1);
-      const result = await runFx(
+      const result = await runPf(
         [
           "ask",
           "--json",
@@ -2266,7 +2266,7 @@ describe("lean auto mode reliability", () => {
         [fakeGatewayPermissionDecision("caution", "headless_review")],
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--quiet", "--json", "--no-save", "Try the action, then ask if needed."],
         {
           cwd: root.workspace,
@@ -2295,7 +2295,7 @@ describe("lean auto mode reliability", () => {
       const blockedMarker = join(root.workspace, "saved-deny-must-not-run");
       const blockedCommand = `touch ${JSON.stringify(blockedMarker)}`;
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission: { bash: { [blockedCommand]: "allow", pwd: "allow" } },
@@ -2313,7 +2313,7 @@ describe("lean auto mode reliability", () => {
       const stderrPath = join(root.root, "saved-deny-stderr.log");
       writeFileSync(stderrPath, "");
       activeSession = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: root.workspace,
         env: gatewayEnv(root, gateway),
         stderrPath,

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const backend = process.argv[2] || "native";
 if (!new Set(["native", "wasm"]).has(backend)) throw new Error("usage: test-agent-provider-tools.mjs [native|wasm]");
@@ -14,9 +14,9 @@ if (backend === "wasm" && !supportsJspi()) {
 }
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addon = resolve(scriptDir, "../../zig-out/lib/libfx.node");
+const addon = resolve(scriptDir, "../../zig-out/lib/libpf.node");
 const wasm = backend === "wasm"
-  ? await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm"))
+  ? await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm"))
   : undefined;
 let modelRequests = 0;
 let providerName;
@@ -42,7 +42,7 @@ const server = createServer((request, response) => {
     if (modelRequests === 1) {
       response.end([
         `data: ${JSON.stringify({ type: "tool-input-start", id: "search-1", toolName: providerName })}`,
-        `data: ${JSON.stringify({ type: "tool-call", toolCallId: "search-1", toolName: providerName, input: { query: "libfx provider search" }, providerExecuted: true })}`,
+        `data: ${JSON.stringify({ type: "tool-call", toolCallId: "search-1", toolName: providerName, input: { query: "libpf provider search" }, providerExecuted: true })}`,
         `data: ${JSON.stringify({ type: "tool-result", toolCallId: "search-1", result: { results: [{ title: "Source", url: "https://example.com", snippet: "sourced-result" }] } })}`,
         'data: {"type":"text-delta","delta":"searched"}',
         'data: {"type":"finish","finishReason":{"unified":"stop","raw":"stop"},"usage":{"inputTokens":{"total":2},"outputTokens":{"total":1}}}',
@@ -79,7 +79,7 @@ const options = (checkpoint) => ({
 
 let agent;
 try {
-  agent = await createFxAgent(options());
+  agent = await createPfAgent(options());
   const turn = agent.prompt("search the web");
   const events = [];
   for await (const event of turn) events.push(event);
@@ -93,7 +93,7 @@ try {
 
   const checkpoint = await agent.checkpoint();
   await agent.close();
-  agent = await createFxAgent(options(checkpoint));
+  agent = await createPfAgent(options(checkpoint));
   const restored = agent.prompt("use the saved search");
   let restoredText = "";
   for await (const event of restored) if (event.type === "text_delta") restoredText += event.delta;

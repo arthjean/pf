@@ -1592,7 +1592,7 @@ fn isShellParseErrorOutput(output: []const u8) bool {
     return false;
 }
 
-// Shell error prefixes may carry an absolute argv[0] path (fx spawns the
+// Shell error prefixes may carry an absolute argv[0] path (pf spawns the
 // resolved login shell as /bin/bash, /bin/zsh, ...), so match the basename
 // of the token before the first colon rather than a raw line prefix.
 fn hasShellErrorPrefix(line: []const u8) bool {
@@ -2431,7 +2431,7 @@ test "failure guidance detectors match only their signatures" {
         shell_parse_retry_guidance,
         failureRetryGuidance(1, "zsh:1: unmatched '\n"),
     );
-    // fx spawns the resolved login shell with an absolute argv[0], so bash
+    // pf spawns the resolved login shell with an absolute argv[0], so bash
     // errors carry a /bin/bash prefix; bare-basename forms also occur when a
     // command spawns a shell subprocess itself.
     try std.testing.expectEqual(
@@ -2488,7 +2488,7 @@ test "shell snapshot keeps bounded head tail and control metadata" {
         .state = .{ .completed = .{ .exit_code = 0 } },
         .output_delta = @constCast(output),
         .output_truncated = false,
-        .output_file = @constCast("fx-command-replay-large.bin"),
+        .output_file = @constCast("pf-command-replay-large.bin"),
     }, null);
     defer alloc.free(body);
 
@@ -2497,7 +2497,7 @@ test "shell snapshot keeps bounded head tail and control metadata" {
     defer parsed.deinit();
     const object = parsed.value.object;
     try std.testing.expectEqualStrings(
-        "fx-command-replay-large.bin",
+        "pf-command-replay-large.bin",
         object.get("full_output_handle").?.string,
     );
     try std.testing.expect(object.get("output_truncated").?.bool);
@@ -2518,7 +2518,7 @@ test "shell snapshot projects hostile bytes as readable terminal-safe text" {
         .state = .{ .completed = .{ .exit_code = 0 } },
         .output_delta = @constCast(raw),
         .output_truncated = false,
-        .output_file = @constCast("fx-command-replay-hostile.bin"),
+        .output_file = @constCast("pf-command-replay-hostile.bin"),
     }, null);
     defer alloc.free(body);
 
@@ -2535,7 +2535,7 @@ test "shell snapshot projects hostile bytes as readable terminal-safe text" {
     try std.testing.expect(std.mem.find(u8, output_value.string, "\\xff") != null);
     try std.testing.expect(std.mem.find(u8, output_value.string, "CONTROL_TAIL") != null);
     try std.testing.expectEqualStrings(
-        "fx-command-replay-hostile.bin",
+        "pf-command-replay-hostile.bin",
         parsed.value.object.get("full_output_handle").?.string,
     );
 }
@@ -2551,7 +2551,7 @@ test "shell snapshot keeps a hostile output tail within the result limit" {
         .state = .{ .completed = .{ .exit_code = 0 } },
         .output_delta = @constCast(raw),
         .output_truncated = false,
-        .output_file = @constCast("fx-command-replay-hostile-large.bin"),
+        .output_file = @constCast("pf-command-replay-hostile-large.bin"),
     }, null);
     defer alloc.free(body);
 

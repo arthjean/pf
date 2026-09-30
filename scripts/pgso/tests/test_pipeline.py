@@ -10,7 +10,7 @@ import unittest
 from scripts.pgso.model import PgsoError, sha256_file
 from scripts.pgso.pipeline import (
     BENCHMARK_USE_FLAGS,
-    FX_MACHINE_OUTLINER_FLAGS,
+    PF_MACHINE_OUTLINER_FLAGS,
     GENERATION_FLAGS,
     IR_OUTLINER_FLAGS,
     OUTLINE_CLEANUP_FLAGS,
@@ -56,7 +56,7 @@ from scripts.pgso.toolchain import Toolchain
 class PgsoPipelineTests(unittest.TestCase):
     def test_temporal_order_binds_real_text_symbols_and_accounts_for_unmapped_names(self) -> None:
         ordered, evidence = map_temporal_symbols(
-            "# Ordered 4 functions\n# fx\nalpha\nbeta\nalias\nmissing\n",
+            "# Ordered 4 functions\n# pf\nalpha\nbeta\nalias\nmissing\n",
             "_alpha T 0 0\nl_beta t 8 0\nl_alias t 8 0\n_missing d 20 0\n",
         )
         self.assertEqual(("_alpha", "l_beta"), ordered)
@@ -180,7 +180,7 @@ class PgsoPipelineTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(
-            prefix="fx-pgso-pipeline-"
+            prefix="pf-pgso-pipeline-"
         )
         self.root = pathlib.Path(self.temporary_directory.name)
         self.paths = PipelinePaths.create(self.root / "run")
@@ -282,7 +282,7 @@ class PgsoPipelineTests(unittest.TestCase):
             (
                 "-machine-outliner-reruns=1",
             ),
-            FX_MACHINE_OUTLINER_FLAGS,
+            PF_MACHINE_OUTLINER_FLAGS,
         )
         self.assertEqual(
             (
@@ -406,7 +406,7 @@ class PgsoPipelineTests(unittest.TestCase):
         self.assertIn("-Doptimize=ReleaseSafe", control)
         self.assertIn("-Dupdate-channel=stable", control)
         self.assertIn("pgso-ir", ir)
-        self.assertIn("-Dpgso-artifact=fx", ir)
+        self.assertIn("-Dpgso-artifact=pf", ir)
         self.assertNotEqual(
             control[control.index("--cache-dir") + 1],
             ir[ir.index("--cache-dir") + 1],
@@ -491,7 +491,7 @@ class PgsoPipelineTests(unittest.TestCase):
             ),
             candidate,
         )
-        for flag in FX_MACHINE_OUTLINER_FLAGS:
+        for flag in PF_MACHINE_OUTLINER_FLAGS:
             self.assertIn(flag, candidate_object)
             self.assertNotIn(flag, benchmark_object)
 
@@ -549,7 +549,7 @@ else: sys.exit(2)""",
             f"""import pathlib,sys
 with pathlib.Path({str(actions)!r}).open('a') as stream:
     stream.write('order ' + ' '.join(sys.argv[1:]) + '\\n')
-pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('# Ordered 1 functions\\n# fx\\nalpha\\n')""",
+pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('# Ordered 1 functions\\n# pf\\nalpha\\n')""",
         )
         nm = self.write_executable(
             "nm-tool",
@@ -648,7 +648,7 @@ pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_bytes(b'artifact')""",
         self.assertFalse((paths.logs / "candidate-layout.json").exists())
 
     def test_bitcode_hash_must_match_the_original(self) -> None:
-        bitcode = self.root / "fx.bc"
+        bitcode = self.root / "pf.bc"
         bitcode.write_bytes(b"release-safe bitcode")
 
         validate_bitcode_hash(bitcode, sha256_file(bitcode))
@@ -725,7 +725,7 @@ output.write_bytes(b'merged profile')""",
                 "0" * 64,
             )
 
-    def test_fx_profile_use_outlines_two_name_hashed_partitions_in_sequence(self) -> None:
+    def test_pf_profile_use_outlines_two_name_hashed_partitions_in_sequence(self) -> None:
         actions = self.root / "profile-actions"
         opt = self.write_executable(
             "profile-opt",
@@ -899,7 +899,7 @@ sys.stderr.write('optimizer warning')""",
                 "Load command 2\ncmd LC_LOAD_DYLIB\nname /usr/lib/libSystem.B.dylib (offset 24)\n"
                 "current version 1356.0.0\ncompatibility version 1.0.0\n"
             ),
-            dependencies="fx:\n/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+            dependencies="pf:\n/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
         )
 
     def good_link_contract(self) -> MacosLinkContract:

@@ -41,7 +41,7 @@ pub const processAgentPrompt = runtime_orchestrator.processAgentPrompt;
 pub const compactContextTransaction = runtime_orchestrator.compactContextTransaction;
 pub const prepareManualCompactionContinuation = runtime_orchestrator.prepareManualCompactionContinuation;
 pub const prepareRetainedCompactionWindow = runtime_orchestrator.prepareRetainedCompactionWindow;
-pub const persistedStatusForCurrentFxLocalResult = runtime_execution_memory.persistedStatusForCurrentFxLocalResult;
+pub const persistedStatusForCurrentPfLocalResult = runtime_execution_memory.persistedStatusForCurrentPfLocalResult;
 pub const classifyProviderExecutedResultStatus = runtime_execution_memory.classifyProviderExecutedResultStatus;
 pub const normalizeAssistantTextForDisplay = runtime_assistant_stream.normalizeAssistantTextForDisplay;
 

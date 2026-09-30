@@ -1368,7 +1368,7 @@ fn commandArtifactHandle(
         else => return null,
     };
     const handle = std.fs.path.basename(output_file);
-    if (!std.mem.startsWith(u8, handle, "fx-command-") or
+    if (!std.mem.startsWith(u8, handle, "pf-command-") or
         !std.mem.endsWith(u8, handle, ".log") or
         std.mem.endsWith(u8, handle, ".stdout.log") or
         std.mem.endsWith(u8, handle, ".stderr.log")) return null;
@@ -2734,7 +2734,7 @@ test "command completion publishes its combined artifact handle" {
         .{
             .model_output = "truncated command preview",
             .command_result_json =
-            \\{"kind":"command","output_file":"/tmp/fx-command-combined.log"}
+            \\{"kind":"command","output_file":"/tmp/pf-command-combined.log"}
             ,
         },
         "truncated command preview",
@@ -2743,7 +2743,7 @@ test "command completion publishes its combined artifact handle" {
             .stored_output_bytes = 128_000,
             .truncated = true,
             .command_output_replay = .{ .available = .{
-                .handle = "fx-command-replay-terminal.bin",
+                .handle = "pf-command-replay-terminal.bin",
                 .framed_bytes = 123,
             } },
         },
@@ -2759,7 +2759,7 @@ test "command completion publishes its combined artifact handle" {
                 terminal.result.?,
             );
             try std.testing.expectEqualStrings(
-                "fx-command-combined.log",
+                "pf-command-combined.log",
                 terminal.command_artifact_handle.?,
             );
             const replay = terminal.result_memory.?.command_output_replay.?;
@@ -2768,7 +2768,7 @@ test "command completion publishes its combined artifact handle" {
                 .unavailable => return error.TestExpectedReplay,
             };
             try std.testing.expectEqualStrings(
-                "fx-command-replay-terminal.bin",
+                "pf-command-replay-terminal.bin",
                 descriptor.handle,
             );
             try std.testing.expectEqual(@as(usize, 123), descriptor.framed_bytes);

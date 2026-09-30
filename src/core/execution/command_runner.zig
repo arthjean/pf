@@ -43,8 +43,8 @@ pub const CallbackProjection = enum {
     raw,
 };
 
-const command_artifact_file_prefix = "fx-command-";
-const command_artifact_fallback_dir_name = "fx-command-output";
+const command_artifact_file_prefix = "pf-command-";
+const command_artifact_fallback_dir_name = "pf-command-output";
 const command_artifact_log_suffix = ".log";
 const command_artifact_stdout_suffix = ".stdout.log";
 const command_artifact_stderr_suffix = ".stderr.log";
@@ -74,7 +74,7 @@ const supports_foreground_session = builtin.link_libc and
     std.process.can_replace and
     builtin.os.tag != .windows and
     builtin.os.tag != .wasi;
-const foreground_session_token = "__fx_foreground_session__";
+const foreground_session_token = "__pf_foreground_session__";
 const foreground_session_ready_byte: u8 = 0x1e;
 const foreground_session_release_byte: u8 = 0x06;
 const foreground_session_setup_timeout_ms: i64 = 5000;
@@ -89,7 +89,7 @@ const foreground_session_release_index = foreground_session_failure_nonce_hex_by
 const foreground_session_script_length_index = foreground_session_release_index + 1;
 const foreground_session_control_bytes = foreground_session_script_length_index +
     foreground_session_script_length_bytes;
-const foreground_session_replace_failure_prefix = "\x00FX_FOREGROUND_EXEC_FAILED:";
+const foreground_session_replace_failure_prefix = "\x00PF_FOREGROUND_EXEC_FAILED:";
 const foreground_session_replace_failure_marker_bytes =
     foreground_session_replace_failure_prefix.len +
     foreground_session_failure_nonce_hex_bytes + 1;
@@ -1290,7 +1290,7 @@ fn executeProcessWithDetachedSession(
 
 fn foregroundSessionExecutable(scratch: Allocator) ![]const u8 {
     if (comptime builtin.is_test) {
-        const path_z = std.c.getenv("FX_TEST_PRODUCT_EXE") orelse
+        const path_z = std.c.getenv("PF_TEST_PRODUCT_EXE") orelse
             return error.TestProductExecutableMissing;
         return std.mem.sliceTo(path_z, 0);
     }
@@ -1755,7 +1755,7 @@ test "zsh user profile reports natural SIGTERM after alias-safe startup" {
         try zshrc.writeStreamingAll(
             io_mod.getIo(),
             "alias builtin='print -r -- INTERCEPTED'\n" ++
-                "TRAPDEBUG() { print -r -- \"$ZSH_DEBUG_CMD\" >> \"$FX_SIGTERM_DEBUG_LOG\"; }\n",
+                "TRAPDEBUG() { print -r -- \"$ZSH_DEBUG_CMD\" >> \"$PF_SIGTERM_DEBUG_LOG\"; }\n",
         );
     }
     {
@@ -1767,7 +1767,7 @@ test "zsh user profile reports natural SIGTERM after alias-safe startup" {
         defer wrapper.close(io_mod.getIo());
         const source = try std.fmt.allocPrint(
             arena,
-            "#!/bin/sh\nexport HOME={s}\nexport ZDOTDIR={s}\nexport FX_SIGTERM_DEBUG_LOG={s}\nexec /bin/zsh \"$@\"\n",
+            "#!/bin/sh\nexport HOME={s}\nexport ZDOTDIR={s}\nexport PF_SIGTERM_DEBUG_LOG={s}\nexec /bin/zsh \"$@\"\n",
             .{ quoted_home, quoted_home, quoted_debug_log },
         );
         try wrapper.writeStreamingAll(io_mod.getIo(), source);
@@ -2337,7 +2337,7 @@ const ProcessObserver = struct {
     fn statusFromTerm(
         term: std.process.Child.Term,
     ) command_contract.CommandStatus {
-        if (io_mod.getenv("FX_COMMAND_TEST_INDETERMINATE_AFTER_EXIT") != null) {
+        if (io_mod.getenv("PF_COMMAND_TEST_INDETERMINATE_AFTER_EXIT") != null) {
             debug_trace.logf(
                 "core",
                 "command termination became indeterminate reason=injected_after_exit",
@@ -2842,7 +2842,7 @@ fn collectSpawnedProcess(
     );
     wait_pending = false;
     var output_incomplete = collected_output.output_incomplete;
-    if (io_mod.getenv("FX_COMMAND_TEST_OUTPUT_INCOMPLETE_AFTER_EXIT") != null) {
+    if (io_mod.getenv("PF_COMMAND_TEST_OUTPUT_INCOMPLETE_AFTER_EXIT") != null) {
         recordOutputDrainFailure(
             &output_incomplete,
             "injected_after_exit",
@@ -3363,7 +3363,7 @@ test "target replacement marker prefix remains ordinary stderr" {
     const stderr_text = foreground_session_replace_failure_prefix ++ "target-data\n";
     const result = try executeCommand(.{
         .max_command_output_bytes = 4096,
-    }, std.testing.allocator, "printf '\\000FX_FOREGROUND_EXEC_FAILED:target-data\\n' >&2; exit 125", "/tmp");
+    }, std.testing.allocator, "printf '\\000PF_FOREGROUND_EXEC_FAILED:target-data\\n' >&2; exit 125", "/tmp");
     defer std.testing.allocator.free(result.output);
 
     const foreground = result.command_result.?;
@@ -3382,7 +3382,7 @@ test "target cannot recover replacement nonce from supervisor" {
         "ps -ww -p $PPID -o command= | grep -Eo '[0-9a-f]{32}' | head -1";
     const command = try std.fmt.allocPrint(
         std.testing.allocator,
-        "token=$({s}); printf '\\000FX_FOREGROUND_EXEC_FAILED:%s:FileNotFound\\n' \"$token\" >&2; exit 125",
+        "token=$({s}); printf '\\000PF_FOREGROUND_EXEC_FAILED:%s:FileNotFound\\n' \"$token\" >&2; exit 125",
         .{token_probe},
     );
     defer std.testing.allocator.free(command);
@@ -3521,7 +3521,7 @@ test "detached session preserves replacement failure with a zero output budget" 
 
     var scratch_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer scratch_state.deinit();
-    const argv = [_][]const u8{"/definitely/missing/fx-command-target"};
+    const argv = [_][]const u8{"/definitely/missing/pf-command-target"};
 
     try std.testing.expectError(
         error.FileNotFound,

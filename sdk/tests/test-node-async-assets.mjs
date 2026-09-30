@@ -12,8 +12,8 @@ const entries = [
   ["cjs", createRequire(import.meta.url)(join(directory, "node.cjs"))],
 ];
 const assets = {
-  agent: await readFile(join(directory, "fx-core.wasm")),
-  terminal: await readFile(join(directory, "fx-term.wasm")),
+  agent: await readFile(join(directory, "pf-core.wasm")),
+  terminal: await readFile(join(directory, "pf-term.wasm")),
 };
 const requests = new Map();
 const corrupt = new Set();
@@ -41,7 +41,7 @@ watchdog.unref();
 
 async function exercise(sdk, surface, options) {
   if (surface === "agent") {
-    const agent = await sdk.createFxAgent({ ...options, apiKey: "async-asset-key", model: "async/model", fetch: modelFetch });
+    const agent = await sdk.createPfAgent({ ...options, apiKey: "async-asset-key", model: "async/model", fetch: modelFetch });
     try {
       const turn = agent.prompt("hello");
       let text = "";
@@ -65,8 +65,8 @@ async function exercise(sdk, surface, options) {
   };
   let runtime;
   try {
-    runtime = await sdk.createFxTerminal({ ...options, terminal, fetch: modelFetch,
-      env: { AI_GATEWAY_API_KEY: "async-asset-key", FX_SOUND: "0" } });
+    runtime = await sdk.createPfTerminal({ ...options, terminal, fetch: modelFetch,
+      env: { AI_GATEWAY_API_KEY: "async-asset-key", PF_SOUND: "0" } });
     await runtime.interactive;
     assert.ok(output > 0);
   }
@@ -106,7 +106,7 @@ try {
         await assert.rejects(exercise(sdk, surface, { backend, nativeAddon: false, wasm: Promise.reject(error) }), (actual) => actual === error);
         const info = await sdk.getBackendInfo({ surface, backend, nativeAddon: false, wasm: Promise.reject(error) });
         assert.equal(info.backend, "unavailable");
-        assert.equal(info.attempts.at(-1).reason.code, "LIBFX_WASM_LOAD_FAILED");
+        assert.equal(info.attempts.at(-1).reason.code, "LIBPF_WASM_LOAD_FAILED");
         assert.equal(info.attempts.at(-1).reason.causeCode, error.code);
       }
       const path = `/${surface}/${format}-repair.wasm`;
@@ -114,7 +114,7 @@ try {
       corrupt.add(path);
       const failed = await sdk.getBackendInfo({ surface, backend: "wasm", wasm });
       assert.equal(failed.backend, "unavailable");
-      assert.equal(failed.attempts[0].reason.code, "LIBFX_WASM_LOAD_FAILED");
+      assert.equal(failed.attempts[0].reason.code, "LIBPF_WASM_LOAD_FAILED");
       assert.equal(requests.get(path), 1, "the failed probe must reach compilation of the requested asset");
       corrupt.delete(path);
       const info = await sdk.getBackendInfo({ surface, backend: "wasm", wasm });

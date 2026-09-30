@@ -1,4 +1,4 @@
-name: Publish libfx
+name: Publish libpf
 
 on:
   workflow_run:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-libfx-${{ (github.event.workflow_run.name == 'Release' || inputs.channel == 'stable') && 'stable' || 'dev' }}
+  group: publish-libpf-${{ (github.event.workflow_run.name == 'Release' || inputs.channel == 'stable') && 'stable' || 'dev' }}
   cancel-in-progress: false
 
 jobs:
@@ -79,7 +79,7 @@ jobs:
                   echo "::error::Stable tag ${TAG} points to ${TAG_SHA}, not ${SHA}"
                   exit 1
                 fi
-                echo "Release workflow did not publish ${SHA}; skipping libfx stable publish"
+                echo "Release workflow did not publish ${SHA}; skipping libpf stable publish"
                 SHOULD_PUBLISH=false
               fi
             else
@@ -87,7 +87,7 @@ jobs:
                 echo "::error::Stable tag ${TAG} does not exist"
                 exit 1
               fi
-              echo "Release workflow did not create ${TAG}; skipping libfx stable publish"
+              echo "Release workflow did not create ${TAG}; skipping libpf stable publish"
               SHOULD_PUBLISH=false
             fi
             VERSION="$BASE_VERSION"
@@ -103,7 +103,7 @@ jobs:
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "should_publish=${SHOULD_PUBLISH}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Publishing libfx@${VERSION} on the ${CHANNEL} channel (${NPM_TAG})"
+          echo "Publishing libpf@${VERSION} on the ${CHANNEL} channel (${NPM_TAG})"
 
   native:
     needs: metadata
@@ -142,13 +142,13 @@ jobs:
           node-version: "24"
 
       - name: Build ReleaseSafe addon
-        run: zig build libfx-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dupdate-channel=${{ needs.metadata.outputs.channel }} ${{ matrix.target_flags }}
+        run: zig build libpf-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dupdate-channel=${{ needs.metadata.outputs.channel }} ${{ matrix.target_flags }}
 
       - name: Check Linux ABI baseline
         if: startsWith(matrix.package_platform, 'linux-')
         run: |
           python3 sdk/tests/test-linux-abi.py
-          python3 sdk/scripts/check-linux-abi.py zig-out/lib/libfx.node
+          python3 sdk/scripts/check-linux-abi.py zig-out/lib/libpf.node
 
       - name: Test Linux addon on Amazon Linux 2023
         if: startsWith(matrix.package_platform, 'linux-')
@@ -169,13 +169,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p native-addons
-          cp zig-out/lib/libfx.node native-addons/libfx.${{ matrix.package_platform }}.node
+          cp zig-out/lib/libpf.node native-addons/libpf.${{ matrix.package_platform }}.node
 
       - name: Upload native addon
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: libfx-native-${{ matrix.package_platform }}
-          path: native-addons/libfx.${{ matrix.package_platform }}.node
+          name: libpf-native-${{ matrix.package_platform }}
+          path: native-addons/libpf.${{ matrix.package_platform }}.node
           if-no-files-found: error
 
   wasm:
@@ -212,10 +212,10 @@ jobs:
       - name: Upload WebAssembly artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: libfx-wasm
+          name: libpf-wasm
           path: |
-            zig-out/bin/fx-core.wasm
-            zig-out/bin/fx-term.wasm
+            zig-out/bin/pf-core.wasm
+            zig-out/bin/pf-term.wasm
           if-no-files-found: error
 
   package:
@@ -239,25 +239,25 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: libfx-native-*
+          pattern: libpf-native-*
           path: native-addons
           merge-multiple: true
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: libfx-wasm
+          name: libpf-wasm
           path: wasm-artifacts
 
       - name: Assemble package
         env:
-          LIBFX_VERSION: ${{ needs.metadata.outputs.version }}
+          LIBPF_VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p zig-out/bin zig-out/lib
           cp wasm-artifacts/*.wasm zig-out/bin/
-          cp native-addons/libfx.linux-x64.node zig-out/lib/libfx.node
+          cp native-addons/libpf.linux-x64.node zig-out/lib/libpf.node
           jq -e '
-            .name == "libfx" and
+            .name == "libpf" and
             .type == "module" and
             .scripts != null and
             (.scripts | keys | all(startswith("test:"))) and
@@ -268,25 +268,25 @@ jobs:
             (.bin == null)
           ' sdk/package.json >/dev/null
 
-          node sdk/scripts/package-libfx.mjs sdk/dist/libfx native-addons/*.node
-          jq --arg version "$LIBFX_VERSION" '.version = $version' \
-            sdk/dist/libfx/package.json > sdk/dist/libfx/package.json.tmp
-          mv sdk/dist/libfx/package.json.tmp sdk/dist/libfx/package.json
-          npm pack ./sdk/dist/libfx --ignore-scripts --json > /tmp/libfx-pack.json
-          mv "$(jq -r '.[0].filename' /tmp/libfx-pack.json)" libfx-package.tgz
-          sha256sum libfx-package.tgz > libfx-package.tgz.sha256
+          node sdk/scripts/package-libpf.mjs sdk/dist/libpf native-addons/*.node
+          jq --arg version "$LIBPF_VERSION" '.version = $version' \
+            sdk/dist/libpf/package.json > sdk/dist/libpf/package.json.tmp
+          mv sdk/dist/libpf/package.json.tmp sdk/dist/libpf/package.json
+          npm pack ./sdk/dist/libpf --ignore-scripts --json > /tmp/libpf-pack.json
+          mv "$(jq -r '.[0].filename' /tmp/libpf-pack.json)" libpf-package.tgz
+          sha256sum libpf-package.tgz > libpf-package.tgz.sha256
 
       - name: Validate package archive
         run: |
           node -e '
-            const report = require("/tmp/libfx-pack.json")[0];
+            const report = require("/tmp/libpf-pack.json")[0];
             const names = new Set(report.files.map(({ path }) => path));
             const required = [
-              "package.json", "README.md", "LICENSE", "browser.js", "node.js", "node.cjs", "fx-sdk.js", "wasm-module.js",
+              "package.json", "README.md", "LICENSE", "browser.js", "node.js", "node.cjs", "pf-sdk.js", "wasm-module.js",
               "core-output.js", "mcp.js", "skills.js", "skills-node.js",
-              "fx-core.wasm", "fx-term.wasm",
-              "libfx.linux-x64.node", "libfx.linux-arm64.node",
-              "libfx.darwin-x64.node", "libfx.darwin-arm64.node",
+              "pf-core.wasm", "pf-term.wasm",
+              "libpf.linux-x64.node", "libpf.linux-arm64.node",
+              "libpf.darwin-x64.node", "libpf.darwin-arm64.node",
             ];
             if (names.size !== required.length) throw new Error(`unexpected package file count: ${names.size}`);
             for (const name of required) {
@@ -298,47 +298,47 @@ jobs:
       - name: Test installed package and diagnostics
         run: |
           node --experimental-wasm-jspi sdk/tests/test-node-bundled-assets.mjs
-          node --experimental-wasm-jspi sdk/tests/test-node-async-assets.mjs sdk/dist/libfx
-          node sdk/tests/test-packed-example.mjs libfx-package.tgz native esm
-          node --no-experimental-require-module sdk/tests/test-packed-example.mjs libfx-package.tgz native cjs
-          node --experimental-wasm-jspi sdk/tests/test-packed-example.mjs libfx-package.tgz wasm esm
-          node --experimental-wasm-jspi --no-experimental-require-module sdk/tests/test-packed-example.mjs libfx-package.tgz wasm cjs
+          node --experimental-wasm-jspi sdk/tests/test-node-async-assets.mjs sdk/dist/libpf
+          node sdk/tests/test-packed-example.mjs libpf-package.tgz native esm
+          node --no-experimental-require-module sdk/tests/test-packed-example.mjs libpf-package.tgz native cjs
+          node --experimental-wasm-jspi sdk/tests/test-packed-example.mjs libpf-package.tgz wasm esm
+          node --experimental-wasm-jspi --no-experimental-require-module sdk/tests/test-packed-example.mjs libpf-package.tgz wasm cjs
           node --experimental-wasm-jspi sdk/tests/test-backend-info.mjs
           node sdk/tests/test-term-demo-package.mjs
 
       - name: Test package recovery and lifecycle boundaries
         run: |
-          node sdk/tests/test-package-resilience.mjs --package libfx-package.tgz \
+          node sdk/tests/test-package-resilience.mjs --package libpf-package.tgz \
             --cheap-cycles 100 --tool-workflows 20 --duration-ms 5000 --concurrency 4 \
-            --json-out "${{ runner.temp }}/libfx-package-evidence/resilience.json"
+            --json-out "${{ runner.temp }}/libpf-package-evidence/resilience.json"
 
       - name: Test Next development, production and isolated output
         env:
-          LIBFX_TEST_ARTIFACT_ROOT: ${{ runner.temp }}/libfx-package-evidence
+          LIBPF_TEST_ARTIFACT_ROOT: ${{ runner.temp }}/libpf-package-evidence
         run: |
-          node sdk/tests/test-next-package.mjs libfx-package.tgz
-          node sdk/tests/test-next-package.mjs libfx-package.tgz --webpack
-          node sdk/tests/test-next-package.mjs libfx-package.tgz --next15
+          node sdk/tests/test-next-package.mjs libpf-package.tgz
+          node sdk/tests/test-next-package.mjs libpf-package.tgz --webpack
+          node sdk/tests/test-next-package.mjs libpf-package.tgz --next15
 
       - name: Retain package qualification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: libfx-package-evidence
+          name: libpf-package-evidence
           path: |
-            ${{ runner.temp }}/libfx-package-evidence/resilience.json
-            ${{ runner.temp }}/libfx-package-evidence/libfx-next-*/*.log
-            ${{ runner.temp }}/libfx-package-evidence/libfx-next-*/results.json
-            ${{ runner.temp }}/libfx-package-evidence/libfx-trace-*/*.log
-            ${{ runner.temp }}/libfx-package-evidence/libfx-trace-*/results.json
+            ${{ runner.temp }}/libpf-package-evidence/resilience.json
+            ${{ runner.temp }}/libpf-package-evidence/libpf-next-*/*.log
+            ${{ runner.temp }}/libpf-package-evidence/libpf-next-*/results.json
+            ${{ runner.temp }}/libpf-package-evidence/libpf-trace-*/*.log
+            ${{ runner.temp }}/libpf-package-evidence/libpf-trace-*/results.json
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: libfx-package
+          name: libpf-package
           path: |
-            libfx-package.tgz
-            libfx-package.tgz.sha256
+            libpf-package.tgz
+            libpf-package.tgz.sha256
           if-no-files-found: error
 
   publish:
@@ -361,8 +361,8 @@ jobs:
         run: npm install --global npm@11.15.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: libfx-package
-      - run: sha256sum --check libfx-package.tgz.sha256
+          name: libpf-package
+      - run: sha256sum --check libpf-package.tgz.sha256
 
       - name: Confirm dev publish still targets main
         if: needs.metadata.outputs.channel == 'dev'
@@ -377,15 +377,15 @@ jobs:
 
       - name: Publish the verified archive with npm trusted publishing
         env:
-          LIBFX_VERSION: ${{ needs.metadata.outputs.version }}
+          LIBPF_VERSION: ${{ needs.metadata.outputs.version }}
           NPM_TAG: ${{ needs.metadata.outputs.npm_tag }}
         run: |
           set -euo pipefail
-          if npm view "libfx@${LIBFX_VERSION}" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
-            echo "libfx@${LIBFX_VERSION} is already published; leaving ${NPM_TAG} unchanged"
+          if npm view "libpf@${LIBPF_VERSION}" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "libpf@${LIBPF_VERSION} is already published; leaving ${NPM_TAG} unchanged"
             exit 0
           fi
-          npm publish ./libfx-package.tgz --ignore-scripts --access public --tag "$NPM_TAG" --provenance
+          npm publish ./libpf-package.tgz --ignore-scripts --access public --tag "$NPM_TAG" --provenance
 
   verify-published:
     needs: [metadata, publish]
@@ -400,35 +400,35 @@ jobs:
       - run: npm install --global pnpm@11.1.1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: libfx-package
+          name: libpf-package
       - name: Download and compare the immutable registry version
         env:
-          LIBFX_VERSION: ${{ needs.metadata.outputs.version }}
+          LIBPF_VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
-          sha256sum --check libfx-package.tgz.sha256
-          npm pack "libfx@${LIBFX_VERSION}" --ignore-scripts --registry=https://registry.npmjs.org/ --json > /tmp/libfx-registry-pack.json
-          mv "$(jq -r '.[0].filename' /tmp/libfx-registry-pack.json)" libfx-registry.tgz
-          cmp libfx-package.tgz libfx-registry.tgz
+          sha256sum --check libpf-package.tgz.sha256
+          npm pack "libpf@${LIBPF_VERSION}" --ignore-scripts --registry=https://registry.npmjs.org/ --json > /tmp/libpf-registry-pack.json
+          mv "$(jq -r '.[0].filename' /tmp/libpf-registry-pack.json)" libpf-registry.tgz
+          cmp libpf-package.tgz libpf-registry.tgz
       - name: Test the registry package in Node and Next
         env:
-          LIBFX_TEST_ARTIFACT_ROOT: ${{ runner.temp }}/libfx-registry-evidence
+          LIBPF_TEST_ARTIFACT_ROOT: ${{ runner.temp }}/libpf-registry-evidence
         run: |
-          node sdk/tests/test-packed-example.mjs libfx-registry.tgz native esm
-          node --no-experimental-require-module sdk/tests/test-packed-example.mjs libfx-registry.tgz native cjs
-          node --experimental-wasm-jspi sdk/tests/test-packed-example.mjs libfx-registry.tgz wasm esm
-          node --experimental-wasm-jspi --no-experimental-require-module sdk/tests/test-packed-example.mjs libfx-registry.tgz wasm cjs
-          node sdk/tests/test-next-package.mjs libfx-registry.tgz
-          node sdk/tests/test-next-package.mjs libfx-registry.tgz --webpack
-          node sdk/tests/test-next-package.mjs libfx-registry.tgz --next15
+          node sdk/tests/test-packed-example.mjs libpf-registry.tgz native esm
+          node --no-experimental-require-module sdk/tests/test-packed-example.mjs libpf-registry.tgz native cjs
+          node --experimental-wasm-jspi sdk/tests/test-packed-example.mjs libpf-registry.tgz wasm esm
+          node --experimental-wasm-jspi --no-experimental-require-module sdk/tests/test-packed-example.mjs libpf-registry.tgz wasm cjs
+          node sdk/tests/test-next-package.mjs libpf-registry.tgz
+          node sdk/tests/test-next-package.mjs libpf-registry.tgz --webpack
+          node sdk/tests/test-next-package.mjs libpf-registry.tgz --next15
       - name: Retain registry qualification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: libfx-registry-evidence
+          name: libpf-registry-evidence
           path: |
-            ${{ runner.temp }}/libfx-registry-evidence/libfx-next-*/*.log
-            ${{ runner.temp }}/libfx-registry-evidence/libfx-next-*/results.json
-            ${{ runner.temp }}/libfx-registry-evidence/libfx-trace-*/*.log
-            ${{ runner.temp }}/libfx-registry-evidence/libfx-trace-*/results.json
+            ${{ runner.temp }}/libpf-registry-evidence/libpf-next-*/*.log
+            ${{ runner.temp }}/libpf-registry-evidence/libpf-next-*/results.json
+            ${{ runner.temp }}/libpf-registry-evidence/libpf-trace-*/*.log
+            ${{ runner.temp }}/libpf-registry-evidence/libpf-trace-*/results.json
           if-no-files-found: ignore

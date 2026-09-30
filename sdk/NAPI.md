@@ -1,6 +1,6 @@
 # N-API core implementation
 
-This document describes the internal design of the native Node-API backend used by `libfx`, including its trust boundaries, lifecycle, resource limits, and security invariants. It is maintainer documentation, not part of the supported user-facing API.
+This document describes the internal design of the native Node-API backend used by `libpf`, including its trust boundaries, lifecycle, resource limits, and security invariants. It is maintainer documentation, not part of the supported user-facing API.
 
 ## Scope
 
@@ -13,9 +13,9 @@ The relevant ownership boundaries are:
 | Native addon entry point and ACP transport | `src/napi_core_main.zig` |
 | Shared ACP server and agent behavior | `src/acp/` |
 | Node backend discovery and adaptation | `sdk/node.js` |
-| Public JavaScript agent implementation | `sdk/fx-sdk.js` |
+| Public JavaScript agent implementation | `sdk/pf-sdk.js` |
 | Native build configuration | `build.zig` |
-| npm artifact assembly | `sdk/scripts/package-libfx.mjs` |
+| npm artifact assembly | `sdk/scripts/package-libpf.mjs` |
 | Native regression and security tests | `sdk/tests/test-native-core-*.mjs` |
 
 The architecture deliberately reuses the same ACP client and event translation used by the WebAssembly backend. The addon is a native byte transport around the existing ACP server, not an independently maintained agent implementation.
@@ -25,13 +25,13 @@ The architecture deliberately reuses the same ACP client and event translation u
 The data path is:
 
 ```text
-JavaScript createFxAgent()
+JavaScript createPfAgent()
         |
         v
 sdk/node.js selects native backend
         |
         v
-createCore(options) in libfx.node
+createCore(options) in libpf.node
         |
         v
 Zig Runtime thread runs acp_server.runWithTransport()
@@ -46,7 +46,7 @@ Zig Runtime thread runs acp_server.runWithTransport()
 newline-delimited ACP JSON-RPC
         |
         v
-shared createFxAgent() logic in sdk/fx-sdk.js
+shared createPfAgent() logic in sdk/pf-sdk.js
 ```
 
 `sdk/node.js` supplies a `runtimeFactory` to the shared JavaScript agent implementation. The factory exposes the same small runtime contract expected from the WebAssembly host:
@@ -71,7 +71,7 @@ The native kernel installs host-stream and host model-catalog providers. It does
 
 | Export | Purpose |
 | --- | --- |
-| `libfxApiVersion` | Checks compatibility with the JavaScript loader. Currently `3`. Low-level `createCore` backends must declare this exact version. |
+| `libpfApiVersion` | Checks compatibility with the JavaScript loader. Currently `3`. Low-level `createCore` backends must declare this exact version. |
 | `createCore(options)` | Allocates a runtime and readiness socketpair, then starts its ACP thread. |
 | `takeCoreReadyFd(handle)` | Transfers the readiness reader descriptor to JavaScript exactly once. The caller owns its close. |
 | `writeCore(handle, buffer)` | Appends bytes to the bounded input queue. |
@@ -87,7 +87,7 @@ The native kernel installs host-stream and host model-catalog providers. It does
 | `coreExitCode(handle)` | Returns the ACP thread's numeric exit status. |
 | `destroyCore(handle)` | Closes input, joins the thread, and releases native memory. |
 
-This ABI is internal. Consumers should use `createFxAgent()` from `sdk/node.js`; exposing the primitive functions keeps the native boundary small and testable.
+This ABI is internal. Consumers should use `createPfAgent()` from `sdk/node.js`; exposing the primitive functions keeps the native boundary small and testable.
 
 The addon ABI version is independent of the public JavaScript API version, which remains `2`. Only low-level core addons must declare version `3`.
 
@@ -95,7 +95,7 @@ Response operations return numeric outcomes: `0` means the operation was stale a
 
 Each handle is a JavaScript object wrapped around a `RuntimeHandle`. It is branded with `napi_type_tag` and checked before every operation. A structurally similar object cannot be substituted for a real handle. The wrapper owns a finalizer, so garbage collection invokes the same destruction path as explicit `destroyCore()`.
 
-`RuntimeHandle.runtime` becomes null during destruction. Later operations fail with `LIBFX_NATIVE_CLOSED`, and repeated destruction is harmless.
+`RuntimeHandle.runtime` becomes null during destruction. Later operations fail with `LIBPF_NATIVE_CLOSED`, and repeated destruction is harmless.
 
 ## Runtime lifecycle and concurrency
 
@@ -110,7 +110,7 @@ Creating a core performs these steps:
 
 The runtime thread never reads or mutates JavaScript values or calls Node-API. It blocks on the fetch bridge while Node owns `fetch`, response-body iteration, and `AbortController`. Queue state remains authoritative when readiness writes coalesce. An environment cleanup hook shuts down and joins every runtime, including worker termination. Explicit destruction unregisters that hook. Destruction marks the bridge shutting down, wakes every wait, joins the runtime thread, and then closes the readiness writer and any unclaimed reader before freeing native memory. The JavaScript adapter destroys its reader socket and waits for its close before settling `exited`.
 
-The addon initializes one process-wide `std.Io.Threaded` instance. Atomic state protects one-time initialization when the addon is loaded in multiple Node worker environments. The same initialization installs inherited process-environment access before any runtime thread starts. It does not configure fx product tracing from ambient `FX_TRACE_*` variables; libfx remains silent unless its JavaScript host explicitly requests SDK observability.
+The addon initializes one process-wide `std.Io.Threaded` instance. Atomic state protects one-time initialization when the addon is loaded in multiple Node worker environments. The same initialization installs inherited process-environment access before any runtime thread starts. It does not configure pf product tracing from ambient `PF_TRACE_*` variables; libpf remains silent unless its JavaScript host explicitly requests SDK observability.
 
 Input and output queues have independent `std.Io.Mutex` protection and condition variables. The ACP reader sleeps while input is empty. An output writer fills available byte capacity, then sleeps until JavaScript drains space. The JSON-RPC writer lock preserves record ordering across these partial writes. Closing the core closes both queues and wakes their waiters before joining the native thread.
 
@@ -129,7 +129,7 @@ These cases have dedicated tests. Any lifecycle change must preserve all four.
 
 ## Capability profile
 
-The native core is intentionally more restricted than the native `fx` CLI. Its ACP server configuration sets:
+The native core is intentionally more restricted than the native `pf` CLI. Its ACP server configuration sets:
 
 - `allow_native_tools = false`;
 - `allow_acp_mcp = false`;
@@ -138,7 +138,7 @@ The native core is intentionally more restricted than the native `fx` CLI. Its A
 - file listing and reading limits to zero;
 - command output limits to zero.
 
-As a result, the model receives no native tool advertisement, cannot launch commands, cannot read workspace files through fx tools, cannot start ACP-provided MCP servers, and cannot access the native secret store. `home` and `workspaceRoot` still provide identity and session context to shared ACP code, but they do not grant a tool capability by themselves.
+As a result, the model receives no native tool advertisement, cannot launch commands, cannot read workspace files through pf tools, cannot start ACP-provided MCP servers, and cannot access the native secret store. `home` and `workspaceRoot` still provide identity and session context to shared ACP code, but they do not grant a tool capability by themselves.
 
 Agent creation does not fetch the model catalog unless the host sets a named reasoning `effort` or enables `fast`; those overrides are validated against the catalog at creation. When a prompt needs model capabilities or context capacity, the shared resolver obtains the catalog through the supplied host fetch and caches its metadata for that agent. Initial model-visible system context comes only from the host's explicit `instructions`, including text assembled by the MCP and skills adapters.
 
@@ -148,7 +148,7 @@ This restriction is a security boundary. New tools or host effects must not be e
 
 ## Gateway endpoint policy
 
-The Gateway URL is validated independently in JavaScript and Zig. This duplication is intentional defense in depth because callers can load and call `libfx.node` directly, bypassing `sdk/fx-sdk.js`.
+The Gateway URL is validated independently in JavaScript and Zig. This duplication is intentional defense in depth because callers can load and call `libpf.node` directly, bypassing `sdk/pf-sdk.js`.
 
 Accepted endpoints are:
 
@@ -157,7 +157,7 @@ Accepted endpoints are:
 
 URLs with embedded credentials or fragments are rejected. Arbitrary HTTPS hosts, non-loopback HTTP hosts, and other schemes are rejected. Loopback HTTP exists only for local development and deterministic tests.
 
-Keep the validation in `sdk/fx-sdk.js`, `src/napi_core_main.zig`, and `streamable_http.validateEndpoint()` aligned. Loosening only one layer creates inconsistent behavior and may create a server-side request forgery path for callers using the low-level addon directly.
+Keep the validation in `sdk/pf-sdk.js`, `src/napi_core_main.zig`, and `streamable_http.validateEndpoint()` aligned. Loosening only one layer creates inconsistent behavior and may create a server-side request forgery path for callers using the low-level addon directly.
 
 ## Resource limits and backpressure
 
@@ -187,7 +187,7 @@ The fetch request budget covers the full model request, including retained histo
 
 Host tool responses must also fit the 8 MiB input bound after JSON framing, including the trailing newline. A response that exceeds this bound becomes a small tool error so the model can continue and the agent remains usable.
 
-Input overflow fails synchronously with `LIBFX_NATIVE_BACKPRESSURE`. Output queue pressure blocks the writer until space is available; a single message does not need to fit the queue. Allocation failure or an oversized output message permanently fails the output transport, notifies JavaScript, closes input, and shuts down host fetch. Later writes cannot publish a successful response after that failure.
+Input overflow fails synchronously with `LIBPF_NATIVE_BACKPRESSURE`. Output queue pressure blocks the writer until space is available; a single message does not need to fit the queue. Allocation failure or an oversized output message permanently fails the output transport, notifies JavaScript, closes input, and shuts down host fetch. Later writes cannot publish a successful response after that failure.
 
 The JavaScript adapter has one ordered output drain. A shared byte-framing parser preserves UTF-8 characters across native drain boundaries, rejects malformed or oversized records, and waits for SDK event admission before consuming another message. Readiness still services fetch cancellation while output is blocked. The unread event queue applies the same limits and cancellation rules on native and WebAssembly backends. Cancelling a turn releases event admission and discards subsequent cancelled-turn updates while transport framing continues, so the next turn starts on a complete record boundary. Destroying the runtime closes output before joining, including worker cleanup without an active JavaScript reader.
 
@@ -214,7 +214,7 @@ The copied key remains resident for the runtime lifetime and is freed during des
 
 ## Native code trust boundary
 
-A `.node` addon is executable native code loaded into the Node process. N-API provides ABI stability, not sandboxing. A compromised or substituted addon has the full authority of the host process regardless of the fx capability restrictions described above.
+A `.node` addon is executable native code loaded into the Node process. N-API provides ABI stability, not sandboxing. A compromised or substituted addon has the full authority of the host process regardless of the pf capability restrictions described above.
 
 Consequently:
 
@@ -225,9 +225,9 @@ Consequently:
 - addon load failures must not be mistaken for a safe sandbox boundary.
 
 The JavaScript loader uses literal references to the four packaged
-`libfx.<platform>-<arch>.node` names and selects the matching supported tuple.
-Local package assembly renames `zig-out/lib/libfx.node` to that tuple's package
-name. The loader validates `libfxApiVersion` and the expected export shape
+`libpf.<platform>-<arch>.node` names and selects the matching supported tuple.
+Local package assembly renames `zig-out/lib/libpf.node` to that tuple's package
+name. The loader validates `libpfApiVersion` and the expected export shape
 before use. `backend: "native"` fails closed if a compatible addon is
 unavailable. `backend: "auto"` may fall back to WebAssembly when JSPI is
 available. Explicit `nativeAddon` objects, paths, and URLs remain separate from
@@ -247,7 +247,7 @@ The build is enabled with:
 zig build -Dnapi-surface=core -Doptimize=ReleaseSafe
 ```
 
-`addNapiArtifact()` builds `src/napi_core_main.zig` as a stripped dynamic library, links libc, includes `node_api.h`, allows unresolved shared-library symbols for Node to resolve, and installs the artifact as `zig-out/lib/libfx.node`.
+`addNapiArtifact()` builds `src/napi_core_main.zig` as a stripped dynamic library, links libc, includes `node_api.h`, allows unresolved shared-library symbols for Node to resolve, and installs the artifact as `zig-out/lib/libpf.node`.
 
 The N-API artifact currently forces `ReleaseSafe` in `build.zig`; the command-line optimization value does not change that module's mode. Retaining safety checks is intentional for code processing untrusted JavaScript and protocol input.
 
@@ -258,7 +258,7 @@ Published packages contain one addon for each supported tuple:
 - `darwin-x64`;
 - `darwin-arm64`.
 
-`package-libfx.mjs` requires exactly those four names when assembling a
+`package-libpf.mjs` requires exactly those four names when assembling a
 publishable multi-platform package. It rejects missing, duplicate, or
 unexpected addon names. Package assembly also generates a self-contained
 `node.cjs` from the dependency-free ESM source with package-relative module
@@ -286,9 +286,9 @@ with `--webpack` for Next.js 16 webpack and `--next15` for Next.js 15 webpack;
 the default is Next.js 16 Turbopack. The local `test-next-package.mjs` harness
 accepts the same selectors and verifies emitted native assets in the route
 trace before exercising production and relocated standalone output. Set
-`LIBFX_VERCEL_PROJECT_ID`, `LIBFX_VERCEL_ORG_ID`, and `AI_GATEWAY_API_KEY` in
+`LIBPF_VERCEL_PROJECT_ID`, `LIBPF_VERCEL_ORG_ID`, and `AI_GATEWAY_API_KEY` in
 the environment. The harness uses the local Vercel CLI login, or
-`LIBFX_VERCEL_TOKEN` when supplied; npm publication does not require a Vercel
+`LIBPF_VERCEL_TOKEN` when supplied; npm publication does not require a Vercel
 token in GitHub. The dedicated verification project uses Node.js 24 and the
 fixture's per-deployment request token. Platform deployment protection must
 allow those requests, including the fixture's HTTP MCP calls. The harness
@@ -300,16 +300,16 @@ Native errors use stable codes where JavaScript needs to distinguish failure cla
 
 | Code | Meaning |
 | --- | --- |
-| `LIBFX_INVALID_ARGUMENT` | Missing, mistyped, oversized, invalid, or forged input. |
-| `LIBFX_NATIVE_LIMIT` | The process-wide runtime limit was reached. |
-| `LIBFX_NATIVE_BACKPRESSURE` | The bounded input queue cannot accept more bytes. |
-| `LIBFX_NATIVE_CLOSED` | An operation targeted a closed runtime. |
-| `LIBFX_NATIVE_OOM` | Native allocation failed. |
-| `LIBFX_NATIVE_THREAD` | Runtime thread creation failed. |
-| `LIBFX_NATIVE_IO` | Native queue or Buffer transfer failed. |
-| `LIBFX_NAPI` | A Node-API operation failed unexpectedly. |
+| `LIBPF_INVALID_ARGUMENT` | Missing, mistyped, oversized, invalid, or forged input. |
+| `LIBPF_NATIVE_LIMIT` | The process-wide runtime limit was reached. |
+| `LIBPF_NATIVE_BACKPRESSURE` | The bounded input queue cannot accept more bytes. |
+| `LIBPF_NATIVE_CLOSED` | An operation targeted a closed runtime. |
+| `LIBPF_NATIVE_OOM` | Native allocation failed. |
+| `LIBPF_NATIVE_THREAD` | Runtime thread creation failed. |
+| `LIBPF_NATIVE_IO` | Native queue or Buffer transfer failed. |
+| `LIBPF_NAPI` | A Node-API operation failed unexpectedly. |
 
-The JavaScript loader adds `LIBFX_NATIVE_UNAVAILABLE` for forced-native selection failures and `LIBFX_JSPI_REQUIRED` when neither native execution nor JSPI-backed WebAssembly is available.
+The JavaScript loader adds `LIBPF_NATIVE_UNAVAILABLE` for forced-native selection failures and `LIBPF_JSPI_REQUIRED` when neither native execution nor JSPI-backed WebAssembly is available.
 
 ## Verification
 
@@ -324,7 +324,7 @@ The lane covers:
 
 - malformed arguments, oversized values, fake handles, and use after close;
 - input backpressure and the process-wide runtime cap;
-- ambient fx trace isolation for stdout, stderr, and trace files;
+- ambient pf trace isolation for stdout, stderr, and trace files;
 - repeated failed construction without file descriptor leakage;
 - blocked ACP MCP servers and absent native tool advertisement;
 - same-environment concurrency and Node worker isolation;

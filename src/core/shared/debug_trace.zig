@@ -411,10 +411,10 @@ fn appendLineToFile(zio: std.Io, path: []const u8, line: []const u8) void {
 }
 
 fn loadOptionsFromEnv(alloc: Allocator, workspace_root: []const u8) !Options {
-    const trace_log = loadOptionalEnv("FX_TRACE_LOG");
-    const trace_flag = loadOptionalEnv("FX_TRACE");
-    const trace_stderr = loadOptionalEnv("FX_TRACE_STDERR");
-    const trace_scopes = loadOptionalEnv("FX_TRACE_SCOPES");
+    const trace_log = loadOptionalEnv("PF_TRACE_LOG");
+    const trace_flag = loadOptionalEnv("PF_TRACE");
+    const trace_stderr = loadOptionalEnv("PF_TRACE_STDERR");
+    const trace_scopes = loadOptionalEnv("PF_TRACE_SCOPES");
     const stderr_enabled = isTruthy(trace_stderr);
 
     if (trace_log) |raw_path| {
@@ -480,7 +480,7 @@ fn defaultLogPathForHome(alloc: Allocator, home: []const u8) ![]u8 {
 }
 
 fn fallbackLogPathForMillis(alloc: Allocator, millis: i64) ![]u8 {
-    return std.fmt.allocPrint(alloc, "/tmp/fx-trace-{d}.log", .{millis});
+    return std.fmt.allocPrint(alloc, "/tmp/pf-trace-{d}.log", .{millis});
 }
 
 fn ensureParentDir(path: []const u8) !void {
@@ -529,18 +529,18 @@ test "isTruthy parses accepted and rejected values" {
     try std.testing.expect(!isTruthy(null));
 }
 
-test "home default log path uses fx logs directory" {
+test "home default log path uses pf logs directory" {
     const alloc = std.testing.allocator;
     const path = try defaultLogPathForHome(alloc, "/tmp/fake-home");
     defer alloc.free(path);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.fx/logs/trace.log", path);
+    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/logs/trace.log", path);
 }
 
 test "fallback default log path uses tmp trace path" {
     const alloc = std.testing.allocator;
     const path = try fallbackLogPathForMillis(alloc, 12345);
     defer alloc.free(path);
-    try std.testing.expectEqualStrings("/tmp/fx-trace-12345.log", path);
+    try std.testing.expectEqualStrings("/tmp/pf-trace-12345.log", path);
 }
 
 test "trace logger writes configured file" {
@@ -608,13 +608,13 @@ test "redactedJsonPreview reports shape without values" {
 
 test "keylessJsonPreview reports shape without keys or values" {
     const alloc = std.testing.allocator;
-    const preview_text = try keylessJsonPreview(alloc, "{\"FX_DYNAMIC_PATH\":\"secret.txt\",\"FX_DYNAMIC_CONTENT\":\"very secret\",\"nested\":{\"FX_DYNAMIC_TOKEN\":\"abc\"}}");
+    const preview_text = try keylessJsonPreview(alloc, "{\"PF_DYNAMIC_PATH\":\"secret.txt\",\"PF_DYNAMIC_CONTENT\":\"very secret\",\"nested\":{\"PF_DYNAMIC_TOKEN\":\"abc\"}}");
     defer alloc.free(preview_text);
 
     try std.testing.expect(std.mem.find(u8, preview_text, "<object_fields=3 values=[") != null);
-    try std.testing.expect(std.mem.find(u8, preview_text, "FX_DYNAMIC_PATH") == null);
-    try std.testing.expect(std.mem.find(u8, preview_text, "FX_DYNAMIC_CONTENT") == null);
-    try std.testing.expect(std.mem.find(u8, preview_text, "FX_DYNAMIC_TOKEN") == null);
+    try std.testing.expect(std.mem.find(u8, preview_text, "PF_DYNAMIC_PATH") == null);
+    try std.testing.expect(std.mem.find(u8, preview_text, "PF_DYNAMIC_CONTENT") == null);
+    try std.testing.expect(std.mem.find(u8, preview_text, "PF_DYNAMIC_TOKEN") == null);
     try std.testing.expect(std.mem.find(u8, preview_text, "secret.txt") == null);
     try std.testing.expect(std.mem.find(u8, preview_text, "very secret") == null);
     try std.testing.expect(std.mem.find(u8, preview_text, "abc") == null);
@@ -663,9 +663,9 @@ test "trace lines encode every non-ASCII and control byte" {
 
 test "resolveLogPath resolves absolute and relative paths" {
     const alloc = std.testing.allocator;
-    const absolute = try resolveLogPath(alloc, "/tmp/workspace", " \t/tmp/fx-absolute-trace.log\n");
+    const absolute = try resolveLogPath(alloc, "/tmp/workspace", " \t/tmp/pf-absolute-trace.log\n");
     defer alloc.free(absolute);
-    try std.testing.expectEqualStrings("/tmp/fx-absolute-trace.log", absolute);
+    try std.testing.expectEqualStrings("/tmp/pf-absolute-trace.log", absolute);
 
     const relative = try resolveLogPath(alloc, "/tmp/workspace", "logs/trace.log");
     defer alloc.free(relative);
@@ -724,9 +724,9 @@ test "shutdown clears state and allows reconfigure" {
 test "configureFromEnv leaves tracing disabled without env" {
     resetForTest();
     defer resetForTest();
-    try std.testing.expect(io_mod.getenv("FX_TRACE_LOG") == null);
-    try std.testing.expect(io_mod.getenv("FX_TRACE") == null);
-    try std.testing.expect(io_mod.getenv("FX_TRACE_STDERR") == null);
+    try std.testing.expect(io_mod.getenv("PF_TRACE_LOG") == null);
+    try std.testing.expect(io_mod.getenv("PF_TRACE") == null);
+    try std.testing.expect(io_mod.getenv("PF_TRACE_STDERR") == null);
     configureFromEnv(std.testing.allocator, "/tmp/workspace");
     try std.testing.expect(!isEnabled());
 }

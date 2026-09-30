@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, runFx } from "../evals/eval-helpers";
+import { PF_BIN, runPf } from "../evals/eval-helpers";
 import { findFooterBlocks, readTrace } from "./tui-render-assertions";
 import {
   FAKE_GATEWAY_MODEL,
@@ -65,7 +65,7 @@ afterEach(async () => {
 
 describe.skipIf(SKIP)("tui: interrupt recovery", () => {
   for (const inject of [false, true]) test(`quit reports final history persistence failure with fault=${inject}`, async () => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), "fx-shutdown-save-")));
+    root = realpathSync(mkdtempSync(join(tmpdir(), "pf-shutdown-save-")));
     const home = join(root, "home"), workspace = join(root, "workspace");
     mkdirSync(home); mkdirSync(workspace);
     const library = join(root, process.platform === "darwin" ? "sync-fault.dylib" : "sync-fault.so");
@@ -82,24 +82,24 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       fakeGatewayFinalText("SHUTDOWN_RESUMED_281"),
     ]);
     const env = { HOME: home, AI_GATEWAY_API_KEY: "fake-shutdown-save", VERCEL_OIDC_TOKEN: undefined,
-      FX_DISABLE_KEYCHAIN: "1", FX_SKIP_ONBOARDING: "1", FX_SOUND: "0", FX_AUTO_UPGRADE: "0",
-      FX_MODEL: FAKE_GATEWAY_MODEL, FX_GATEWAY_BASE_URL: gateway.baseUrl, FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-      FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl, FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models` };
+      PF_DISABLE_KEYCHAIN: "1", PF_SKIP_ONBOARDING: "1", PF_SOUND: "0", PF_AUTO_UPGRADE: "0",
+      PF_MODEL: FAKE_GATEWAY_MODEL, PF_GATEWAY_BASE_URL: gateway.baseUrl, PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+      PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl, PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models` };
     try {
-      const seeded = await runFx(["ask", "--json", "Save the first fact."], { cwd: workspace, env, timeoutMs: TIMEOUT });
+      const seeded = await runPf(["ask", "--json", "Save the first fact."], { cwd: workspace, env, timeoutMs: TIMEOUT });
       expect(seeded.code).toBe(0); expect(seeded.stderr).toBe("");
       const id = JSON.parse(seeded.stdout).session_id;
-      const eventPath = join(home, ".fx", "sessions", id, "events.jsonl");
+      const eventPath = join(home, ".pf", "sessions", id, "events.jsonl");
       const saved = readFileSync(eventPath);
       const stderrPath = join(root, "stderr.log"), tracePath = join(root, "trace.log");
       const arm = join(root, "armed"), receipt = join(root, "injected.txt");
       const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
-      session = await TmuxSession.create({ cmd: `${quote(FX_BIN)} --resume ${quote(id)}`, cwd: workspace,
+      session = await TmuxSession.create({ cmd: `${quote(PF_BIN)} --resume ${quote(id)}`, cwd: workspace,
         isolated: true, remainOnExit: true, width: 110, height: 36, stderrPath,
         env: { ...env, [process.platform === "darwin" ? "DYLD_INSERT_LIBRARIES" : "LD_PRELOAD"]: library,
-          FX_TEST_SYNC_TARGET: eventPath, FX_TEST_SYNC_ARM: arm, FX_TEST_SYNC_RECORD: receipt,
-          FX_TEST_SYNC_MATCH: "SHUTDOWN_PENDING_REQUEST_392", FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: "session,worker,input", FX_RECORD: join(root, "shutdown.fxtape") } });
+          PF_TEST_SYNC_TARGET: eventPath, PF_TEST_SYNC_ARM: arm, PF_TEST_SYNC_RECORD: receipt,
+          PF_TEST_SYNC_MATCH: "SHUTDOWN_PENDING_REQUEST_392", PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: "session,worker,input", PF_RECORD: join(root, "shutdown.pftape") } });
       await session.waitForStableComposer(TIMEOUT);
       await session.sendText("SHUTDOWN_PENDING_REQUEST_392");
       await waitForCondition(() => requestHeld, "held shutdown request");
@@ -116,7 +116,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
         expect(output + stderr).toMatch(/save.*fail|fail.*sav|could not.*sav|unable to.*sav/i);
       } else { expect(session.paneStatus().status).toBe(0); expect(stderr).toBe(""); }
       expect(readFileSync(eventPath).subarray(0, saved.length).equals(saved)).toBe(true);
-      const resumed = await runFx(["ask", "--json", "--resume-id", id, "Continue without repeating work."], {
+      const resumed = await runPf(["ask", "--json", "--resume-id", id, "Continue without repeating work."], {
         cwd: workspace, env, timeoutMs: TIMEOUT });
       expect(resumed.code).toBe(0); expect(resumed.stderr).toBe("");
       expect(JSON.parse(resumed.stdout).session_id).toBe(id);
@@ -127,15 +127,15 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
   test(
     "Ctrl-C clears the composer before cancelling an active response",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-composer-interrupt-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-composer-interrupt-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      const tapePath = join(root, "render.fxtape");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      const tapePath = join(root, "render.pftape");
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), "{}");
+      writeFileSync(join(home, ".pf", "settings.json"), "{}");
 
       const held: HoldState = { started: false, cancelled: false, cancelCount: 0, released: false };
       gateway = startFakeGateway([
@@ -150,14 +150,14 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-composer-interrupt-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: `${TRACE_SCOPES},input`,
-          FX_TRACE_LOG: tracePath,
-          FX_RECORD: tapePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: `${TRACE_SCOPES},input`,
+          PF_TRACE_LOG: tracePath,
+          PF_RECORD: tapePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -169,7 +169,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       await session.sendKeys("C-c");
       const cleared = (await session.capturePaneGrid()).join("\n");
       expect(cleared).not.toContain("DISCARD_THIS_DRAFT");
-      expect(cleared).not.toContain("What can fx do differently?");
+      expect(cleared).not.toContain("What can pf do differently?");
       expect(held.cancelCount).toBe(0);
       expect(readTrace(tracePath)).toContain("draft cleared reason=ctrl_c");
       expect(readTrace(tracePath)).not.toContain("event=cancel_requested");
@@ -177,20 +177,20 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
 
       await session.sendKeys("C-c");
       await waitForCondition(() => held.cancelled, "second Control-C cancellation");
-      await session.waitForText("What can fx do differently?", TIMEOUT);
+      await session.waitForText("What can pf do differently?", TIMEOUT);
       expect(held.cancelCount).toBe(1);
       expect(session.isPaneAlive()).toBe(true);
 
       await session.sendText("Continue after cancellation.");
       await session.waitForText("COMPOSER_INTERRUPT_RECOVERED", TIMEOUT);
       const scrollback = await session.captureFullScrollback();
-      expect(countOccurrences(scrollback, "What can fx do differently?")).toBe(1);
+      expect(countOccurrences(scrollback, "What can pf do differently?")).toBe(1);
       expect(scrollback).not.toContain("DISCARD_THIS_DRAFT");
       expect(gateway.requests).toHaveLength(2);
       expect(gateway.requests[1]!.body).not.toContain("DISCARD_THIS_DRAFT");
       expect(gateway.requests[1]!.body).toContain("<turn_aborted>");
       expect(readFileSync(stderrPath, "utf8")).toBe("");
-      const replay = Bun.spawnSync([join(import.meta.dir, "../../zig-out/bin/fx"), "replay", tapePath]);
+      const replay = Bun.spawnSync([join(import.meta.dir, "../../zig-out/bin/pf"), "replay", tapePath]);
       expect(replay.exitCode).toBe(0);
       expect(replay.stdout.toString()).toContain("COMPOSER_INTERRUPT_RECOVERED");
     },
@@ -200,15 +200,15 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
   test(
     "immediate prompt after cancellation keeps thinking visible and remains cancellable",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-cancel-next-prompt-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-cancel-next-prompt-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      const tapePath = join(root, "render.fxtape");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      const tapePath = join(root, "render.pftape");
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), "{}");
+      writeFileSync(join(home, ".pf", "settings.json"), "{}");
       writeFileSync(join(workspace, "probe.txt"), "CANCEL_FOLLOW_UP_READ\n");
 
       const held: HoldState = { started: false, cancelled: false, cancelCount: 0, released: false };
@@ -229,14 +229,14 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-cancel-next-prompt-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: `${TRACE_SCOPES},input`,
-          FX_TRACE_LOG: tracePath,
-          FX_RECORD: tapePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: `${TRACE_SCOPES},input`,
+          PF_TRACE_LOG: tracePath,
+          PF_RECORD: tapePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -272,14 +272,14 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       );
       const scrollback = await session.captureFullScrollback();
       expect(scrollback).toContain("Read probe.txt");
-      expect(countOccurrences(scrollback, "What can fx do differently?")).toBe(2);
+      expect(countOccurrences(scrollback, "What can pf do differently?")).toBe(2);
       expect((await session.capturePaneGrid()).join("\n")).not.toContain("Thinking");
       expect(gateway.requests).toHaveLength(4);
       expect(held.cancelCount).toBe(1);
       expect(followUp.cancelCount).toBe(1);
       expect(readFileSync(stderrPath, "utf8")).toBe("");
       expect(session.isPaneAlive()).toBe(true);
-      const replay = Bun.spawnSync([join(import.meta.dir, "../../zig-out/bin/fx"), "replay", tapePath]);
+      const replay = Bun.spawnSync([join(import.meta.dir, "../../zig-out/bin/pf"), "replay", tapePath]);
       expect(replay.exitCode).toBe(0);
       expect(replay.stdout.toString()).toContain("CANCEL_NEXT_PROMPT_COMPLETE");
       expect(replay.stdout.toString()).not.toContain("Thinking");
@@ -290,14 +290,14 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
   test(
     "submitted text interrupts a tool-free response and continues immediately",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-text-steering-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-text-steering-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), "{}");
+      writeFileSync(join(home, ".pf", "settings.json"), "{}");
 
       const held: HoldState = {
         started: false,
@@ -319,13 +319,13 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-text-queues-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: TRACE_SCOPES,
-          FX_TRACE_LOG: tracePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: TRACE_SCOPES,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -369,7 +369,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       expect(session.isAlive()).toBe(true);
       expect(session.isPaneAlive()).toBe(true);
 
-      const sessionRoot = join(home, ".fx", "sessions");
+      const sessionRoot = join(home, ".pf", "sessions");
       let eventsPath: string | undefined;
       await waitForCondition(() => {
         eventsPath = readdirSync(sessionRoot, { withFileTypes: true })
@@ -392,7 +392,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
   test(
     "up arrow retracts a tool-queued steer into the composer for editing",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-steer-retract-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-steer-retract-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
@@ -400,9 +400,9 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       const startPath = join(workspace, "started");
       const releasePath = join(workspace, "release");
       const finishedPath = join(workspace, "finished");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), "{}");
+      writeFileSync(join(home, ".pf", "settings.json"), "{}");
       writeFileSync(
         join(workspace, "check.sh"),
         "printf started > started\nwhile [ ! -f release ]; do sleep 0.05; done\nprintf done > finished\n",
@@ -423,15 +423,15 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-steer-retract-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_SOUND: "0",
-          FX_PERMISSION_MODE: "yolo",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: TRACE_SCOPES,
-          FX_TRACE_LOG: tracePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_SOUND: "0",
+          PF_PERMISSION_MODE: "yolo",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: TRACE_SCOPES,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -472,14 +472,14 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
   test(
     "partial output survives cancellation and the next prompt completes",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-interrupt-recovery-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-interrupt-recovery-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      const settingsPath = join(home, ".fx", "settings.json");
+      const settingsPath = join(home, ".pf", "settings.json");
       writeFileSync(
         settingsPath,
         JSON.stringify({ model: FAKE_GATEWAY_MODEL }) + "\n",
@@ -509,13 +509,13 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-interrupt-recovery-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
-          FX_TRACE_SCOPES: TRACE_SCOPES,
-          FX_TRACE_LOG: tracePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+          PF_TRACE_SCOPES: TRACE_SCOPES,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -530,7 +530,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       await session.sendKeys("Escape");
       await waitForCondition(() => held.cancelled, "gateway stream cancellation");
       await waitForTrace(tracePath, "event=interrupt_persisted", TIMEOUT);
-      await session.waitForText("What can fx do differently?", TIMEOUT);
+      await session.waitForText("What can pf do differently?", TIMEOUT);
       const cancelledGrid = await session.capturePaneGrid();
       const footer = findFooterBlocks(cancelledGrid).at(-1);
       const cancelledRow = cancelledGrid.findIndex((row) => row.includes("■ Cancelled"));
@@ -553,7 +553,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
         expect(interruptedScrollback).toContain(chunk.trim());
       }
       expect(
-        countOccurrences(interruptedScrollback, "What can fx do differently?"),
+        countOccurrences(interruptedScrollback, "What can pf do differently?"),
       ).toBe(1);
       expect(interruptedScrollback).not.toContain("system: cancelled");
       expect(interruptedScrollback).not.toContain("Cancelling");
@@ -570,7 +570,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       }
       expect(finalScrollback).toContain(FOLLOW_UP_RESPONSE);
       expect(
-        countOccurrences(finalScrollback, "What can fx do differently?"),
+        countOccurrences(finalScrollback, "What can pf do differently?"),
       ).toBe(1);
       expect(finalScrollback).not.toContain("system: cancelled");
       expect(finalScrollback).not.toContain("Cancelling");
@@ -613,7 +613,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       expect(readFileSync(stderrPath, "utf8")).toBe("");
       expect(finalScrollback).not.toContain("HTTP 400");
 
-      const sessionRoot = join(home, ".fx", "sessions");
+      const sessionRoot = join(home, ".pf", "sessions");
       const sessionIds = readdirSync(sessionRoot, { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)
@@ -646,14 +646,14 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
   test(
     "workspace mutation waits for cancelled worker unwind",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-workspace-cancel-unwind-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-workspace-cancel-unwind-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const observed = join(root, "observed");
       const shared = join(root, "shared");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
       mkdirSync(observed, { recursive: true });
       mkdirSync(shared, { recursive: true });
@@ -661,7 +661,7 @@ describe.skipIf(SKIP)("tui: interrupt recovery", () => {
       const observedRoot = realpathSync(observed);
       const sharedRoot = realpathSync(shared);
       writeFileSync(
-        join(home, ".fx", "settings.json"),
+        join(home, ".pf", "settings.json"),
         JSON.stringify({
           sandbox: "none",
           permission_mode: "auto",
@@ -697,13 +697,13 @@ while :; do sleep 1; done
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-workspace-cancel-unwind-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: `${TRACE_SCOPES},core`,
-          FX_TRACE_LOG: tracePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: `${TRACE_SCOPES},core`,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -732,7 +732,7 @@ while :; do sleep 1; done
       const cancelStartedAt = Date.now();
       await session.sendKeys("Escape");
       const immediateCancellation = await session.waitForText(
-        "What can fx do differently?",
+        "What can pf do differently?",
         TIMEOUT,
       );
       expect(Date.now() - cancelStartedAt).toBeLessThan(500);
@@ -752,7 +752,7 @@ while :; do sleep 1; done
         TIMEOUT,
       );
       const beforeRetry = JSON.parse(
-        readFileSync(join(home, ".fx", "settings.json"), "utf8"),
+        readFileSync(join(home, ".pf", "settings.json"), "utf8"),
       );
       expect(beforeRetry.workspaces[workspaceRoot].additional_directories).toEqual([
         observedRoot,
@@ -760,7 +760,7 @@ while :; do sleep 1; done
 
       await waitForTrace(tracePath, "finish processing queued=0", TIMEOUT);
       await session.waitForText(
-        "Cancelled ./hold-workspace-cancel.sh · What can fx do differently?",
+        "Cancelled ./hold-workspace-cancel.sh · What can pf do differently?",
         TIMEOUT,
       );
       await session.sendText("/workspace list");
@@ -771,7 +771,7 @@ while :; do sleep 1; done
       await session.sendText(command);
       await session.waitForText("runtime_changed=true", TIMEOUT);
 
-      const stored = JSON.parse(readFileSync(join(home, ".fx", "settings.json"), "utf8"));
+      const stored = JSON.parse(readFileSync(join(home, ".pf", "settings.json"), "utf8"));
       expect(stored.workspaces[workspaceRoot].additional_directories).toEqual([
         observedRoot,
         sharedRoot,
@@ -787,12 +787,12 @@ while :; do sleep 1; done
   test(
     "double Ctrl-C during a running command exits cleanly and kills the command",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-exit-running-command-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-exit-running-command-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
       const workspaceRoot = realpathSync(workspace);
       const pidPath = join(workspaceRoot, "held-command.pid");
@@ -823,14 +823,14 @@ while :; do sleep 1; done
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-exit-running-command-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_PERMISSION_MODE: "full-access",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: `${TRACE_SCOPES},core,shutdown`,
-          FX_TRACE_LOG: tracePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_PERMISSION_MODE: "full-access",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: `${TRACE_SCOPES},core,shutdown`,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -858,7 +858,7 @@ while :; do sleep 1; done
   test(
     "late successful tool settlement stays truthful after Escape",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-late-tool-success-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-late-tool-success-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const corpus = join(workspace, "corpus");
@@ -866,9 +866,9 @@ while :; do sleep 1; done
       const tracePath = join(root, "trace.log");
       const pattern = "LATE_SUCCESS_NEEDLE";
       const callId = "late_success_grep";
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(corpus, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), "{}");
+      writeFileSync(join(home, ".pf", "settings.json"), "{}");
       for (let index = 0; index < 30_000; index += 1) {
         writeFileSync(
           join(corpus, `candidate-${String(index).padStart(5, "0")}.txt`),
@@ -892,13 +892,13 @@ while :; do sleep 1; done
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-late-tool-success-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: `${TRACE_SCOPES},tool,ui_activity`,
-          FX_TRACE_LOG: tracePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: `${TRACE_SCOPES},tool,ui_activity`,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -914,7 +914,7 @@ while :; do sleep 1; done
       await Bun.sleep(150);
       const cancelStartedAt = Date.now();
       await session.sendKeys("Escape");
-      await session.waitForText("What can fx do differently?", TIMEOUT);
+      await session.waitForText("What can pf do differently?", TIMEOUT);
       expect(Date.now() - cancelStartedAt).toBeLessThan(500);
       await waitForTrace(tracePath, `event=after_tool_execution`, TIMEOUT);
       await waitForTrace(tracePath, "finish processing queued=0", TIMEOUT);
@@ -930,7 +930,7 @@ while :; do sleep 1; done
       await session.waitForText(`Searched ${pattern}`, TIMEOUT);
       const scrollback = await session.captureFullScrollback();
       expect(scrollback).toContain(`Searched ${pattern}`);
-      expect(countOccurrences(scrollback, "What can fx do differently?")).toBe(1);
+      expect(countOccurrences(scrollback, "What can pf do differently?")).toBe(1);
       expect(scrollback).not.toContain("system: cancelled");
       expect(scrollback).not.toContain("Cancelling");
       expect(gateway.requests).toHaveLength(1);
@@ -943,14 +943,14 @@ while :; do sleep 1; done
   test(
     "follow-up sent while a cancellation finalizes is never rejected",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-cancel-send-window-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-cancel-send-window-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), "{}");
+      writeFileSync(join(home, ".pf", "settings.json"), "{}");
 
       const held: HoldState = {
         started: false,
@@ -971,13 +971,13 @@ while :; do sleep 1; done
           HOME: home,
           AI_GATEWAY_API_KEY: "fake-cancel-send-window-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_TRACE_SCOPES: TRACE_SCOPES,
-          FX_TRACE_LOG: tracePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_TRACE_SCOPES: TRACE_SCOPES,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
@@ -1004,14 +1004,14 @@ while :; do sleep 1; done
   test(
     "resume after an unclean exit asks before restarting a recovering turn",
     async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), "fx-crash-resume-gate-")));
+      root = realpathSync(mkdtempSync(join(tmpdir(), "pf-crash-resume-gate-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
-      writeFileSync(join(home, ".fx", "settings.json"), "{}");
+      writeFileSync(join(home, ".pf", "settings.json"), "{}");
 
       const held: HoldState = {
         started: false,
@@ -1024,9 +1024,9 @@ while :; do sleep 1; done
         HOME: home,
         AI_GATEWAY_API_KEY: "fake-crash-resume-gate-key",
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_MODEL: FAKE_GATEWAY_MODEL,
-        FX_TRACE_SCOPES: TRACE_SCOPES,
+        PF_AUTO_UPGRADE: "0",
+        PF_MODEL: FAKE_GATEWAY_MODEL,
+        PF_TRACE_SCOPES: TRACE_SCOPES,
       };
       session = await TmuxSession.create({
         cwd: realpathSync(workspace),
@@ -1037,23 +1037,23 @@ while :; do sleep 1; done
         isolated: true,
         env: {
           ...baseEnv,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_TRACE_LOG: tracePath,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_TRACE_LOG: tracePath,
         },
       });
       await session.waitForComposer(TIMEOUT);
       await session.sendText("Work on the report.");
       await waitForCondition(() => held.started, "held response start");
-      // Drop the live stream so the turn enters recovery, then kill fx before
+      // Drop the live stream so the turn enters recovery, then kill pf before
       // any cleanup can run: the checkpoint and the owner marker both survive.
       gateway.stop();
       await waitForTrace(tracePath, "recovery_checkpoint_set", TIMEOUT);
       Bun.spawnSync(["kill", "-9", String(session.processPid())]);
       await session.waitForPane(() => session!.paneStatus().dead, TIMEOUT);
 
-      const sessionsRoot = join(home, ".fx", "sessions");
+      const sessionsRoot = join(home, ".pf", "sessions");
       const sessionId = readdirSync(sessionsRoot, { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
         .map((entry) => entry.name)[0]!;
@@ -1071,7 +1071,7 @@ while :; do sleep 1; done
       ]);
       gateway = retryGateway;
       session = await TmuxSession.create({
-        cmd: `${FX_BIN} --resume ${sessionId}`,
+        cmd: `${PF_BIN} --resume ${sessionId}`,
         cwd: realpathSync(workspace),
         stderrPath: join(root, "stderr-resume.log"),
         width: 120,
@@ -1079,17 +1079,17 @@ while :; do sleep 1; done
         isolated: true,
         env: {
           ...baseEnv,
-          FX_GATEWAY_BASE_URL: retryGateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: retryGateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: retryGateway.chatUrl,
-          FX_TRACE_LOG: join(root, "trace-resume.log"),
+          PF_GATEWAY_BASE_URL: retryGateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: retryGateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: retryGateway.chatUrl,
+          PF_TRACE_LOG: join(root, "trace-resume.log"),
         },
       });
       await session.waitForComposer(TIMEOUT);
       await Bun.sleep(1_500);
       expect(retryGateway.requests).toHaveLength(0);
       const resumedScrollback = (await session.captureFullScrollback()).replaceAll(/\s+/g, " ");
-      expect(resumedScrollback).toContain("fx quit unexpectedly while this response was recovering");
+      expect(resumedScrollback).toContain("pf quit unexpectedly while this response was recovering");
       expect(resumedScrollback).not.toContain("continues automatically");
 
       // Quitting without choosing keeps the suppression sticky: the next
@@ -1103,7 +1103,7 @@ while :; do sleep 1; done
       session = null;
 
       session = await TmuxSession.create({
-        cmd: `${FX_BIN} --resume ${sessionId}`,
+        cmd: `${PF_BIN} --resume ${sessionId}`,
         cwd: realpathSync(workspace),
         stderrPath: join(root, "stderr-resume2.log"),
         width: 120,
@@ -1111,17 +1111,17 @@ while :; do sleep 1; done
         isolated: true,
         env: {
           ...baseEnv,
-          FX_GATEWAY_BASE_URL: retryGateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: retryGateway.chatUrl,
-          FX_E2E_GATEWAY_CHAT_URL: retryGateway.chatUrl,
-          FX_TRACE_LOG: join(root, "trace-resume2.log"),
+          PF_GATEWAY_BASE_URL: retryGateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: retryGateway.chatUrl,
+          PF_E2E_GATEWAY_CHAT_URL: retryGateway.chatUrl,
+          PF_TRACE_LOG: join(root, "trace-resume2.log"),
         },
       });
       await session.waitForComposer(TIMEOUT);
       await Bun.sleep(1_500);
       expect(retryGateway.requests).toHaveLength(0);
       const reaskedScrollback = (await session.captureFullScrollback()).replaceAll(/\s+/g, " ");
-      expect(reaskedScrollback).toContain("fx quit unexpectedly while this response was recovering");
+      expect(reaskedScrollback).toContain("pf quit unexpectedly while this response was recovering");
 
       await session.sendText("continue");
       await session.waitForText("RECOVERY_RETRY_COMPLETE", TIMEOUT);

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, runFx } from "../evals/eval-helpers";
+import { PF_BIN, runPf } from "../evals/eval-helpers";
 import {
   fakeGatewayFinalText,
   startDynamicFakeGateway,
@@ -22,12 +22,12 @@ type FixtureRoot = {
 };
 
 function createFixtureRoot(label: string, settings: string = "{}"): FixtureRoot {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), `fx-session-title-${label}-`)));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), `pf-session-title-${label}-`)));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
-  writeFileSync(join(home, ".fx", "settings.json"), settings);
+  writeFileSync(join(home, ".pf", "settings.json"), settings);
   return { root, home, workspace: realpathSync(workspace) };
 }
 
@@ -43,23 +43,23 @@ function baseEnv(root: FixtureRoot, gateway: { baseUrl: string; chatUrl: string 
     PATH: process.env.PATH ?? "/usr/bin:/bin",
     HOME: root.home,
     AI_GATEWAY_API_KEY: "synthetic-title",
-    FX_DISABLE_KEYCHAIN: "1",
-    FX_E2E_DISABLE_DOTENV: "1",
-    FX_AUTO_UPGRADE: "0",
-    FX_SOUND: "0",
-    FX_SKIP_ONBOARDING: "1",
-    FX_MODEL: MAIN_MODEL,
-    FX_PERMISSION_MODE: "full-access",
-    FX_MAX_AGENT_STEPS: "2",
-    FX_GATEWAY_BASE_URL: gateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+    PF_DISABLE_KEYCHAIN: "1",
+    PF_E2E_DISABLE_DOTENV: "1",
+    PF_AUTO_UPGRADE: "0",
+    PF_SOUND: "0",
+    PF_SKIP_ONBOARDING: "1",
+    PF_MODEL: MAIN_MODEL,
+    PF_PERMISSION_MODE: "full-access",
+    PF_MAX_AGENT_STEPS: "2",
+    PF_GATEWAY_BASE_URL: gateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
   };
 }
 
 function sessionTitles(root: FixtureRoot): string[] {
-  const sessionsDir = join(root.home, ".fx", "sessions");
+  const sessionsDir = join(root.home, ".pf", "sessions");
   if (!existsSync(sessionsDir)) return [];
   const titles: string[] = [];
   for (const id of readdirSync(sessionsDir)) {
@@ -75,11 +75,11 @@ function titleRequests(gateway: ReturnType<typeof startTitleAwareGateway>) {
   return gateway.titleRequests;
 }
 
-test("fx ask generates a model title for a fresh session", async () => {
+test("pf ask generates a model title for a fresh session", async () => {
   const root = createFixtureRoot("ask");
   const gateway = startTitleAwareGateway();
   try {
-    const result = await runFx(["ask", "refactor the renderer loop to fix the crash"], {
+    const result = await runPf(["ask", "refactor the renderer loop to fix the crash"], {
       cwd: root.workspace,
       env: baseEnv(root, gateway),
       timeoutMs: 30_000,
@@ -94,7 +94,7 @@ test("fx ask generates a model title for a fresh session", async () => {
 
     expect(sessionTitles(root)).toContain(GENERATED_TITLE);
 
-    const list = await runFx(["sessions", "--json"], {
+    const list = await runPf(["sessions", "--json"], {
       cwd: root.workspace,
       env: baseEnv(root, gateway),
       timeoutMs: 15_000,
@@ -106,11 +106,11 @@ test("fx ask generates a model title for a fresh session", async () => {
   }
 });
 
-test("fx ask keeps the derived title when session_titles is off", async () => {
+test("pf ask keeps the derived title when session_titles is off", async () => {
   const root = createFixtureRoot("disabled", JSON.stringify({ session_titles: false }));
   const gateway = startTitleAwareGateway();
   try {
-    const result = await runFx(["ask", "refactor the renderer loop to fix the crash"], {
+    const result = await runPf(["ask", "refactor the renderer loop to fix the crash"], {
       cwd: root.workspace,
       env: baseEnv(root, gateway),
       timeoutMs: 30_000,
@@ -124,14 +124,14 @@ test("fx ask keeps the derived title when session_titles is off", async () => {
   }
 });
 
-test("fx ask keeps the derived title when the title model output is unusable", async () => {
+test("pf ask keeps the derived title when the title model output is unusable", async () => {
   const root = createFixtureRoot("unusable");
   const gateway = startDynamicFakeGateway(_raw => fakeGatewayFinalText("MAIN_ANSWER_OK"), {
     models: [{ id: MAIN_MODEL, type: "language", tags: ["tool-use"] }],
     titleResponses: [fakeGatewayFinalText("\n  \n")],
   });
   try {
-    const result = await runFx(["ask", "refactor the renderer loop to fix the crash"], {
+    const result = await runPf(["ask", "refactor the renderer loop to fix the crash"], {
       cwd: root.workspace,
       env: baseEnv(root, gateway),
       timeoutMs: 30_000,
@@ -157,7 +157,7 @@ function traceTmpDir(root: FixtureRoot): string {
 
 function traceReports(root: FixtureRoot): string[] {
   return readdirSync(traceTmpDir(root))
-    .filter(name => name.startsWith("fx-trace-") && name.endsWith(".md"))
+    .filter(name => name.startsWith("pf-trace-") && name.endsWith(".md"))
     .sort();
 }
 
@@ -185,7 +185,7 @@ test.skipIf(SKIP_TMUX)("tui trace report shows an installed session title", asyn
   let tui: TmuxSession | undefined;
   try {
     tui = await TmuxSession.create({
-      cmd: JSON.stringify(FX_BIN),
+      cmd: JSON.stringify(PF_BIN),
       cwd: root.workspace,
       isolated: true,
       remainOnExit: true,
@@ -217,7 +217,7 @@ test.skipIf(SKIP_TMUX)("tui trace report explains why no session title was gener
   let tui: TmuxSession | undefined;
   try {
     tui = await TmuxSession.create({
-      cmd: JSON.stringify(FX_BIN),
+      cmd: JSON.stringify(PF_BIN),
       cwd: root.workspace,
       isolated: true,
       remainOnExit: true,
@@ -252,7 +252,7 @@ test.skipIf(SKIP_TMUX)("tui shows the generated session title", async () => {
   let tui: TmuxSession | undefined;
   try {
     tui = await TmuxSession.create({
-      cmd: JSON.stringify(FX_BIN),
+      cmd: JSON.stringify(PF_BIN),
       cwd: root.workspace,
       isolated: true,
       remainOnExit: true,
@@ -273,23 +273,23 @@ test.skipIf(SKIP_TMUX)("tui generates a title after an upgrade relaunch resumes 
   const root = createFixtureRoot("tui-upgrade-title", JSON.stringify({ statusLine: { session: true } }));
   const installDir = join(root.root, "install");
   mkdirSync(installDir);
-  const installedFx = join(installDir, "fx");
-  copyFileSync(FX_BIN, installedFx);
-  chmodSync(installedFx, 0o755);
+  const installedPf = join(installDir, "pf");
+  copyFileSync(PF_BIN, installedPf);
+  chmodSync(installedPf, 0o755);
   const argvLogPath = join(root.root, "upgrade-argv.log");
   const release = startUpgradeServer(root.root, argvLogPath);
   const gateway = startTitleAwareGateway();
   let tui: TmuxSession | undefined;
   try {
     tui = await TmuxSession.create({
-      cmd: JSON.stringify(installedFx),
+      cmd: JSON.stringify(installedPf),
       cwd: root.workspace,
       isolated: true,
       remainOnExit: true,
       env: {
         ...baseEnv(root, gateway),
-        FX_AUTO_UPGRADE: "1",
-        FX_E2E_UPGRADE_BASE_URL: release.baseUrl,
+        PF_AUTO_UPGRADE: "1",
+        PF_E2E_UPGRADE_BASE_URL: release.baseUrl,
       },
     });
     await tui.waitForStableComposer(15000);
@@ -300,10 +300,10 @@ test.skipIf(SKIP_TMUX)("tui generates a title after an upgrade relaunch resumes 
 
     // Pin the resume leg: the relaunch must resume the same session, not start
     // a fresh one (a fresh session would title on the first prompt anyway).
-    const sessionId = readdirSync(join(root.home, ".fx", "sessions"))
+    const sessionId = readdirSync(join(root.home, ".pf", "sessions"))
       .filter(name => name !== "latest")[0]!;
     const relaunchArgv = readFileSync(argvLogPath, "utf8").trim().split("\n");
-    expect(relaunchArgv).toContain(`${installedFx}\tresume\t${sessionId}\t--upgrade-relaunch`);
+    expect(relaunchArgv).toContain(`${installedPf}\tresume\t${sessionId}\t--upgrade-relaunch`);
 
     await tui.sendText("refactor the renderer loop to fix the crash");
     await tui.waitForText("MAIN_ANSWER_OK", 20000);

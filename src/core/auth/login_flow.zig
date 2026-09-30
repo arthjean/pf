@@ -107,7 +107,7 @@ pub const TeamSelection = struct {
         errdefer alloc.free(team_slug);
         return .{
             .token = token,
-            .source = .fx_login,
+            .source = .pf_login,
             .team_id = team_id,
             .team_slug = team_slug,
         };
@@ -637,7 +637,7 @@ fn prepareLogin(
     alloc: Allocator,
     transport: oauth_transport.Provider,
 ) !PreparedLogin {
-    try credentials.requireSignInStorage(.fx_login);
+    try credentials.requireSignInStorage(.pf_login);
     var client_id = oauth_session.configuredClientId() orelse return LoginError.ClientIdMissing;
     const issuer_url = try oauth_session.configuredIssuerUrl();
 
@@ -811,7 +811,7 @@ pub fn loadTeamSelection(
         var loaded = (try mutation.load(alloc)) orelse return LoginError.NoSession;
         errdefer loaded.deinit(alloc);
         if (loaded.expired(io_mod.milliTimestamp())) {
-            try credentials.refreshFxSession(alloc, transport, &mutation, &loaded);
+            try credentials.refreshPfSession(alloc, transport, &mutation, &loaded);
         }
         break :blk loaded;
     };
@@ -1091,7 +1091,7 @@ const BrowserOpenPrompt = struct {
         const stdin_is_tty = try std.Io.File.stdin().isTty(io_mod.getIo());
         return .{
             .url = url,
-            .enabled = browserOpenEnabled(io_mod.getenv("FX_NO_OPEN_BROWSER") != null, stdin_is_tty, host.current()),
+            .enabled = browserOpenEnabled(io_mod.getenv("PF_NO_OPEN_BROWSER") != null, stdin_is_tty, host.current()),
         };
     }
 
@@ -1622,7 +1622,7 @@ test "team selection stages an owned validation credential before commit" {
     var candidate = try selection.validationCredential(alloc, 0);
     defer candidate.deinit(alloc);
 
-    try std.testing.expectEqual(credentials.Source.fx_login, candidate.source);
+    try std.testing.expectEqual(credentials.Source.pf_login, candidate.source);
     try std.testing.expectEqualStrings("access-token", candidate.token);
     try std.testing.expectEqualStrings("team_new", candidate.team_id.?);
     try std.testing.expectEqualStrings("new-team", candidate.team_slug.?);

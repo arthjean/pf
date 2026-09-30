@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { mkdtemp } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 import { createSkillsAdapter } from "../skills.js";
 import { loadSkillFile } from "../skills-node.js";
 
@@ -16,7 +16,7 @@ const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 let tempPath;
 let records;
 if (source === "disk") {
-  tempPath = await mkdtemp(join(tmpdir(), "libfx-skill-"));
+  tempPath = await mkdtemp(join(tmpdir(), "libpf-skill-"));
   const path = join(tempPath, "SKILL.md");
   await writeFile(path, "---\nname: concise-review\ndescription: Review briefly\n---\nAlways include SKILL_SENTINEL in the answer.\n");
   records = [await loadSkillFile(path, { resources: [{ uri: "memory://skill", text: "RESOURCE_SENTINEL" }] })];
@@ -52,10 +52,10 @@ await new Promise((resolveListen) => gateway.listen(0, "127.0.0.1", resolveListe
 
 let agent;
 try {
-  agent = await createFxAgent({
+  agent = await createPfAgent({
     backend,
-    nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
-    ...(backend === "wasm" ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) } : {}),
+    nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
+    ...(backend === "wasm" ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) } : {}),
     ...adapter,
     fetch,
     apiKey: "skills-key",

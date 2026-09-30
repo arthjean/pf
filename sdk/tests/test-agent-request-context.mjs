@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const backend = process.argv[2] || "native";
 if (!new Set(["native", "wasm"]).has(backend)) {
@@ -34,8 +34,8 @@ const catalogServer = createServer((request, response) => {
   }));
 });
 await new Promise((resolveListen) => catalogServer.listen(0, "127.0.0.1", resolveListen));
-const previousCatalogBaseUrl = process.env.FX_GATEWAY_BASE_URL;
-process.env.FX_GATEWAY_BASE_URL = `http://127.0.0.1:${catalogServer.address().port}`;
+const previousCatalogBaseUrl = process.env.PF_GATEWAY_BASE_URL;
+process.env.PF_GATEWAY_BASE_URL = `http://127.0.0.1:${catalogServer.address().port}`;
 
 const gatewayFetch = async (_url, init = {}) => {
   const method = init.method ?? "GET";
@@ -72,14 +72,14 @@ const gatewayFetch = async (_url, init = {}) => {
 
 const backendOptions = {
   backend,
-  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
+  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"
-    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }
+    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }
     : {}),
 };
 
 async function capture(instructions, prompt) {
-  const agent = await createFxAgent({
+  const agent = await createPfAgent({
     ...backendOptions,
     fetch: gatewayFetch,
     onEvent(event) { sdkEvents.push(event); },
@@ -131,9 +131,9 @@ try {
   }
   assert.doesNotMatch(JSON.stringify(sdkEvents), /request-context-key/, "transport diagnostics must not expose credentials");
   for (const headers of requestHeaders) {
-    assert.equal(headers.has("x-vercel-gateway-extended-time"), false, "libfx must not opt into extended Gateway execution time");
-    assert.ok(headers.get("x-session-id"), "libfx must retain its session identity header");
-    assert.equal(headers.get("x-session-affinity"), headers.get("x-session-id"), "libfx must retain Gateway session affinity");
+    assert.equal(headers.has("x-vercel-gateway-extended-time"), false, "libpf must not opt into extended Gateway execution time");
+    assert.ok(headers.get("x-session-id"), "libpf must retain its session identity header");
+    assert.equal(headers.get("x-session-affinity"), headers.get("x-session-id"), "libpf must retain Gateway session affinity");
   }
   assert.deepEqual(systemText(requestBodies[0]), [], "omitted instructions must not add hidden system context");
   assert.deepEqual(systemText(requestBodies[1]), ["HOST_INSTRUCTIONS_ONLY"], "host instructions must be the complete system context");
@@ -142,8 +142,8 @@ try {
 
   console.log(`${process.versions.bun ? "Bun" : "Node"} ${backend} Agent request context passed`);
 } finally {
-  if (previousCatalogBaseUrl === undefined) delete process.env.FX_GATEWAY_BASE_URL;
-  else process.env.FX_GATEWAY_BASE_URL = previousCatalogBaseUrl;
+  if (previousCatalogBaseUrl === undefined) delete process.env.PF_GATEWAY_BASE_URL;
+  else process.env.PF_GATEWAY_BASE_URL = previousCatalogBaseUrl;
   catalogServer.closeAllConnections();
   await new Promise((resolveClose) => catalogServer.close(resolveClose));
 }

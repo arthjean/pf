@@ -294,7 +294,7 @@ fn composeBrowseRow(
 
 fn composeInfoRow(alloc: Allocator, row_index: u16, width: u16) !std.ArrayList(u8) {
     return switch (row_index) {
-        0 => composeFactRow(alloc, "Profile config", "~/.fx/mcp.json", width),
+        0 => composeFactRow(alloc, "Profile config", "~/.pf/mcp.json", width),
         1 => composeFactRow(alloc, "Project config", "<workspace>/.mcp.json", width),
         2 => composeTextRow(alloc, "servers: a add · r reload · enter inspect", width, ui_render.dim_style, 2),
         3 => composeTextRow(alloc, "project trust: p approve all · z reset", width, ui_render.dim_style, 2),
@@ -426,7 +426,7 @@ fn composeDetailsRow(
         0 => .{ .label = "Server", .value = server.configured_name },
         1 => .{ .label = "State", .value = serverStateLabel(server.*) },
         2 => .{ .label = "Source", .value = switch (server.source) {
-            .profile => "Profile · ~/.fx/mcp.json",
+            .profile => "Profile · ~/.pf/mcp.json",
             .workspace => "Project · .mcp.json",
             .acp => "ACP session",
         } },
@@ -620,13 +620,13 @@ fn composeConfigurationIssueRow(
     const content_width = @as(usize, width) -| indent;
     var summary_buf: [96]u8 = undefined;
     const summary = if (issues.len == 1)
-        "1 project MCP configuration error. Run fx mcp list for details. "
+        "1 project MCP configuration error. Run pf mcp list for details. "
     else
         std.fmt.bufPrint(
             &summary_buf,
-            "{d} project MCP configuration errors. Run fx mcp list for details. ",
+            "{d} project MCP configuration errors. Run pf mcp list for details. ",
             .{issues.len},
-        ) catch "Project MCP configuration errors. Run fx mcp list for details. ";
+        ) catch "Project MCP configuration errors. Run pf mcp list for details. ";
     const summary_width = display_width.visibleWidth(summary);
     if (summary_width >= content_width) {
         try appendTerminalSafeSingleLine(alloc, &row, summary, content_width);
@@ -932,7 +932,7 @@ test "MCP menu every screen and section renders through the VT" {
         projection,
         width,
         max_inline_rows,
-        &.{ "MCP 1", "fixture", "2 project MCP configuration errors", "fx mcp list", ".mcp.json server 'broken'" },
+        &.{ "MCP 1", "fixture", "2 project MCP configuration errors", "pf mcp list", ".mcp.json server 'broken'" },
     );
     projection.configuration_issues = &.{};
 
@@ -1052,7 +1052,7 @@ test "MCP menu every screen and section renders through the VT" {
         projection,
         width,
         max_inline_rows,
-        &.{ "Profile config", "~/.fx/mcp.json", "Project config", "<workspace>/.mcp.json" },
+        &.{ "Profile config", "~/.pf/mcp.json", "Project config", "<workspace>/.mcp.json" },
     );
 
     projection.state = .{

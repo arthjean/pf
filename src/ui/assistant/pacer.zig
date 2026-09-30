@@ -953,7 +953,7 @@ test "theme-supplied inline code color is restored across rendered blocks" {
     const alloc = std.testing.allocator;
     const previous = shared_theme.current();
     defer shared_theme.activate(previous);
-    var custom = shared_theme.fx_dark;
+    var custom = shared_theme.pf_dark;
     custom.inline_code_open = "\x1b[38;2;130;210;206m";
     shared_theme.activate(custom);
 
@@ -1025,7 +1025,7 @@ test "theme change retints active code before the next block" {
     // theme-owned opens against it.
     const previous = shared_theme.current();
     defer shared_theme.activate(previous);
-    shared_theme.activate(shared_theme.fx_light);
+    shared_theme.activate(shared_theme.pf_light);
     pacer.rethemeInlineCode(true);
     try pacer.enqueue(alloc, "\x1b[39m");
     try pacer.tick(alloc, 1, cap.callbacks());

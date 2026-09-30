@@ -3,8 +3,8 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
-import { createFxAgent as createSharedAgent } from "../fx-sdk.js";
+import { createPfAgent } from "../node.js";
+import { createPfAgent as createSharedAgent } from "../pf-sdk.js";
 import { createMcpAdapter } from "../mcp.js";
 import { createSkillsAdapter } from "../skills.js";
 
@@ -20,14 +20,14 @@ if (!new Set(["native", "wasm"]).has(backend)) {
 const exactInstructions = "x".repeat(maxInstructionsBytes);
 const options = {
   backend,
-  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
+  nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"
-    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }
+    ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }
     : {}),
   apiKey: "instruction-limit-test-key",
 };
 
-const agent = await createFxAgent({ ...options, instructions: exactInstructions });
+const agent = await createPfAgent({ ...options, instructions: exactInstructions });
 await agent.close();
 
 let runtimeCreations = 0;

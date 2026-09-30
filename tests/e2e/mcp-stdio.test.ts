@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runFx } from "../evals/eval-helpers";
+import { runPf } from "../evals/eval-helpers";
 import { contentText } from "./conditional-guidance-oracle";
 import { pngPixelSize, solidPng } from "./fixtures/image-encoding";
 import {
@@ -145,7 +145,7 @@ function createRoot(
   scriptPath: string,
   options: RootOptions = {},
 ): FixtureRoot {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), `fx-mcp-${label}-`)));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), `pf-mcp-${label}-`)));
   cleanupRoot = root;
   const home = join(root, "home");
   const workspace = join(root, "workspace");
@@ -159,17 +159,17 @@ function createRoot(
     ? [
       "/bin/sh",
       "-c",
-      `printf '%s\\n' "$$" >> "$FX_MCP_LAUNCH_LOG"; exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
+      `printf '%s\\n' "$$" >> "$PF_MCP_LAUNCH_LOG"; exec "$PF_MCP_FIXTURE_RUNTIME" "$PF_MCP_FIXTURE_PATH"`,
     ]
     : [process.execPath, scriptPath];
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({}),
   );
   writeFileSync(
-    join(home, ".fx", "mcp.json"),
+    join(home, ".pf", "mcp.json"),
     JSON.stringify({
       mcp: {
         fixture: {
@@ -178,47 +178,47 @@ function createRoot(
           enabled: true,
           required: options.required,
           environment: {
-            FX_MCP_WIRE_LOG: wireLogPath,
-            FX_MCP_LAUNCH_LOG: options.recordLaunchAttempts
+            PF_MCP_WIRE_LOG: wireLogPath,
+            PF_MCP_LAUNCH_LOG: options.recordLaunchAttempts
               ? launchLogPath
               : undefined,
-            FX_MCP_FIXTURE_RUNTIME: options.recordLaunchAttempts
+            PF_MCP_FIXTURE_RUNTIME: options.recordLaunchAttempts
               ? process.execPath
               : undefined,
-            FX_MCP_FIXTURE_PATH: options.recordLaunchAttempts
+            PF_MCP_FIXTURE_PATH: options.recordLaunchAttempts
               ? scriptPath
               : undefined,
-            FX_MCP_PID_PATH: join(root, "mcp.pid"),
-            FX_MCP_PROTOCOL_VERSION: "2026-07-28",
-            FX_MCP_MODE: options.mode ?? "normal",
-            FX_MCP_IMAGE_PATH: options.image ? imagePath : undefined,
-            FX_MCP_PROTOCOL_ERROR_MESSAGE: options.protocolErrorMessage,
-            FX_MCP_CRASH_MARKER: join(root, "mcp-crashed"),
-            FX_MCP_RECOVERY_READY_PATH: join(root, "mcp-recovery-ready"),
-            FX_MCP_INVALIDATION_RELEASE_PATH: invalidationReleasePath,
-            FX_MCP_RECOVERED_TOOL_NAME: options.recoveredToolName,
-            FX_MCP_EXPECT_ELICITATION: options.expectedElicitation,
-            FX_MCP_ELICITATION_URL: options.elicitationUrl,
-            FX_MCP_COMPACT_FIELD: options.compactField ? JSON.stringify(options.compactField) : undefined,
-            FX_MCP_RESOURCES_SUBSCRIBE: options.resourcesSubscribe === false
+            PF_MCP_PID_PATH: join(root, "mcp.pid"),
+            PF_MCP_PROTOCOL_VERSION: "2026-07-28",
+            PF_MCP_MODE: options.mode ?? "normal",
+            PF_MCP_IMAGE_PATH: options.image ? imagePath : undefined,
+            PF_MCP_PROTOCOL_ERROR_MESSAGE: options.protocolErrorMessage,
+            PF_MCP_CRASH_MARKER: join(root, "mcp-crashed"),
+            PF_MCP_RECOVERY_READY_PATH: join(root, "mcp-recovery-ready"),
+            PF_MCP_INVALIDATION_RELEASE_PATH: invalidationReleasePath,
+            PF_MCP_RECOVERED_TOOL_NAME: options.recoveredToolName,
+            PF_MCP_EXPECT_ELICITATION: options.expectedElicitation,
+            PF_MCP_ELICITATION_URL: options.elicitationUrl,
+            PF_MCP_COMPACT_FIELD: options.compactField ? JSON.stringify(options.compactField) : undefined,
+            PF_MCP_RESOURCES_SUBSCRIBE: options.resourcesSubscribe === false
               ? "0"
               : undefined,
-            FX_MCP_RESOURCE_TTL_MS: options.resourceTtlMs?.toString(),
-            FX_MCP_LEGACY_VERSION: options.legacyVersion,
-            FX_MCP_LEGACY_DISCOVERY_VERSIONS:
+            PF_MCP_RESOURCE_TTL_MS: options.resourceTtlMs?.toString(),
+            PF_MCP_LEGACY_VERSION: options.legacyVersion,
+            PF_MCP_LEGACY_DISCOVERY_VERSIONS:
               options.legacyDiscoveryVersions?.join(","),
-            FX_MCP_LEGACY_DISCOVERY_METHOD_NOT_FOUND:
+            PF_MCP_LEGACY_DISCOVERY_METHOD_NOT_FOUND:
               options.legacyDiscoveryMethodNotFound ? "1" : undefined,
-            FX_MCP_LEGACY_DISCOVERY_INVALID_PARAMS:
+            PF_MCP_LEGACY_DISCOVERY_INVALID_PARAMS:
               options.legacyDiscoveryInvalidParams ? "1" : undefined,
-            FX_MCP_LEGACY_REJECT_NEWER_INITIALIZE:
+            PF_MCP_LEGACY_REJECT_NEWER_INITIALIZE:
               options.legacyRejectNewerInitialize ? "1" : undefined,
-            FX_MCP_DRAFT7_PATTERN: options.draft7Pattern,
-            FX_MCP_URL_REQUIRED_OPERATION: options.urlRequiredOperation,
-            FX_MCP_ENV_CAPTURE: options.captureEnvironment
+            PF_MCP_DRAFT7_PATTERN: options.draft7Pattern,
+            PF_MCP_URL_REQUIRED_OPERATION: options.urlRequiredOperation,
+            PF_MCP_ENV_CAPTURE: options.captureEnvironment
               ? environmentCapturePath
               : undefined,
-            FX_MCP_ENV_SENTINEL: options.captureEnvironment
+            PF_MCP_ENV_SENTINEL: options.captureEnvironment
               ? "configured"
               : undefined,
           },
@@ -235,14 +235,14 @@ function createRoot(
     workspace,
     wireLogPath,
     launchLogPath,
-    traceLogPath: join(root, "fx-trace.log"),
+    traceLogPath: join(root, "pf-trace.log"),
     invalidationReleasePath,
     environmentCapturePath,
   };
 }
 
 function moveProfileFixtureToWorkspace(root: FixtureRoot): void {
-  const profilePath = join(root.home, ".fx", "mcp.json");
+  const profilePath = join(root.home, ".pf", "mcp.json");
   const profile = JSON.parse(readFileSync(profilePath, "utf8"));
   const fixture = profile.mcp.fixture;
   if (Array.isArray(fixture.command)) {
@@ -261,14 +261,14 @@ function fixtureEnv(root: FixtureRoot, activeGateway: ReturnType<typeof startFak
     HOME: root.home,
     AI_GATEWAY_API_KEY: "fake-mcp-stdio-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_AUTO_UPGRADE: "0",
-    FX_PERMISSION_MODE: "auto",
-    FX_GATEWAY_BASE_URL: activeGateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: activeGateway.chatUrl,
-    FX_E2E_GATEWAY_CHAT_URL: activeGateway.chatUrl,
-    FX_MODEL: MODEL,
-    FX_TRACE_LOG: root.traceLogPath,
-    FX_TRACE_SCOPES: "mcp",
+    PF_AUTO_UPGRADE: "0",
+    PF_PERMISSION_MODE: "auto",
+    PF_GATEWAY_BASE_URL: activeGateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: activeGateway.chatUrl,
+    PF_E2E_GATEWAY_CHAT_URL: activeGateway.chatUrl,
+    PF_MODEL: MODEL,
+    PF_TRACE_LOG: root.traceLogPath,
+    PF_TRACE_SCOPES: "mcp",
   };
 }
 
@@ -329,13 +329,13 @@ function readStartupLaunchEvidence(root: FixtureRoot): {
 function preserveStdioFailure(
   label: string,
   root: FixtureRoot,
-  result: Awaited<ReturnType<typeof runFx>>,
+  result: Awaited<ReturnType<typeof runPf>>,
   activeGateway: ReturnType<typeof startFakeGateway>,
 ): void {
   if (result.code === 0) return;
   cleanupRoot = null;
-  writeFileSync(join(root.root, "fx-stdout.log"), result.stdout);
-  writeFileSync(join(root.root, "fx-stderr.log"), result.stderr);
+  writeFileSync(join(root.root, "pf-stdout.log"), result.stdout);
+  writeFileSync(join(root.root, "pf-stderr.log"), result.stderr);
   writeFileSync(
     join(root.root, "failure.json"),
     JSON.stringify({
@@ -345,7 +345,7 @@ function preserveStdioFailure(
       gatewayRequests: activeGateway.requests.map((request) => request.body),
     }, null, 2),
   );
-  throw new Error(`fx ${label} failed; retained artifacts: ${root.root}`);
+  throw new Error(`pf ${label} failed; retained artifacts: ${root.root}`);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -387,7 +387,7 @@ async function waitForTtyAskExit(
     await Bun.sleep(25);
   }
   throw new Error(
-    `Timed out waiting for terminal fx ask to exit.\n${await session.captureFullScrollback()}`,
+    `Timed out waiting for terminal pf ask to exit.\n${await session.captureFullScrollback()}`,
   );
 }
 
@@ -395,14 +395,14 @@ describe("modern MCP stdio compatibility", () => {
   for (const version of ["2025-11-25", "2025-06-18", "2024-11-05"] as const) {
     test(`default MCP v1 starts ${version} stdio without a discovery probe or process restart`, async () => {
       const root = createRoot(`default-v1-${version}`, LEGACY_FIXTURE, { legacyVersion: version });
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-      delete profile.mcp.fixture.environment.FX_MCP_PROTOCOL_VERSION;
+      delete profile.mcp.fixture.environment.PF_MCP_PROTOCOL_VERSION;
       writeFileSync(profilePath, JSON.stringify(profile));
       gateway = startToolGateway("Default MCP v1 complete.");
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Use the MCP tool."],
-        { cwd: root.workspace, env: { ...fixtureEnv(root, gateway), FX_MCP_PROTOCOL_VERSION: undefined }, timeoutMs: 20_000 },
+        { cwd: root.workspace, env: { ...fixtureEnv(root, gateway), PF_MCP_PROTOCOL_VERSION: undefined }, timeoutMs: 20_000 },
       );
       expect(result.code).toBe(0);
       expect(JSON.parse(result.stdout).output).toContain("Default MCP v1 complete.");
@@ -426,22 +426,22 @@ describe("modern MCP stdio compatibility", () => {
       fakeDocker,
       `#!/bin/sh
 if [ "$1" = "rm" ]; then
-  printf '%s\\n' "$*" > "$FX_DOCKER_CLEANUP_LOG"
+  printf '%s\\n' "$*" > "$PF_DOCKER_CLEANUP_LOG"
   exit 0
 fi
-printf '%s\\n' "$$" >> "$FX_DOCKER_LAUNCH_LOG"
+printf '%s\\n' "$$" >> "$PF_DOCKER_LAUNCH_LOG"
 test "$1" = "run" || exit 21
 shift
 test "$1" = "--cidfile" || exit 22
 cidfile=$2
 shift 2
 printf '%s\\n' '0123456789abcdef' > "$cidfile"
-printf '%s\\n' "$cidfile" >> "$FX_DOCKER_CIDFILE_LOG"
-exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
+printf '%s\\n' "$cidfile" >> "$PF_DOCKER_CIDFILE_LOG"
+exec "$PF_MCP_FIXTURE_RUNTIME" "$PF_MCP_FIXTURE_PATH"
 `,
       { mode: 0o755 },
     );
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
     profile.mcp.fixture.command = [
       fakeDocker,
@@ -450,23 +450,23 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       "-i",
       "fixture-image",
     ];
-    profile.mcp.fixture.environment.FX_DOCKER_CLEANUP_LOG = cleanupLog;
-    profile.mcp.fixture.environment.FX_DOCKER_CIDFILE_LOG = cidfileLog;
-    profile.mcp.fixture.environment.FX_DOCKER_LAUNCH_LOG = dockerLaunchLog;
-    profile.mcp.fixture.environment.FX_MCP_FIXTURE_RUNTIME = process.execPath;
-    profile.mcp.fixture.environment.FX_MCP_FIXTURE_PATH = MODERN_FIXTURE;
+    profile.mcp.fixture.environment.PF_DOCKER_CLEANUP_LOG = cleanupLog;
+    profile.mcp.fixture.environment.PF_DOCKER_CIDFILE_LOG = cidfileLog;
+    profile.mcp.fixture.environment.PF_DOCKER_LAUNCH_LOG = dockerLaunchLog;
+    profile.mcp.fixture.environment.PF_MCP_FIXTURE_RUNTIME = process.execPath;
+    profile.mcp.fixture.environment.PF_MCP_FIXTURE_PATH = MODERN_FIXTURE;
     writeFileSync(profilePath, JSON.stringify(profile));
 
-    const result = await runFx(["mcp", "list", "--connect"], {
+    const result = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env: {
         HOME: root.home,
         TMPDIR: root.root,
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_TRACE_LOG: root.traceLogPath,
-        FX_TRACE_SCOPES: "mcp",
+        PF_AUTO_UPGRADE: "0",
+        PF_TRACE_LOG: root.traceLogPath,
+        PF_TRACE_SCOPES: "mcp",
       },
       timeoutMs: 20_000,
     });
@@ -477,7 +477,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       "rm -f 0123456789abcdef",
     );
     expect(readdirSync(root.root).some((name) =>
-      name.startsWith("fx-mcp-") && name.endsWith(".cid")
+      name.startsWith("pf-mcp-") && name.endsWith(".cid")
     )).toBe(false);
     expect(readFileSync(root.traceLogPath, "utf8")).toContain(
       "docker MCP container cleanup complete",
@@ -486,20 +486,20 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
 
     rmSync(cleanupLog);
     rmSync(cidfileLog);
-    profile.mcp.fixture.environment.FX_MCP_MODE = "stall_startup";
+    profile.mcp.fixture.environment.PF_MCP_MODE = "stall_startup";
     profile.mcp.fixture.startup_timeout_ms = 50;
     profile.mcp.fixture.restart_limit = 0;
     writeFileSync(profilePath, JSON.stringify(profile));
-    const timedOut = await runFx(["mcp", "list", "--connect"], {
+    const timedOut = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env: {
         HOME: root.home,
         TMPDIR: root.root,
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_TRACE_LOG: root.traceLogPath,
-        FX_TRACE_SCOPES: "mcp",
+        PF_AUTO_UPGRADE: "0",
+        PF_TRACE_LOG: root.traceLogPath,
+        PF_TRACE_SCOPES: "mcp",
       },
       timeoutMs: 20_000,
     });
@@ -513,7 +513,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       expect(existsSync(cleanupLog)).toBe(false);
     }
     expect(readdirSync(root.root).some((name) =>
-      name.startsWith("fx-mcp-") && name.endsWith(".cid")
+      name.startsWith("pf-mcp-") && name.endsWith(".cid")
     )).toBe(false);
     await expectProcessesExited(readAttemptedPids(dockerLaunchLog));
   }, 30_000);
@@ -542,7 +542,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
         stderrPath,
         env: {
           ...fixtureEnv(root, activeGateway),
-          FX_PERMISSION_MODE: "ask",
+          PF_PERMISSION_MODE: "ask",
         },
       });
 
@@ -557,7 +557,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       expect(approval).toContain("Allow this MCP tool call?");
       expect(approval).toContain(TOOL_NAME);
       expect(approval).toContain(
-        "This MCP tool needs approval before fx can send the request.",
+        "This MCP tool needs approval before pf can send the request.",
       );
       expect(approval).toContain("3. Deny");
       expect(
@@ -583,15 +583,15 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
   );
 
   test("repository-local MCP configuration never launches a process or network request", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-mcp-project-trust-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-mcp-project-trust-")));
     cleanupRoot = root;
     const home = join(root, "home");
     const workspace = join(root, "workspace");
     const marker = join(root, "project-mcp-launched");
-    mkdirSync(join(home, ".fx"), { recursive: true });
-    mkdirSync(join(workspace, ".fx"), { recursive: true });
-    writeFileSync(join(home, ".fx", "settings.json"), JSON.stringify({}));
-    writeFileSync(join(home, ".fx", "mcp.json"), JSON.stringify({ mcp: {} }));
+    mkdirSync(join(home, ".pf"), { recursive: true });
+    mkdirSync(join(workspace, ".pf"), { recursive: true });
+    writeFileSync(join(home, ".pf", "settings.json"), JSON.stringify({}));
+    writeFileSync(join(home, ".pf", "mcp.json"), JSON.stringify({ mcp: {} }));
 
     let projectRequestCount = 0;
     const projectEndpoint = Bun.serve({
@@ -620,13 +620,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       },
     });
     writeFileSync(join(workspace, ".mcp.json"), hostile);
-    writeFileSync(join(workspace, ".fx", "mcp.json"), hostile);
+    writeFileSync(join(workspace, ".pf", "mcp.json"), hostile);
 
     gateway = startFakeGateway([fakeGatewayFinalText("Project MCP stayed inert.")], {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
     try {
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Confirm the workspace is available."],
         {
           cwd: workspace,
@@ -654,7 +654,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     }
   }, 20_000);
 
-  test("fx ask skips pending workspace MCP and uses it after explicit trust", async () => {
+  test("pf ask skips pending workspace MCP and uses it after explicit trust", async () => {
     const root = createRoot("workspace-ask", MODERN_FIXTURE);
     moveProfileFixtureToWorkspace(root);
     const projectPath = join(root.workspace, ".mcp.json");
@@ -662,11 +662,11 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     project.mcpServers.fixture.command = "${WORKSPACE_MCP_COMMAND}";
     project.mcpServers.fixture.args = ["${WORKSPACE_MCP_FIXTURE}"];
     project.mcpServers.fixture.env = {
-      FX_MCP_RESULT_TEXT: "${WORKSPACE_MCP_RESULT:-MODERN_MCP_TOOL_RESULT}",
-      FX_MCP_WIRE_LOG: "${WORKSPACE_MCP_WIRE_LOG}",
-      FX_MCP_PID_PATH: "${WORKSPACE_MCP_PID_PATH}",
-      FX_MCP_PROTOCOL_VERSION: "2026-07-28",
-      FX_MCP_MODE: "${WORKSPACE_MCP_MODE:-normal}",
+      PF_MCP_RESULT_TEXT: "${WORKSPACE_MCP_RESULT:-MODERN_MCP_TOOL_RESULT}",
+      PF_MCP_WIRE_LOG: "${WORKSPACE_MCP_WIRE_LOG}",
+      PF_MCP_PID_PATH: "${WORKSPACE_MCP_PID_PATH}",
+      PF_MCP_PROTOCOL_VERSION: "2026-07-28",
+      PF_MCP_MODE: "${WORKSPACE_MCP_MODE:-normal}",
     };
     delete project.mcpServers.fixture.environment;
     writeFileSync(projectPath, JSON.stringify(project));
@@ -686,7 +686,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       WORKSPACE_MCP_WIRE_LOG: root.wireLogPath,
       WORKSPACE_MCP_PID_PATH: join(root.root, "mcp.pid"),
     };
-    const skipped = await runFx(
+    const skipped = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the workspace MCP."],
       {
         cwd: root.workspace,
@@ -700,20 +700,20 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       "skipped unapproved project MCP servers: fixture",
     );
     expect(existsSync(root.wireLogPath)).toBe(false);
-    let settings = readFileSync(join(root.home, ".fx", "settings.json"), "utf8");
+    let settings = readFileSync(join(root.home, ".pf", "settings.json"), "utf8");
     expect(settings).not.toContain("enabledMcpjsonServers");
     expect(settings).not.toContain("enableAllProjectMcpServers");
 
-    const trusted = await runFx(
+    const trusted = await runPf(
       ["mcp", "trust", "approve", "fixture"],
       { cwd: root.workspace, env },
     );
     expect(trusted.code).toBe(0);
     expect(trusted.stdout).toContain("Approved project MCP server 'fixture'");
-    settings = readFileSync(join(root.home, ".fx", "settings.json"), "utf8");
+    settings = readFileSync(join(root.home, ".pf", "settings.json"), "utf8");
     expect(settings).toContain("enabledMcpjsonServers");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the workspace MCP."],
       { cwd: root.workspace, env, timeoutMs: 20_000 },
     );
@@ -726,7 +726,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectFixtureProcessesExited(readWire(root.wireLogPath));
   }, 35_000);
 
-  test("fx ask reports rejected workspace MCP entries on stderr", async () => {
+  test("pf ask reports rejected workspace MCP entries on stderr", async () => {
     const root = createRoot("workspace-invalid-entry", MODERN_FIXTURE);
     moveProfileFixtureToWorkspace(root);
     const projectPath = join(root.workspace, ".mcp.json");
@@ -739,7 +739,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     gateway = startFakeGateway([fakeGatewayFinalText("WORKSPACE_PARSE_CONTINUED")], {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Confirm the workspace is available."],
       {
         cwd: root.workspace,
@@ -770,13 +770,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
       const env = fixtureEnv(root, gateway);
-      const trusted = await runFx(
+      const trusted = await runPf(
         ["mcp", "trust", "approve", "fixture"],
         { cwd: root.workspace, env },
       );
       expect(trusted.code).toBe(0);
 
-      const listed = await runFx(["mcp", "list"], {
+      const listed = await runPf(["mcp", "list"], {
         cwd: root.workspace,
         env,
       });
@@ -802,7 +802,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       project.mcpServers.fixture.command = "secret-prefix-${MISSING_WORKSPACE_COMMAND}";
       writeFileSync(projectPath, JSON.stringify(project));
       writeFileSync(
-        join(root.home, ".fx", "mcp.json"),
+        join(root.home, ".pf", "mcp.json"),
         JSON.stringify({
           mcp: {
             canary: {
@@ -817,7 +817,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
       const env = fixtureEnv(root, gateway);
-      const trusted = await runFx(
+      const trusted = await runPf(
         ["mcp", "trust", "approve", "fixture"],
         { cwd: root.workspace, env },
       );
@@ -836,7 +836,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       expect(menu).toContain("MCP 1");
       expect(menu).toContain("canary");
       expect(menu).toContain("Disabled");
-      expect(menu).toContain("fx mcp list");
+      expect(menu).toContain("pf mcp list");
       expect(menu).toContain("MISSING_WORKSPACE_COMMAND");
       expect(menu).toContain("field command");
       expect(menu).not.toContain("secret-prefix");
@@ -851,18 +851,18 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
   test("top-level mcp add persists stdio and a later ask calls it", async () => {
     const root = createRoot("top-level-add", MODERN_FIXTURE);
     writeFileSync(
-      join(root.home, ".fx", "mcp.json"),
+      join(root.home, ".pf", "mcp.json"),
       JSON.stringify({ mcp: {} }),
     );
     gateway = startToolGateway("TOP_LEVEL_STDIO_MCP_READY");
     const env = {
       ...fixtureEnv(root, gateway),
-      FX_MCP_WIRE_LOG: root.wireLogPath,
-      FX_MCP_PID_PATH: join(root.root, "mcp.pid"),
-      FX_MCP_PROTOCOL_VERSION: "2026-07-28",
-      FX_MCP_MODE: "normal",
+      PF_MCP_WIRE_LOG: root.wireLogPath,
+      PF_MCP_PID_PATH: join(root.root, "mcp.pid"),
+      PF_MCP_PROTOCOL_VERSION: "2026-07-28",
+      PF_MCP_MODE: "normal",
     };
-    const added = await runFx(
+    const added = await runPf(
       ["mcp", "add", "fixture", process.execPath, MODERN_FIXTURE],
       { cwd: root.workspace, env },
     );
@@ -870,7 +870,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     expect(added.stdout).toContain("Saved MCP server 'fixture'");
     expect(existsSync(root.wireLogPath)).toBe(false);
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the stdio MCP echo tool."],
       { cwd: root.workspace, env, timeoutMs: 20_000 },
     );
@@ -887,7 +887,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       `MCP slash add preserves scoped arguments with ${matchingPath ? "a matching" : "no matching"} local path`,
       async () => {
         const root = createRoot(`scoped-add-${matchingPath}`, LEGACY_FIXTURE);
-        const configPath = join(root.home, ".fx", "mcp.json");
+        const configPath = join(root.home, ".pf", "mcp.json");
         writeFileSync(configPath, JSON.stringify({ mcp: {} }));
         const packageArg = "@modelcontextprotocol/server-memory@2026.8.31";
         if (matchingPath) {
@@ -906,10 +906,10 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
           height: 36,
           env: {
             ...fixtureEnv(root, gateway),
-            FX_MCP_PROTOCOL_VERSION: "2025-11-25",
-            FX_MCP_LEGACY_VERSION: "2025-11-25",
-            FX_MCP_WIRE_LOG: root.wireLogPath,
-            FX_MCP_PID_PATH: join(root.root, "literal.pid"),
+            PF_MCP_PROTOCOL_VERSION: "2025-11-25",
+            PF_MCP_LEGACY_VERSION: "2025-11-25",
+            PF_MCP_WIRE_LOG: root.wireLogPath,
+            PF_MCP_PID_PATH: join(root.root, "literal.pid"),
           },
         });
         await tui.waitForComposer(15_000);
@@ -954,13 +954,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
     const env = fixtureEnv(root, gateway);
-    const trusted = await runFx(
+    const trusted = await runPf(
       ["mcp", "trust", "approve", hostileName],
       { cwd: root.workspace, env },
     );
     expect(trusted.code).toBe(0);
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Exercise the project MCP."],
       {
         cwd: root.workspace,
@@ -980,13 +980,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectFixtureProcessesExited(readWire(root.wireLogPath));
   }, 30_000);
 
-  test("fx ask skips workspace MCP when profile choices are unreadable", async () => {
+  test("pf ask skips workspace MCP when profile choices are unreadable", async () => {
     const root = createRoot("workspace-choice-failure", MODERN_FIXTURE, {
       recordLaunchAttempts: true,
     });
     moveProfileFixtureToWorkspace(root);
     writeFileSync(
-      join(root.home, ".fx", "settings.json"),
+      join(root.home, ".pf", "settings.json"),
       JSON.stringify({
         workspaces: {
           [root.workspace]: { disabledMcpjsonServers: "fixture" },
@@ -996,7 +996,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     gateway = startFakeGateway([fakeGatewayFinalText("CHOICES_FAILED_CLOSED")], {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Confirm the workspace is available."],
       {
         cwd: root.workspace,
@@ -1044,7 +1044,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       let pane = await tui.waitForText("[Servers]", 10_000);
       expect(pane).toContain("fixture");
       expect(pane).toContain("Ready");
-      expect(readFileSync(join(root.home, ".fx", "settings.json"), "utf8"))
+      expect(readFileSync(join(root.home, ".pf", "settings.json"), "utf8"))
         .toContain("enabledMcpjsonServers");
       await tui.sendKeys("Escape");
       await tui.waitForPane((pane) => !pane.includes("[Servers]"), 5_000);
@@ -1060,7 +1060,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       pane = await tui.waitForText("[Servers]", 10_000);
       expect(pane).toContain("fixture");
       expect(pane).toContain("Disabled");
-      expect(readFileSync(join(root.home, ".fx", "settings.json"), "utf8"))
+      expect(readFileSync(join(root.home, ".pf", "settings.json"), "utf8"))
         .toContain("disabledMcpjsonServers");
 
       await tui.kill();
@@ -1081,7 +1081,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
       const env = fixtureEnv(root, gateway);
-      const approved = await runFx(["mcp", "trust", "approve-all"], {
+      const approved = await runPf(["mcp", "trust", "approve-all"], {
         cwd: root.workspace,
         env,
       });
@@ -1119,7 +1119,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       expect(pane).not.toContain("Project MCP approval prompts dismissed");
       await tui.sendLiteral("3");
       await tui.waitForPane((text) => text.includes("Rejecting project MCP server"), 10_000);
-      const settings = JSON.parse(readFileSync(join(root.home, ".fx", "settings.json"), "utf8"));
+      const settings = JSON.parse(readFileSync(join(root.home, ".pf", "settings.json"), "utf8"));
       expect(settings.workspaces[root.workspace].disabledMcpjsonServers).toContain("fixture");
       expect(await tui.captureFullScrollback()).not.toContain("Project MCP approval prompts dismissed");
       await tui.kill();
@@ -1136,15 +1136,15 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
         mode: "features",
         recordLaunchAttempts: true,
       });
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profileServer = JSON.parse(readFileSync(profilePath, "utf8")).mcp.fixture;
       moveProfileFixtureToWorkspace(root);
       writeFileSync(profilePath, JSON.stringify({ mcp: { library: profileServer } }));
       gateway = startFakeGateway([], {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
-      const env = { ...fixtureEnv(root, gateway), FX_MCP_PROTOCOL_VERSION: "2026-07-28" };
-      expect((await runFx(["mcp", "trust", "approve-all"], {
+      const env = { ...fixtureEnv(root, gateway), PF_MCP_PROTOCOL_VERSION: "2026-07-28" };
+      expect((await runPf(["mcp", "trust", "approve-all"], {
         cwd: root.workspace,
         env,
       })).code).toBe(0);
@@ -1167,7 +1167,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       expect(pane).toContain("RESOURCE_TEXT");
       await tui.sendLiteral("3");
       await tui.waitForText("Rejecting project MCP server", 10_000);
-      expect(JSON.parse(readFileSync(join(root.home, ".fx", "settings.json"), "utf8"))
+      expect(JSON.parse(readFileSync(join(root.home, ".pf", "settings.json"), "utf8"))
         .workspaces[root.workspace].disabledMcpjsonServers).toContain("fixture");
       expect(await tui.captureFullScrollback()).not.toContain("Project MCP approval prompts dismissed");
       await tui.kill();
@@ -1201,7 +1201,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       await Bun.sleep(250);
       expect((await tui.capturePane())).toContain("[2] approve all");
       expect(existsSync(root.launchLogPath)).toBe(false);
-      expect(readFileSync(join(root.home, ".fx", "settings.json"), "utf8"))
+      expect(readFileSync(join(root.home, ".pf", "settings.json"), "utf8"))
         .not.toContain("enableAllProjectMcpServers");
       await tui.sendKeys("Escape");
       await tui.waitForText("Project MCP approval prompts dismissed for this process", 10_000);
@@ -1233,7 +1233,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
     gateway = initialGateway;
-    const initial = await runFx(
+    const initial = await runPf(
       ["ask", "--json", "--auto", "Use the fresh profile MCP."],
       {
         cwd: root.workspace,
@@ -1247,10 +1247,10 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     initialGateway.stop();
     gateway = null;
 
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-    profile.mcp.fixture.environment.FX_MCP_INITIAL_TOOL_NAME = "sum";
-    profile.mcp.fixture.environment.FX_MCP_RESULT_TEXT = "RESUMED_PROFILE_TOOL_RESULT";
+    profile.mcp.fixture.environment.PF_MCP_INITIAL_TOOL_NAME = "sum";
+    profile.mcp.fixture.environment.PF_MCP_RESULT_TEXT = "RESUMED_PROFILE_TOOL_RESULT";
     writeFileSync(profilePath, JSON.stringify(profile));
 
     const resumedTool = "mcp_fixture_sum";
@@ -1262,7 +1262,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
     gateway = resumedGateway;
-    const resumed = await runFx(
+    const resumed = await runPf(
       ["ask", "--json", "--auto", "--resume", sessionId, "Use the current profile MCP."],
       {
         cwd: root.workspace,
@@ -1359,7 +1359,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", parentPrompt],
       {
         cwd: root.workspace,
@@ -1425,7 +1425,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       });
       gateway = activeGateway;
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", parentPrompt],
         {
           cwd: root.workspace,
@@ -1443,7 +1443,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
         .toHaveLength(0);
       expect(wire.filter((entry) => entry.message.method === "resources/list"))
         .toHaveLength(2);
-      const evidenceDir = process.env.FX_S11_EVIDENCE_DIR;
+      const evidenceDir = process.env.PF_S11_EVIDENCE_DIR;
       if (evidenceDir) {
         mkdirSync(evidenceDir, { recursive: true });
         writeFileSync(
@@ -1468,7 +1468,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     const marker = "PERSISTENT";
     test(`${label} child with no configured MCP runtime fails closed before transport`, async () => {
       const root = createRoot(`${label}-mcp-disabled`, MODERN_FIXTURE);
-      writeFileSync(join(root.home, ".fx", "mcp.json"), JSON.stringify({ mcp: {} }));
+      writeFileSync(join(root.home, ".pf", "mcp.json"), JSON.stringify({ mcp: {} }));
       const parentPrompt = `CREATE_DISABLED_MCP_${marker}`;
       const childPrompt = `DISABLED_MCP_${marker}_WORK`;
       let releaseParent!: (response: Response) => void;
@@ -1520,7 +1520,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       });
       gateway = activeGateway;
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", parentPrompt],
         {
           cwd: root.workspace,
@@ -1544,7 +1544,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       });
       const allowedWirePath = join(root.root, "allowed-wire.jsonl");
       const deniedWirePath = join(root.root, "denied-wire.jsonl");
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
       const base = profile.mcp.fixture;
       profile.mcp = {
@@ -1552,26 +1552,26 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
           ...base,
           environment: {
             ...base.environment,
-            FX_MCP_WIRE_LOG: allowedWirePath,
-            FX_MCP_PID_PATH: join(root.root, "allowed.pid"),
-            FX_MCP_INITIAL_TOOL_NAME: "echo",
-            FX_MCP_RECOVERED_TOOL_NAME: "echo",
+            PF_MCP_WIRE_LOG: allowedWirePath,
+            PF_MCP_PID_PATH: join(root.root, "allowed.pid"),
+            PF_MCP_INITIAL_TOOL_NAME: "echo",
+            PF_MCP_RECOVERED_TOOL_NAME: "echo",
           },
         },
         denied: {
           ...base,
           environment: {
             ...base.environment,
-            FX_MCP_WIRE_LOG: deniedWirePath,
-            FX_MCP_PID_PATH: join(root.root, "denied.pid"),
-            FX_MCP_INITIAL_TOOL_NAME: "blocked",
-            FX_MCP_RECOVERED_TOOL_NAME: "blocked",
+            PF_MCP_WIRE_LOG: deniedWirePath,
+            PF_MCP_PID_PATH: join(root.root, "denied.pid"),
+            PF_MCP_INITIAL_TOOL_NAME: "blocked",
+            PF_MCP_RECOVERED_TOOL_NAME: "blocked",
           },
         },
       };
       writeFileSync(profilePath, JSON.stringify(profile));
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({
           permission: { mcp_denied_blocked: "deny" },
         }),
@@ -1625,7 +1625,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       });
       gateway = activeGateway;
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", parentPrompt],
         {
           cwd: root.workspace,
@@ -1696,7 +1696,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Try the MCP features requiring input."],
       {
         cwd: root.workspace,
@@ -1722,13 +1722,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectFixtureProcessesExited(wire);
   }, 30_000);
 
-  test("fx ask uses typed Resources Prompts and Completion flows", async () => {
+  test("pf ask uses typed Resources Prompts and Completion flows", async () => {
     const root = createRoot("ask-features", MODERN_FIXTURE, {
       mode: "features",
     });
     const maliciousTarget = join(root.workspace, "malicious-resource-write.txt");
     writeFileSync(
-      join(root.home, ".fx", "settings.json"),
+      join(root.home, ".pf", "settings.json"),
       JSON.stringify({
         permission: { edit: { "**": "deny" } },
       }),
@@ -1776,7 +1776,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the configured MCP resource and prompt features."],
       {
         cwd: root.workspace,
@@ -1837,7 +1837,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Exercise MCP feature errors."],
       {
         cwd: root.workspace,
@@ -1863,7 +1863,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectFixtureProcessesExited(wire);
   }, 30_000);
 
-  test("fx ask cancels a bounded stalled resource read", async () => {
+  test("pf ask cancels a bounded stalled resource read", async () => {
     const root = createRoot("ask-feature-cancel", MODERN_FIXTURE, {
       mode: "features",
       operationTimeoutMs: 200,
@@ -1879,7 +1879,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Read the stalled MCP resource."],
       {
         cwd: root.workspace,
@@ -1930,7 +1930,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the live stdio MCP tool."],
       {
         cwd: root.workspace,
@@ -1988,7 +1988,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the changed legacy stdio tool."],
       {
         cwd: root.workspace,
@@ -2020,12 +2020,12 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
 
   test("silent legacy discovery preserves time for initialization", async () => {
     const root = createRoot("silent-discovery", LEGACY_FIXTURE, { startupTimeoutMs: 1_500 });
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-    profile.mcp.fixture.environment.FX_MCP_IGNORE_DISCOVERY = "1";
+    profile.mcp.fixture.environment.PF_MCP_IGNORE_DISCOVERY = "1";
     writeFileSync(profilePath, JSON.stringify(profile));
     gateway = startToolGateway("Silent discovery fallback worked.");
-    const result = await runFx(["ask", "--json", "--auto", "--no-save", "Use the legacy tool"], {
+    const result = await runPf(["ask", "--json", "--auto", "--no-save", "Use the legacy tool"], {
       cwd: root.workspace, env: fixtureEnv(root, gateway), timeoutMs: 10_000,
     });
     expect(result.code, result.stderr || result.stdout).toBe(0);
@@ -2042,7 +2042,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     });
     gateway = startToolGateway("Latest legacy stdio negotiation complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the legacy stdio MCP tool."],
       {
         cwd: root.workspace,
@@ -2075,7 +2075,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     });
     gateway = startToolGateway("Invalid params fallback complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the legacy stdio MCP tool."],
       {
         cwd: root.workspace,
@@ -2108,7 +2108,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
         fakeGatewayToolCall("image_call", TOOL_NAME, { text: "screenshot" }),
         fakeGatewayFinalText("Image result observed."),
       ], { models: [{ id: MODEL, type: "language", tags: supportsImages ? ["tool-use", "vision", "file-input"] : ["tool-use"] }] });
-      const result = await runFx(["ask", "--json", "--auto", "--no-save", "Get an image from the fixture"], {
+      const result = await runPf(["ask", "--json", "--auto", "--no-save", "Get an image from the fixture"], {
         cwd: root.workspace,
         env: fixtureEnv(root, gateway),
         timeoutMs: 20_000,
@@ -2146,7 +2146,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       fakeGatewayToolCall("image_call", TOOL_NAME, { text: "screenshot" }),
       fakeGatewayFinalText("Wide image result observed."),
     ], { models: [{ id: MODEL, type: "language", tags: ["tool-use", "vision", "file-input"] }] });
-    const result = await runFx(["ask", "--json", "--auto", "--no-save", "Get an image from the fixture"], {
+    const result = await runPf(["ask", "--json", "--auto", "--no-save", "Get an image from the fixture"], {
       cwd: root.workspace,
       env: fixtureEnv(root, gateway),
       timeoutMs: 20_000,
@@ -2173,9 +2173,9 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
   for (const action of ["resource_read", "prompt_get"] as const) {
     test(`MCP ${action} carries images through the shared result path`, async () => {
       const root = createRoot("feature-image", MODERN_FIXTURE, { mode: "features" });
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-      profile.mcp.fixture.environment.FX_MCP_FEATURE_IMAGES = "1";
+      profile.mcp.fixture.environment.PF_MCP_FEATURE_IMAGES = "1";
       writeFileSync(profilePath, JSON.stringify(profile));
       gateway = startFakeGateway([
         fakeGatewayToolCall("feature_image", "mcp_features", action === "resource_read"
@@ -2183,7 +2183,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
           : { action, server: "fixture", prompt: "review", arguments: { tone: "brief" } }),
         fakeGatewayFinalText("Feature image received."),
       ], { models: [{ id: MODEL, type: "language", tags: ["tool-use", "vision", "file-input"] }] });
-      const result = await runFx(["ask", "--json", "--auto", "--no-save", "Read the feature image"], {
+      const result = await runPf(["ask", "--json", "--auto", "--no-save", "Read the feature image"], {
         cwd: root.workspace, env: fixtureEnv(root, gateway), timeoutMs: 20_000,
       });
       expect(result.code, result.stderr || result.stdout).toBe(0);
@@ -2215,7 +2215,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       fakeGatewayToolCall("saved_image", TOOL_NAME, { text: "screenshot" }),
       fakeGatewayFinalText("Screenshot saved."),
     ], { models });
-    const first = await runFx(["ask", "--json", "--auto", "Get a screenshot"], {
+    const first = await runPf(["ask", "--json", "--auto", "Get a screenshot"], {
       cwd: root.workspace, env: fixtureEnv(root, gateway), timeoutMs: 20_000,
     });
     expect(first.code).toBe(0);
@@ -2227,7 +2227,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       fakeGatewayToolCall("load_saved_image", "read_tool_result", { request: { handle: imageHandle } }),
       fakeGatewayFinalText("The saved screenshot is visible."),
     ], { models });
-    const resumed = await runFx(["ask", "--json", "--auto", "--resume", sessionId, "Describe the earlier screenshot"], {
+    const resumed = await runPf(["ask", "--json", "--auto", "--resume", sessionId, "Describe the earlier screenshot"], {
       cwd: root.workspace, env: fixtureEnv(root, gateway), timeoutMs: 20_000,
     });
     expect(resumed.code).toBe(0);
@@ -2267,7 +2267,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the failing MCP tool."],
       {
         cwd: root.workspace,
@@ -2294,7 +2294,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     });
     gateway = startToolGateway("Ordered legacy stdio negotiation complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the legacy stdio MCP tool."],
       {
         cwd: root.workspace,
@@ -2322,7 +2322,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     });
     gateway = startToolGateway("Legacy stdio version ladder complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the oldest legacy stdio MCP tool."],
       {
         cwd: root.workspace,
@@ -2354,21 +2354,21 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       mode: "startup_exit",
       recordLaunchAttempts: true,
     });
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-    delete profile.mcp.fixture.environment.FX_MCP_PROTOCOL_VERSION;
+    delete profile.mcp.fixture.environment.PF_MCP_PROTOCOL_VERSION;
     writeFileSync(profilePath, JSON.stringify(profile));
 
-    const result = await runFx(["mcp", "list", "--connect"], {
+    const result = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env: {
         HOME: root.home,
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_MCP_PROTOCOL_VERSION: undefined,
-        FX_TRACE_LOG: root.traceLogPath,
-        FX_TRACE_SCOPES: "mcp",
+        PF_AUTO_UPGRADE: "0",
+        PF_MCP_PROTOCOL_VERSION: undefined,
+        PF_TRACE_LOG: root.traceLogPath,
+        PF_TRACE_SCOPES: "mcp",
       },
       timeoutMs: 20_000,
     });
@@ -2393,21 +2393,21 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
       startupTimeoutMs: 1_500,
       recordLaunchAttempts: true,
     });
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-    delete profile.mcp.fixture.environment.FX_MCP_PROTOCOL_VERSION;
+    delete profile.mcp.fixture.environment.PF_MCP_PROTOCOL_VERSION;
     writeFileSync(profilePath, JSON.stringify(profile));
 
-    const result = await runFx(["mcp", "list", "--connect"], {
+    const result = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env: {
         HOME: root.home,
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_MCP_PROTOCOL_VERSION: undefined,
-        FX_TRACE_LOG: root.traceLogPath,
-        FX_TRACE_SCOPES: "mcp",
+        PF_AUTO_UPGRADE: "0",
+        PF_MCP_PROTOCOL_VERSION: undefined,
+        PF_TRACE_LOG: root.traceLogPath,
+        PF_TRACE_SCOPES: "mcp",
       },
       timeoutMs: 20_000,
     });
@@ -2425,26 +2425,26 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectProcessesExited(launches);
   }, 30_000);
 
-  test("mcp list still restarts a stdio server whose startup output fx rejects", async () => {
+  test("mcp list still restarts a stdio server whose startup output pf rejects", async () => {
     const root = createRoot("startup-garbage", LEGACY_FIXTURE, {
       mode: "startup_garbage",
       recordLaunchAttempts: true,
     });
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-    delete profile.mcp.fixture.environment.FX_MCP_PROTOCOL_VERSION;
+    delete profile.mcp.fixture.environment.PF_MCP_PROTOCOL_VERSION;
     writeFileSync(profilePath, JSON.stringify(profile));
 
-    const result = await runFx(["mcp", "list", "--connect"], {
+    const result = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env: {
         HOME: root.home,
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_MCP_PROTOCOL_VERSION: undefined,
-        FX_TRACE_LOG: root.traceLogPath,
-        FX_TRACE_SCOPES: "mcp",
+        PF_AUTO_UPGRADE: "0",
+        PF_MCP_PROTOCOL_VERSION: undefined,
+        PF_TRACE_LOG: root.traceLogPath,
+        PF_TRACE_SCOPES: "mcp",
       },
       timeoutMs: 20_000,
     });
@@ -2454,7 +2454,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     expect(result.stdout).toContain(
       "failure=MCP server wrote output that is not an MCP message before completing startup: not json",
     );
-    // fx ended the child itself, so a fresh launch could behave differently.
+    // pf ended the child itself, so a fresh launch could behave differently.
     const launches = readAttemptedPids(root.launchLogPath);
     expect(launches).toHaveLength(2);
     const trace = readFileSync(root.traceLogPath, "utf8");
@@ -2463,21 +2463,21 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectProcessesExited(launches);
   }, 30_000);
 
-  test("mcp list quotes the stdout line fx rejects from a modern stdio server", async () => {
+  test("mcp list quotes the stdout line pf rejects from a modern stdio server", async () => {
     const root = createRoot("modern-startup-garbage", MODERN_FIXTURE, {
       mode: "startup_garbage",
       recordLaunchAttempts: true,
     });
 
-    const result = await runFx(["mcp", "list", "--connect"], {
+    const result = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env: {
         HOME: root.home,
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_TRACE_LOG: root.traceLogPath,
-        FX_TRACE_SCOPES: "mcp",
+        PF_AUTO_UPGRADE: "0",
+        PF_TRACE_LOG: root.traceLogPath,
+        PF_TRACE_SCOPES: "mcp",
       },
       timeoutMs: 20_000,
     });
@@ -2491,14 +2491,14 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectProcessesExited(launches);
   }, 30_000);
 
-  test("fx ask search tells the model why a named stdio server failed to start", async () => {
+  test("pf ask search tells the model why a named stdio server failed to start", async () => {
     const root = createRoot("ask-startup-exit", LEGACY_FIXTURE, {
       mode: "startup_exit",
       recordLaunchAttempts: true,
     });
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-    delete profile.mcp.fixture.environment.FX_MCP_PROTOCOL_VERSION;
+    delete profile.mcp.fixture.environment.PF_MCP_PROTOCOL_VERSION;
     writeFileSync(profilePath, JSON.stringify(profile));
     const activeGateway = startFakeGateway([
       fakeGatewayToolCall("search_failed", "capability_search", {
@@ -2513,11 +2513,11 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Find the fixture tools."],
       {
         cwd: root.workspace,
-        env: { ...fixtureEnv(root, activeGateway), FX_MCP_PROTOCOL_VERSION: undefined },
+        env: { ...fixtureEnv(root, activeGateway), PF_MCP_PROTOCOL_VERSION: undefined },
         timeoutMs: 20_000,
       },
     );
@@ -2532,21 +2532,21 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"
     await expectProcessesExited(readAttemptedPids(root.launchLogPath));
   }, 30_000);
 
-  test("fx ask tells the model why a stopped stdio server could not restart", async () => {
+  test("pf ask tells the model why a stopped stdio server could not restart", async () => {
     const root = createRoot("ask-restart-failed", MODERN_FIXTURE, {
       mode: "exit_after_result",
       recordLaunchAttempts: true,
       restartLimit: 1,
     });
     // The first launch runs the server; every relaunch fails during startup.
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
     profile.mcp.fixture.command = [
       "/bin/sh",
       "-c",
-      `printf '%s\\n' "$$" >> "$FX_MCP_LAUNCH_LOG"
-if [ "$(wc -l < "$FX_MCP_LAUNCH_LOG")" -gt 1 ]; then echo 'relaunch blocked by test' >&2; exit 5; fi
-exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
+      `printf '%s\\n' "$$" >> "$PF_MCP_LAUNCH_LOG"
+if [ "$(wc -l < "$PF_MCP_LAUNCH_LOG")" -gt 1 ]; then echo 'relaunch blocked by test' >&2; exit 5; fi
+exec "$PF_MCP_FIXTURE_RUNTIME" "$PF_MCP_FIXTURE_PATH"`,
     ];
     writeFileSync(profilePath, JSON.stringify(profile));
     let sawFirstExit = true;
@@ -2554,7 +2554,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       fakeGatewayToolCall("select_mcp", "mcp_select_tool", { name: TOOL_NAME }),
       fakeGatewayToolCall("first_call", TOOL_NAME, { text: "first" }),
       async () => {
-        // Call again only after fx has seen the first server exit.
+        // Call again only after pf has seen the first server exit.
         const deadline = Date.now() + 5_000;
         while (!readFileSync(root.traceLogPath, "utf8").includes("stdio dispatcher failed")) {
           if (Date.now() >= deadline) {
@@ -2571,7 +2571,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the fixture tool twice."],
       {
         cwd: root.workspace,
@@ -2580,7 +2580,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       },
     );
 
-    expect(sawFirstExit, "fx never saw the first server exit").toBe(true);
+    expect(sawFirstExit, "pf never saw the first server exit").toBe(true);
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout).output).toContain("RESTART_FAILURE_REPORTED");
     expect(activeGateway.requests[2]?.body).toContain("MODERN_MCP_TOOL_RESULT:first");
@@ -2622,7 +2622,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       });
 
       const started = Date.now();
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Exercise the malformed MCP fixture."],
         {
           cwd: root.workspace,
@@ -2710,7 +2710,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   }, 15_000);
 
   test("a blocked write recovers before the next unsent runtime call", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-mcp-runtime-recovery-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-mcp-runtime-recovery-")));
     cleanupRoot = root;
     const proc = Bun.spawn(
       [
@@ -2757,7 +2757,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   test("catalog waits preserve operation timeout and cancellation", async () => {
     for (const control of ["timeout", "cancel"] as const) {
       const root = realpathSync(
-        mkdtempSync(join(tmpdir(), `fx-mcp-catalog-${control}-`)),
+        mkdtempSync(join(tmpdir(), `pf-mcp-catalog-${control}-`)),
       );
       cleanupRoot = root;
       const proc = Bun.spawn(
@@ -2805,7 +2805,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   test("stalled recovery preserves startup timeout and local cancellation", async () => {
     for (const control of ["timeout", "cancel"] as const) {
       const root = realpathSync(
-        mkdtempSync(join(tmpdir(), `fx-mcp-recovery-${control}-`)),
+        mkdtempSync(join(tmpdir(), `pf-mcp-recovery-${control}-`)),
       );
       cleanupRoot = root;
       const proc = Bun.spawn(
@@ -2850,7 +2850,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   }, 30_000);
 
   test("concurrent server recovery preserves whole-runtime tool-name uniqueness", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-mcp-recovery-collision-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-mcp-recovery-collision-")));
     cleanupRoot = root;
     const proc = Bun.spawn(
       [
@@ -2896,7 +2896,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   }, 30_000);
 
   test("a failed reconnect leaves the remaining restart budget reachable", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-mcp-recovery-budget-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-mcp-recovery-budget-")));
     cleanupRoot = root;
     const proc = Bun.spawn(
       [
@@ -2939,7 +2939,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   }, 30_000);
 
   test("a queued stale tool cannot cross a recovered connection generation", async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-mcp-stale-recovery-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-mcp-stale-recovery-")));
     cleanupRoot = root;
     const proc = Bun.spawn(
       [
@@ -3013,13 +3013,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       },
     ] as const
   ) {
-    test(`fx ask calls the ${fixture.label} stdio fixture`, async () => {
+    test(`pf ask calls the ${fixture.label} stdio fixture`, async () => {
       const root = createRoot(`ask-${fixture.label}`, fixture.path, {
         recordLaunchAttempts: true,
       });
       const activeGateway = startToolGateway(`${fixture.label} MCP complete.`);
       gateway = activeGateway;
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", `Call the ${fixture.label} MCP fixture.`],
         {
           cwd: root.workspace,
@@ -3069,14 +3069,14 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     const proxySentinel = "http://proxy.example.test:8080";
     const parentPath = process.env.PATH ?? "/usr/bin:/bin";
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the environment MCP fixture."],
       {
         cwd: root.workspace,
         env: {
           ...fixtureEnv(root, activeGateway),
           PATH: parentPath,
-          FX_MCP_INHERITED_SENTINEL: inheritedSentinel,
+          PF_MCP_INHERITED_SENTINEL: inheritedSentinel,
           HTTPS_PROXY: proxySentinel,
         },
         timeoutMs: 20_000,
@@ -3105,14 +3105,14 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   for (const discovery of ["select", "search"] as const) {
     test(`targeted MCP ${discovery} leaves unrelated optional servers dormant`, async () => {
       const root = createRoot("targeted-activation", MODERN_FIXTURE);
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
       const unrelatedWire = join(root.root, "unrelated-wire.jsonl");
       profile.mcp.unrelated = { ...profile.mcp.fixture, environment: {
         ...profile.mcp.fixture.environment,
-        FX_MCP_PROTOCOL_VERSION: "2026-07-28",
-        FX_MCP_MODE: "stall_startup", FX_MCP_WIRE_LOG: unrelatedWire,
-        FX_MCP_PID_PATH: join(root.root, "unrelated.pid"),
+        PF_MCP_PROTOCOL_VERSION: "2026-07-28",
+        PF_MCP_MODE: "stall_startup", PF_MCP_WIRE_LOG: unrelatedWire,
+        PF_MCP_PID_PATH: join(root.root, "unrelated.pid"),
       } };
       writeFileSync(profilePath, JSON.stringify(profile));
       gateway = startFakeGateway([
@@ -3122,7 +3122,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         fakeGatewayToolCall("target_call", TOOL_NAME, { text: "hello" }),
         fakeGatewayFinalText("Targeted server works."),
       ], { models: [{ id: MODEL, type: "language", tags: ["tool-use"] }] });
-      const result = await runFx(["ask", "--json", "--auto", "--no-save", "Use the fixture server"], {
+      const result = await runPf(["ask", "--json", "--auto", "--no-save", "Use the fixture server"], {
         cwd: root.workspace, env: fixtureEnv(root, gateway), timeoutMs: 20_000,
       });
       expect(result.code, result.stderr || result.stdout).toBe(0);
@@ -3132,7 +3132,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     }, 30_000);
   }
 
-  test("fx ask does not start an unused optional MCP server", async () => {
+  test("pf ask does not start an unused optional MCP server", async () => {
     const root = createRoot("ask-unused-optional", MODERN_FIXTURE, {
       recordLaunchAttempts: true,
     });
@@ -3143,7 +3143,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Answer without using MCP."],
       {
         cwd: root.workspace,
@@ -3160,7 +3160,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   }, 15_000);
 
   test.skipIf(!tmuxAvailable())(
-    "terminal fx ask starts an unused optional MCP server before its model request",
+    "terminal pf ask starts an unused optional MCP server before its model request",
     async () => {
       const root = createRoot("ask-terminal-eager-optional", MODERN_FIXTURE, {
         recordLaunchAttempts: true,
@@ -3171,7 +3171,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       tui = await TmuxSession.create({
         isolated: true,
         cmd: `${JSON.stringify(binary)} ask --auto --no-save ${JSON.stringify("Answer without using MCP.")}`,
@@ -3204,7 +3204,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   );
 
   test.skipIf(process.platform === "win32" || !tmuxAvailable())(
-    "terminal fx ask cancels stalled optional MCP startup before its model request",
+    "terminal pf ask cancels stalled optional MCP startup before its model request",
     async () => {
       const root = createRoot("ask-terminal-cancel-startup", MODERN_FIXTURE, {
         mode: "stall_startup",
@@ -3218,7 +3218,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       tui = await TmuxSession.create({
         isolated: true,
         cmd: `${JSON.stringify(binary)} ask --auto --no-save ${JSON.stringify("Cancel optional MCP startup.")}`,
@@ -3240,7 +3240,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
 
       const cancelStartedAt = Date.now();
       await tui.sendKeys("C-c");
-      // fx restores and re-delivers SIGINT after cleanup, so tmux records a
+      // pf restores and re-delivers SIGINT after cleanup, so tmux records a
       // signal exit without a numeric pane status.
       await waitForTtyAskExit(tui, null, 5_000);
       expect(Date.now() - cancelStartedAt).toBeLessThan(5_000);
@@ -3254,13 +3254,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     20_000,
   );
 
-  test("fx ask accepts the official legacy SDK Draft 7 tool schema", async () => {
+  test("pf ask accepts the official legacy SDK Draft 7 tool schema", async () => {
     const root = createRoot("ask-legacy-draft7", LEGACY_FIXTURE, {
       mode: "draft7_schema",
     });
     const activeGateway = startToolGateway("Legacy Draft 7 complete.");
     gateway = activeGateway;
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the legacy Draft 7 MCP fixture."],
       {
         cwd: root.workspace,
@@ -3285,7 +3285,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     await expectFixtureProcessesExited(wire);
   });
 
-  test("fx ask lets the legacy server validate Draft 7 arguments", async () => {
+  test("pf ask lets the legacy server validate Draft 7 arguments", async () => {
     const root = createRoot("ask-legacy-draft7-invalid", LEGACY_FIXTURE, {
       mode: "draft7_schema",
       draft7Pattern: "^\\S+$",
@@ -3298,7 +3298,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
     gateway = activeGateway;
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Try invalid legacy Draft 7 arguments."],
       {
         cwd: root.workspace,
@@ -3318,13 +3318,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     await expectFixtureProcessesExited(wire);
   });
 
-  test("fx ask routes legacy stdio progress", async () => {
+  test("pf ask routes legacy stdio progress", async () => {
     const root = createRoot("ask-legacy-progress", LEGACY_FIXTURE, {
       mode: "progress",
     });
     const activeGateway = startToolGateway("Legacy progress complete.");
     gateway = activeGateway;
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the legacy MCP fixture."],
       {
         cwd: root.workspace,
@@ -3343,13 +3343,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     await expectFixtureProcessesExited(wire);
   }, 30_000);
 
-  test("noninteractive fx ask returns typed input-required without fabricating a continuation", async () => {
+  test("noninteractive pf ask returns typed input-required without fabricating a continuation", async () => {
     const root = createRoot("ask-mrtr", MODERN_FIXTURE, {
       mode: "mrtr_input_required",
     });
     const activeGateway = startToolGateway("MRTR Ask boundary complete.");
     gateway = activeGateway;
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the MRTR MCP fixture."],
       {
         cwd: root.workspace,
@@ -3728,7 +3728,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         const activeGateway = startToolGateway(`${surface} terminal-safe elicitation complete.`);
         gateway = activeGateway;
         const stderrPath = join(root.root, "stderr.log");
-        const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+        const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
         tui = await TmuxSession.create({
           isolated: true,
           ...(surface === "Ask"
@@ -3805,7 +3805,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         const activeGateway = startToolGateway(`${surface} collision form complete.`);
         gateway = activeGateway;
         const stderrPath = join(root.root, "stderr.log");
-        const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+        const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
         tui = await TmuxSession.create({
           isolated: true,
           ...(surface === "Ask"
@@ -4067,7 +4067,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     const activeGateway = startToolGateway("Legacy URL-required version gate complete.");
     gateway = activeGateway;
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the legacy URL-required fixture."],
       {
         cwd: root.workspace,
@@ -4085,7 +4085,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   }, 30_000);
 
   test.skipIf(!tmuxAvailable())(
-    "interactive fx ask validates and submits a modern MCP form elicitation",
+    "interactive pf ask validates and submits a modern MCP form elicitation",
     async () => {
       const root = createRoot("ask-interactive-mrtr", MODERN_FIXTURE, {
         mode: "mrtr_input_required",
@@ -4093,7 +4093,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       });
       const activeGateway = startToolGateway("Interactive Ask elicitation complete.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       const prompt = "Call the MRTR MCP fixture interactively.";
       tui = await TmuxSession.create({
         isolated: true,
@@ -4138,7 +4138,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
 
   for (const legacyVersion of ["2025-06-18", "2025-11-25"] as const) {
     test.skipIf(!tmuxAvailable())(
-      `interactive fx ask handles negotiated ${legacyVersion} direct elicitation/create`,
+      `interactive pf ask handles negotiated ${legacyVersion} direct elicitation/create`,
       async () => {
         const root = createRoot(`ask-legacy-direct-${legacyVersion}`, LEGACY_FIXTURE, {
           mode: "direct_form",
@@ -4148,7 +4148,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         });
         const activeGateway = startToolGateway(`Legacy ${legacyVersion} elicitation complete.`);
         gateway = activeGateway;
-        const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+        const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
         tui = await TmuxSession.create({
           isolated: true,
           cmd: `${JSON.stringify(binary)} ask --auto --no-save ${JSON.stringify("Call the direct legacy elicitation fixture.")}`,
@@ -4215,11 +4215,11 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       mkdirSync(fakeBin);
       writeFakeUrlOpeners(
         fakeBin,
-        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$FX_E2E_OPEN_LOG\"\nexit 0\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$PF_E2E_OPEN_LOG\"\nexit 0\n",
       );
       const activeGateway = startToolGateway("Legacy URL-required complete.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       try {
         tui = await TmuxSession.create({
           isolated: true,
@@ -4231,7 +4231,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
           env: {
             ...fixtureEnv(root, activeGateway),
             PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-            FX_E2E_OPEN_LOG: openLog,
+            PF_E2E_OPEN_LOG: openLog,
           },
         });
 
@@ -4278,11 +4278,11 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       mkdirSync(fakeBin);
       writeFakeUrlOpeners(
         fakeBin,
-        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$FX_E2E_OPEN_LOG\"\nexit 0\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$PF_E2E_OPEN_LOG\"\nexit 0\n",
       );
       const activeGateway = startToolGateway("Legacy multiple URL completion complete.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       tui = await TmuxSession.create({
         isolated: true,
         cmd: `${JSON.stringify(binary)} ask --auto --no-save ${JSON.stringify("Call the multiple legacy URL fixture.")}`,
@@ -4293,7 +4293,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         env: {
           ...fixtureEnv(root, activeGateway),
           PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-          FX_E2E_OPEN_LOG: openLog,
+          PF_E2E_OPEN_LOG: openLog,
         },
       });
 
@@ -4347,11 +4347,11 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       mkdirSync(fakeBin);
       writeFakeUrlOpeners(
         fakeBin,
-        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$FX_E2E_OPEN_LOG\"\nexit 0\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$PF_E2E_OPEN_LOG\"\nexit 0\n",
       );
       const activeGateway = startToolGateway("Legacy malformed completion complete.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       tui = await TmuxSession.create({
         isolated: true,
         cmd: `${JSON.stringify(binary)} ask --auto --no-save ${JSON.stringify("Call the malformed completion fixture.")}`,
@@ -4362,7 +4362,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         env: {
           ...fixtureEnv(root, activeGateway),
           PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-          FX_E2E_OPEN_LOG: openLog,
+          PF_E2E_OPEN_LOG: openLog,
         },
       });
 
@@ -4404,7 +4404,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       });
       const activeGateway = startToolGateway("must not complete");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       const fakeBin = join(root.root, "fake-bin");
       mkdirSync(fakeBin);
       writeFakeUrlOpeners(fakeBin, "#!/bin/sh\nexit 0\n");
@@ -4446,7 +4446,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       });
       const activeGateway = startToolGateway("Legacy URL timeout handled.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       const fakeBin = join(root.root, "fake-bin");
       mkdirSync(fakeBin);
       writeFakeUrlOpeners(fakeBin, "#!/bin/sh\nexit 0\n");
@@ -4496,7 +4496,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         mkdirSync(fakeBin);
         writeFakeUrlOpeners(
           fakeBin,
-          "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$FX_E2E_OPEN_LOG\"\nexit 0\n",
+          "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$PF_E2E_OPEN_LOG\"\nexit 0\n",
         );
         gateway = startFakeGateway([
           operation === "resources"
@@ -4524,7 +4524,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         ], {
           models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
         });
-        const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+        const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
         tui = await TmuxSession.create({
           isolated: true,
           cmd: `${JSON.stringify(binary)} ask --auto --no-save ${JSON.stringify(`Use the legacy ${operation} URL-required fixture.`)}`,
@@ -4535,7 +4535,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
           env: {
             ...fixtureEnv(root, gateway),
             PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-            FX_E2E_OPEN_LOG: openLog,
+            PF_E2E_OPEN_LOG: openLog,
           },
         });
 
@@ -4566,7 +4566,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   }
 
   test.skipIf(!tmuxAvailable())(
-    "interactive fx ask validates Unicode patterns, edits, and submits every form field kind",
+    "interactive pf ask validates Unicode patterns, edits, and submits every form field kind",
     async () => {
       const root = createRoot("ask-interactive-full-form", MODERN_FIXTURE, {
         mode: "mrtr_full_form",
@@ -4574,7 +4574,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       });
       const activeGateway = startToolGateway("Interactive Ask full form complete.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       tui = await TmuxSession.create({
         isolated: true,
         cmd: `${JSON.stringify(binary)} ask --auto --no-save ${JSON.stringify("Complete the full MCP form.")}`,
@@ -4680,7 +4680,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   );
 
   test.skipIf(!tmuxAvailable())(
-    "interactive fx ask retries a URL browser failure without prefetching",
+    "interactive pf ask retries a URL browser failure without prefetching",
     async () => {
       let targetRequests = 0;
       const target = Bun.serve({
@@ -4703,11 +4703,11 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       mkdirSync(fakeBin);
       writeFakeUrlOpeners(
         fakeBin,
-        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$FX_E2E_OPEN_LOG\"\nif [ ! -e \"$FX_E2E_OPEN_STATE\" ]; then touch \"$FX_E2E_OPEN_STATE\"; exit 1; fi\nexit 0\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$PF_E2E_OPEN_LOG\"\nif [ ! -e \"$PF_E2E_OPEN_STATE\" ]; then touch \"$PF_E2E_OPEN_STATE\"; exit 1; fi\nexit 0\n",
       );
       const activeGateway = startToolGateway("Interactive Ask URL elicitation complete.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       try {
         tui = await TmuxSession.create({
           isolated: true,
@@ -4719,10 +4719,10 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
           env: {
             ...fixtureEnv(root, activeGateway),
             PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-            FX_E2E_OPEN_LOG: openLog,
-            FX_E2E_OPEN_STATE: openState,
-            FX_TRACE_LOG: traceLog,
-            FX_TRACE_SCOPES: "core",
+            PF_E2E_OPEN_LOG: openLog,
+            PF_E2E_OPEN_STATE: openState,
+            PF_TRACE_LOG: traceLog,
+            PF_TRACE_SCOPES: "core",
           },
         });
 
@@ -4763,7 +4763,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
   );
 
   test.skipIf(!tmuxAvailable())(
-    "interactive fx ask can refuse a URL without launching a browser",
+    "interactive pf ask can refuse a URL without launching a browser",
     async () => {
       let targetRequests = 0;
       const target = Bun.serve({
@@ -4784,11 +4784,11 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       mkdirSync(fakeBin);
       writeFakeUrlOpeners(
         fakeBin,
-        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$FX_E2E_OPEN_LOG\"\nexit 0\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$PF_E2E_OPEN_LOG\"\nexit 0\n",
       );
       const activeGateway = startToolGateway("Interactive Ask URL refusal complete.");
       gateway = activeGateway;
-      const binary = join(REPO_ROOT, "zig-out", "bin", "fx");
+      const binary = join(REPO_ROOT, "zig-out", "bin", "pf");
       try {
         tui = await TmuxSession.create({
           isolated: true,
@@ -4800,7 +4800,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
           env: {
             ...fixtureEnv(root, activeGateway),
             PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-            FX_E2E_OPEN_LOG: openLog,
+            PF_E2E_OPEN_LOG: openLog,
           },
         });
 
@@ -4828,13 +4828,13 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     35_000,
   );
 
-  test("fx ask routes progress and times out a stalled operation without leaking its child", async () => {
+  test("pf ask routes progress and times out a stalled operation without leaking its child", async () => {
     const progressRoot = createRoot("ask-progress", MODERN_FIXTURE, {
       mode: "progress",
     });
     const progressGateway = startToolGateway("Progress MCP complete.");
     gateway = progressGateway;
-    const progressResult = await runFx(
+    const progressResult = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the progress MCP fixture."],
       {
         cwd: progressRoot.workspace,
@@ -4864,7 +4864,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     const timeoutGateway = startToolGateway("Timed out MCP recovered.");
     gateway = timeoutGateway;
-    const timeoutResult = await runFx(
+    const timeoutResult = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the stalled MCP fixture."],
       {
         cwd: timeoutRoot.workspace,
@@ -4891,7 +4891,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       fakeGatewayToolCall("cancel_startup", "capability_search", { server: "fixture", query: "echo" }),
       fakeGatewayFinalText("Unexpected continuation."),
     ], { models: [{ id: MODEL, type: "language", tags: ["tool-use"] }] });
-    const proc = Bun.spawn([join(REPO_ROOT, "zig-out", "bin", "fx"), "ask", "--json", "--auto", "--no-save", "Find the fixture tool"], {
+    const proc = Bun.spawn([join(REPO_ROOT, "zig-out", "bin", "pf"), "ask", "--json", "--auto", "--no-save", "Find the fixture tool"], {
       cwd: root.workspace, env: { ...process.env, ...fixtureEnv(root, gateway) }, stdout: "ignore", stderr: "ignore",
     });
     try {
@@ -4909,7 +4909,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     }
   }, 15_000);
 
-  test("fx ask bounds startup timeouts and reaps every attempted child", async () => {
+  test("pf ask bounds startup timeouts and reaps every attempted child", async () => {
     const root = createRoot("ask-startup-timeout", MODERN_FIXTURE, {
       mode: "stall_startup",
       startupTimeoutMs: 50,
@@ -4926,7 +4926,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the stalled MCP fixture."],
       {
         cwd: root.workspace,
@@ -5002,7 +5002,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     25_000,
   );
 
-  test("required profile startup failure blocks fx ask before any Gateway request", async () => {
+  test("required profile startup failure blocks pf ask before any Gateway request", async () => {
     const root = createRoot("ask-required-startup-timeout", MODERN_FIXTURE, {
       mode: "stall_startup",
       startupTimeoutMs: 50,
@@ -5017,7 +5017,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "This request must remain blocked."],
       {
         cwd: root.workspace,
@@ -5290,7 +5290,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       const originalPid = beforeWire.find((entry) => entry.message.method === "tools/call")?.pid;
       expect(originalPid).toBeDefined();
 
-      writeFileSync(join(root.home, ".fx", "mcp.json"), "{not valid json");
+      writeFileSync(join(root.home, ".pf", "mcp.json"), "{not valid json");
       await tui.sendText("/mcp reload");
       await tui.waitForText("MCP configuration could not be reloaded", 5_000);
       expect(isProcessAlive(originalPid!)).toBe(true);
@@ -5325,9 +5325,9 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       });
       await tui.waitForComposer(15_000);
 
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-      profile.mcp.fixture.environment.FX_MCP_MODE = "stall_startup";
+      profile.mcp.fixture.environment.PF_MCP_MODE = "stall_startup";
       profile.mcp.fixture.startup_timeout_ms = 60_000;
       writeFileSync(profilePath, JSON.stringify(profile));
 
@@ -5338,7 +5338,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       await tui.waitForText("mcp.json", 1_000);
       expect(Date.now() - pathStarted).toBeLessThan(1_000);
 
-      profile.mcp.fixture.environment.FX_MCP_MODE = "normal";
+      profile.mcp.fixture.environment.PF_MCP_MODE = "normal";
       writeFileSync(profilePath, JSON.stringify(profile));
       const supersedeStarted = Date.now();
       await tui.sendText("/mcp reload");
@@ -5375,7 +5375,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
 
       await tui.waitForComposer(15_000);
       const originalPid = Number(readFileSync(join(root.root, "mcp.pid"), "utf8"));
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
       profile.mcp.fixture.command = ["/definitely/missing-required-mcp-command"];
       profile.mcp.fixture.required = true;
@@ -5480,7 +5480,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     "top-level mcp list renders complete secret-free health after releasing runtime locks",
     async () => {
       const root = createRoot("health-output", MODERN_FIXTURE, { mode: "features" });
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
       profile.mcp.fixture.environment.S11_SECRET_ENV = "HEALTH_SECRET_SENTINEL";
       writeFileSync(profilePath, JSON.stringify(profile));
@@ -5491,7 +5491,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
       });
       gateway = activeGateway;
 
-      const result = await runFx(["mcp", "list", "--connect"], {
+      const result = await runPf(["mcp", "list", "--connect"], {
         cwd: root.workspace,
         env: fixtureEnv(root, activeGateway),
         timeoutMs: 20_000,
@@ -5761,7 +5761,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     45_000,
   );
 
-  test("fx ask performs one fresh-discovery restart without replaying the failed call", async () => {
+  test("pf ask performs one fresh-discovery restart without replaying the failed call", async () => {
     const root = createRoot("ask-restart", MODERN_FIXTURE, {
       mode: "crash_once",
       restartLimit: 1,
@@ -5776,7 +5776,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Recover the MCP fixture once."],
       {
         cwd: root.workspace,
@@ -5806,7 +5806,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
 
   for (const childMode of ["persistent"] as const) {
     test(`revoked ${childMode} authority prevents stdio recovery effects`, async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), `fx-mcp-${childMode}-recovery-`)));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), `pf-mcp-${childMode}-recovery-`)));
       cleanupRoot = root;
       const proc = Bun.spawn(
         [
@@ -5861,7 +5861,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
         .filter((entry) => entry.message.id !== undefined)
         .map((entry) => entry.message.id);
       expect(new Set(requestIds).size).toBe(requestIds.length);
-      const evidenceDir = process.env.FX_S11_EVIDENCE_DIR;
+      const evidenceDir = process.env.PF_S11_EVIDENCE_DIR;
       if (evidenceDir) {
         mkdirSync(evidenceDir, { recursive: true });
         writeFileSync(
@@ -5880,7 +5880,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     }, 30_000);
   }
 
-  test("fx ask stops restarting after the configured stdio budget", async () => {
+  test("pf ask stops restarting after the configured stdio budget", async () => {
     const root = createRoot("ask-restart-limit", MODERN_FIXTURE, {
       mode: "crash_always",
       restartLimit: 1,
@@ -5895,7 +5895,7 @@ exec "$FX_MCP_FIXTURE_RUNTIME" "$FX_MCP_FIXTURE_PATH"`,
     });
     gateway = activeGateway;
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Exhaust the MCP restart budget."],
       {
         cwd: root.workspace,

@@ -2,10 +2,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxTerminal, supportsJspi } from "../node.js";
+import { createPfTerminal, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const defaultWasm = resolve(scriptDir, "../../zig-out/bin/fx-term.wasm");
+const defaultWasm = resolve(scriptDir, "../../zig-out/bin/pf-term.wasm");
 const wasmPath = resolve(process.argv[2] || defaultWasm);
 
 if (!supportsJspi()) {
@@ -116,7 +116,7 @@ const oauthSessionStore = {
     const currentRevision = storedRecord?.revision;
     if (currentRevision !== expectedRevision) {
       const error = new Error("OAuth session revision conflict");
-      error.code = "FX_OAUTH_SESSION_REVISION_CONFLICT";
+      error.code = "PF_OAUTH_SESSION_REVISION_CONFLICT";
       throw error;
     }
     if (!(bytes instanceof Uint8Array)) throw new TypeError("OAuth session commit must receive opaque bytes");
@@ -130,7 +130,7 @@ const oauthSessionStore = {
     if (!storedRecord) return "missing";
     if (storedRecord.revision !== expectedRevision) {
       const error = new Error("OAuth session revision conflict");
-      error.code = "FX_OAUTH_SESSION_REVISION_CONFLICT";
+      error.code = "PF_OAUTH_SESSION_REVISION_CONFLICT";
       throw error;
     }
     storedRecord = null;
@@ -175,11 +175,11 @@ async function waitFor(predicate, label, diagnostics = () => "") {
 
 async function start(env = {}) {
   const capture = createTerminalCapture();
-  const runtime = await createFxTerminal({
+  const runtime = await createPfTerminal({
     backend: "wasm",
     wasm,
     terminal: capture.terminal,
-    env: { FX_THEME: "dark", FX_TRACE_STDERR: "1", FX_TRACE_SCOPES: "auth", ...env },
+    env: { PF_THEME: "dark", PF_TRACE_STDERR: "1", PF_TRACE_SCOPES: "auth", ...env },
     fetch: stubFetch,
     openUrl(url) { openedUrls.push(url); return true; },
     oauthSessionStore,
@@ -188,7 +188,7 @@ async function start(env = {}) {
   });
   await waitFor(
     () => capture.transcript().includes("Run /help for commands"),
-    "fx-term startup",
+    "pf-term startup",
     () => JSON.stringify(capture.transcript().slice(-1000)),
   );
   return { capture, runtime };
@@ -280,7 +280,7 @@ if (gatewayRequests[1]?.authorization !== `Bearer ${accessToken}`) {
 
 second.runtime.write("/logout\r");
 await waitFor(
-  () => second.capture.transcript().includes("Signed out of fx."),
+  () => second.capture.transcript().includes("Signed out of pf."),
   "OAuth logout",
   () => JSON.stringify(second.capture.transcript().slice(-1500)),
 );

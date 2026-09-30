@@ -27,14 +27,14 @@ if (childMode) await runChild();
 else await runParent();
 
 function piEntry() {
-  const root = process.env.LIBFX_BENCH_PI_ROOT;
-  if (!root) throw new Error("Install @earendil-works/pi-coding-agent and set LIBFX_BENCH_PI_ROOT to its npm prefix");
+  const root = process.env.LIBPF_BENCH_PI_ROOT;
+  if (!root) throw new Error("Install @earendil-works/pi-coding-agent and set LIBPF_BENCH_PI_ROOT to its npm prefix");
   return pathToFileURL(resolve(root, "node_modules/@earendil-works/pi-coding-agent/dist/index.js")).href;
 }
 
 async function runChild() {
-  const gatewayOrigin = process.env.LIBFX_BENCH_GATEWAY_ORIGIN;
-  const diagnosticsPath = process.env.LIBFX_BENCH_DIAGNOSTICS;
+  const gatewayOrigin = process.env.LIBPF_BENCH_GATEWAY_ORIGIN;
+  const diagnosticsPath = process.env.LIBPF_BENCH_DIAGNOSTICS;
   if (!gatewayOrigin || !diagnosticsPath) throw new Error("benchmark child environment is incomplete");
 
   const startedAt = performance.now();
@@ -197,8 +197,8 @@ async function runSample(gatewayOrigin, diagnosticsPath) {
     env: {
       ...process.env,
       OPENAI_API_KEY: "pi-benchmark-key",
-      LIBFX_BENCH_GATEWAY_ORIGIN: gatewayOrigin,
-      LIBFX_BENCH_DIAGNOSTICS: diagnosticsPath,
+      LIBPF_BENCH_GATEWAY_ORIGIN: gatewayOrigin,
+      LIBPF_BENCH_DIAGNOSTICS: diagnosticsPath,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

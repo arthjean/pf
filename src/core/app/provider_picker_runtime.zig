@@ -132,7 +132,7 @@ pub fn Runtime(comptime App: type) type {
                     // subscription provider or an API key is doing the actual
                     // inference; that remembered team earns no marker then.
                     const oauth_inference_active = active_provider == .gateway and
-                        app.auth.credentialSource() == .fx_login;
+                        app.auth.credentialSource() == .pf_login;
                     const current = if (oauth_inference_active) selection.currentTeam() else null;
                     for (selection.teams.items) |team| {
                         if (count >= provider_picker_catalog.max_team_options) break;
@@ -324,7 +324,7 @@ pub fn Runtime(comptime App: type) type {
                         // is the last column the choice has: the login is still
                         // the credential the user asked for, teams or not.
                         .unavailable => {
-                            try commitSource(app, .fx_login, provider);
+                            try commitSource(app, .pf_login, provider);
                             return true;
                         },
                     }
@@ -450,7 +450,7 @@ pub fn Runtime(comptime App: type) type {
 
         /// An ambient OIDC token satisfies the oauth method without a browser
         /// round trip. It is the only source worth switching to here: a stored
-        /// fx login session that reached this point was already judged dead by
+        /// pf login session that reached this point was already judged dead by
         /// the team load, so offering it back would switch to a corpse.
         fn ambientOauthSource(app: *App) ?credentials.Source {
             const view = app.auth.pickerView();

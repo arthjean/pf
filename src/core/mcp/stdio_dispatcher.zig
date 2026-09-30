@@ -68,7 +68,7 @@ pub const StderrCapture = struct {
 
 const rejected_output_capacity: usize = 256;
 
-/// The start of a stdout line fx rejected because it is not an MCP message.
+/// The start of a stdout line pf rejected because it is not an MCP message.
 pub const RejectedOutput = struct {
     bytes: [rejected_output_capacity]u8 = undefined,
     len: usize = 0,
@@ -2776,7 +2776,7 @@ test "MCP stdio reports a write to a child that closed stdin as a closed connect
             .{ .timeout_ms = 5_000 },
         ),
     );
-    // fx ends a child it can no longer write to; the details still arrive.
+    // pf ends a child it can no longer write to; the details still arrive.
     const diagnostics = dispatcher.childDiagnostics();
     try std.testing.expectEqual(std.process.Child.Term{ .signal = .KILL }, diagnostics.term orelse return error.TestExpectedExit);
     try std.testing.expectEqualStrings("stdin closed\n", diagnostics.stderr.headSlice());

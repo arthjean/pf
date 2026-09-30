@@ -5,17 +5,17 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { benchmarkInstructionsBytes, sampleStats } from "../../benchmarks/libfx/workload.mjs";
+import { benchmarkInstructionsBytes, sampleStats } from "../../benchmarks/libpf/workload.mjs";
 
 assert.deepEqual(sampleStats([4, 1, 3, 2]), { count: 4, mean: 2.5, p50: 2, p95: 4, max: 4 });
 assert.equal(sampleStats(Array.from({ length: 100 }, (_, index) => index + 1)).p99, 99);
 for (const invalid of [[], [NaN], [Infinity], [null], [-1]]) assert.throws(() => sampleStats(invalid), TypeError);
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const benchmark = fileURLToPath(new URL("../../benchmarks/libfx/bench-fx.mjs", import.meta.url));
-const runtimeBenchmark = fileURLToPath(new URL("../../benchmarks/libfx/bench-runtime.mjs", import.meta.url));
-const capacityBenchmark = fileURLToPath(new URL("../../benchmarks/libfx/bench-capacity.mjs", import.meta.url));
-const benchmarkCheck = fileURLToPath(new URL("../../benchmarks/libfx/check-results.mjs", import.meta.url));
+const benchmark = fileURLToPath(new URL("../../benchmarks/libpf/bench-pf.mjs", import.meta.url));
+const runtimeBenchmark = fileURLToPath(new URL("../../benchmarks/libpf/bench-runtime.mjs", import.meta.url));
+const capacityBenchmark = fileURLToPath(new URL("../../benchmarks/libpf/bench-capacity.mjs", import.meta.url));
+const benchmarkCheck = fileURLToPath(new URL("../../benchmarks/libpf/check-results.mjs", import.meta.url));
 const runtime = process.versions.bun ? "bun" : "node";
 const command = process.execPath;
 
@@ -80,7 +80,7 @@ for (const backend of ["native", "wasm"]) {
   ]);
 }
 
-const checkDir = await mkdtemp(resolve(tmpdir(), "libfx-benchmark-check-"));
+const checkDir = await mkdtemp(resolve(tmpdir(), "libpf-benchmark-check-"));
 try {
   const write = (name, value) => writeFile(resolve(checkDir, name), `${JSON.stringify(value)}\n`);
   for (const runtimeName of ["node", "bun"]) {
@@ -107,11 +107,11 @@ try {
     }
     await write(`competitive-${runtimeName}.json`, {
       rounds: [
-        { order: ["libfx", "pi"], libfx_request_count: 103, pi_request_count: 103 },
-        { order: ["pi", "libfx"], libfx_request_count: 103, pi_request_count: 103 },
-        { order: ["libfx", "pi"], libfx_request_count: 103, pi_request_count: 103 },
+        { order: ["libpf", "pi"], libpf_request_count: 103, pi_request_count: 103 },
+        { order: ["pi", "libpf"], libpf_request_count: 103, pi_request_count: 103 },
+        { order: ["libpf", "pi"], libpf_request_count: 103, pi_request_count: 103 },
       ],
-      libfx: { prompt_to_first_text_ms: { count: 300, p50: 0.5, p95: 0.8, p99: 1.2 } },
+      libpf: { prompt_to_first_text_ms: { count: 300, p50: 0.5, p95: 0.8, p99: 1.2 } },
       pi: { prompt_to_first_text_ms: { count: 300, p50: 0.7, p95: 1.0, p99: 1.5 } },
     });
   }
@@ -132,11 +132,11 @@ try {
   });
   const slowerCompetitor = {
     rounds: [
-      { order: ["libfx", "pi"], libfx_request_count: 103, pi_request_count: 103 },
-      { order: ["pi", "libfx"], libfx_request_count: 103, pi_request_count: 103 },
-      { order: ["libfx", "pi"], libfx_request_count: 103, pi_request_count: 103 },
+      { order: ["libpf", "pi"], libpf_request_count: 103, pi_request_count: 103 },
+      { order: ["pi", "libpf"], libpf_request_count: 103, pi_request_count: 103 },
+      { order: ["libpf", "pi"], libpf_request_count: 103, pi_request_count: 103 },
     ],
-    libfx: { prompt_to_first_text_ms: { count: 300, p50: 1.1, p95: 1.4, p99: 1.8 } },
+    libpf: { prompt_to_first_text_ms: { count: 300, p50: 1.1, p95: 1.4, p99: 1.8 } },
     pi: { prompt_to_first_text_ms: { count: 300, p50: 0.7, p95: 1.0, p99: 1.5 } },
   };
   await write("competitive-node.json", slowerCompetitor);
@@ -151,7 +151,7 @@ try {
     [{ count: 299, p50: 1.1, p95: 1.4, p99: 1.8 }, /needs 300 samples/],
     [{ count: 300, p50: null, p95: 1.4, p99: 1.8 }, /competitor timings are invalid/],
   ]) {
-    await write("competitive-node.json", { ...slowerCompetitor, libfx: { prompt_to_first_text_ms: timings } });
+    await write("competitive-node.json", { ...slowerCompetitor, libpf: { prompt_to_first_text_ms: timings } });
     const invalid = spawnSync(command, [benchmarkCheck, "--dir", checkDir], { encoding: "utf8" });
     assert.notEqual(invalid.status, 0);
     assert.match(invalid.stderr, error);
@@ -166,4 +166,4 @@ try {
   await rm(checkDir, { recursive: true, force: true });
 }
 
-console.log(`${runtime} libfx benchmark integration passed`);
+console.log(`${runtime} libpf benchmark integration passed`);

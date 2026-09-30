@@ -19,7 +19,7 @@ import {
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, REPO_ROOT, runFx } from "../evals/eval-helpers";
+import { PF_BIN, REPO_ROOT, runPf } from "../evals/eval-helpers";
 import { jpegHeader, pngPixelSize, solidPng } from "./fixtures/image-encoding";
 import { fakeGatewaySse, fakeGatewayTitleDefault, hasEmptyComposer, TITLE_GENERATION_MARKER, TmuxSession, tmuxAvailable } from "./tmux-helpers";
 
@@ -80,8 +80,8 @@ const VISION_RESULT = JSON.stringify({
     {
       image_id: 1,
       status: "ok",
-      summary: "FX logo in a square mark",
-      visible_text: ["FX LOGO"],
+      summary: "PF logo in a square mark",
+      visible_text: ["PF LOGO"],
       details: ["square layout"],
     },
   ],
@@ -158,7 +158,7 @@ function expectVisionResponseFormat(body: string, imageCount: number) {
   };
   expect(request.responseFormat).toMatchObject({
     type: "json",
-    name: "fx_vision_evidence",
+    name: "pf_vision_evidence",
     schema: {
       type: "object",
       required: ["images"],
@@ -262,12 +262,12 @@ function startImageGateway(
 }
 
 function createIsolatedRoot() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-vision-route-e2e-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-vision-route-e2e-")));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
-  writeFileSync(join(home, ".fx", "settings.json"), JSON.stringify({ permission: {} }));
+  writeFileSync(join(home, ".pf", "settings.json"), JSON.stringify({ permission: {} }));
   return { root, home, workspace: realpathSync(workspace) };
 }
 
@@ -302,7 +302,7 @@ function writeLegacyZeroImageSession(
   sessionId: string,
   imagePaths: [string, string, string, string],
 ) {
-  const sessionDir = join(root.home, ".fx", "sessions", sessionId);
+  const sessionDir = join(root.home, ".pf", "sessions", sessionId);
   mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
   writeFileSync(
     join(sessionDir, "session.json"),
@@ -374,9 +374,9 @@ function fakeGatewayEnv(
     HOME: root.home,
     AI_GATEWAY_API_KEY: "fake-vision-route-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_GATEWAY_BASE_URL: gateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_MODEL: model,
+    PF_GATEWAY_BASE_URL: gateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_MODEL: model,
   };
 }
 
@@ -398,12 +398,12 @@ async function expectNonRegularVisionPathFailure(
   let session: TmuxSession | null = null;
   try {
     session = await TmuxSession.create({
-      cmd: FX_BIN,
+      cmd: PF_BIN,
       cwd: root.workspace,
       env: {
         ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-        FX_PERMISSION_MODE: "ask",
-        FX_AUTO_UPGRADE: "0",
+        PF_PERMISSION_MODE: "ask",
+        PF_AUTO_UPGRADE: "0",
         NO_COLOR: "1",
       },
       stderrPath,
@@ -443,7 +443,7 @@ async function expectChangedCanonicalVisionPathFailure(
   writeMarkedImage(targetPath, "TMUX_APPROVED_TARGET_A");
   symlinkSync(targetPath, approvedPath);
   writeFileSync(
-    join(root.home, ".fx", "settings.json"),
+    join(root.home, ".pf", "settings.json"),
     JSON.stringify({ permission_mode: "ask", permission: {} }),
   );
   const gateway = startImageGateway([
@@ -459,12 +459,12 @@ async function expectChangedCanonicalVisionPathFailure(
   let session: TmuxSession | null = null;
   try {
     session = await TmuxSession.create({
-      cmd: FX_BIN,
+      cmd: PF_BIN,
       cwd: root.workspace,
       env: {
         ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-        FX_PERMISSION_MODE: "ask",
-        FX_AUTO_UPGRADE: "0",
+        PF_PERMISSION_MODE: "ask",
+        PF_AUTO_UPGRADE: "0",
         NO_COLOR: "1",
       },
       stderrPath,
@@ -508,7 +508,7 @@ async function expectChangedCanonicalVisionPathFailure(
   }
 }
 
-function parseFxJson(result: Awaited<ReturnType<typeof runFx>>) {
+function parsePfJson(result: Awaited<ReturnType<typeof runPf>>) {
   expect(result.code, result.stdout + result.stderr).toBe(0);
   return JSON.parse(result.stdout.trim()) as {
     output: string;
@@ -519,7 +519,7 @@ function parseFxJson(result: Awaited<ReturnType<typeof runFx>>) {
   };
 }
 
-function parseFxErrorJson(result: Awaited<ReturnType<typeof runFx>>) {
+function parsePfErrorJson(result: Awaited<ReturnType<typeof runPf>>) {
   expect(result.code).toBe(1);
   return JSON.parse(result.stdout.trim()) as {
     output: string;
@@ -570,13 +570,13 @@ function toolResultText(body: string, toolCallId: string): string {
 
 describe("Vision route fake Gateway", () => {
   test(
-    "fx ask rejects missing images before Gateway startup in text and JSON modes",
+    "pf ask rejects missing images before Gateway startup in text and JSON modes",
     async () => {
       const root = createIsolatedRoot();
       const gateway = startImageGateway([]);
       const missingPath = join(root.workspace, "missing-image.png");
       try {
-        const textResult = await runFx(
+        const textResult = await runPf(
           ["ask", "--no-save", "--image", missingPath, "Describe the image."],
           {
             cwd: root.workspace,
@@ -589,7 +589,7 @@ describe("Vision route fake Gateway", () => {
         expect(textResult.stderr).toContain(missingPath);
         expect(textResult.stderr).toContain("image file not found");
 
-        const jsonResult = await runFx(
+        const jsonResult = await runPf(
           ["ask", "--json", "--no-save", "--image", missingPath, "Describe the image."],
           {
             cwd: root.workspace,
@@ -597,7 +597,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxErrorJson(jsonResult);
+        const json = parsePfErrorJson(jsonResult);
         expect(json.output).toBe("");
         expect(json.error).toContain("FileNotFound");
         expect(json.error).toContain(missingPath);
@@ -625,7 +625,7 @@ describe("Vision route fake Gateway", () => {
       writeFileSync(stderrPath, "");
       let session: TmuxSession | null = null;
       try {
-        const cliResult = await runFx(
+        const cliResult = await runPf(
           ["ask", "--no-save", "--image", oversizedPath, "Describe the image."],
           {
             cwd: root.workspace,
@@ -641,11 +641,11 @@ describe("Vision route fake Gateway", () => {
         expect(gateway.chatRequests).toHaveLength(0);
 
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_AUTO_UPGRADE: "0",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -672,7 +672,7 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask gates GLM images through Vision without leaking paths",
+    "pf ask gates GLM images through Vision without leaking paths",
     async () => {
       const root = createIsolatedRoot();
       const fixture = createScopedImageFixture(root);
@@ -682,7 +682,7 @@ describe("Vision route fake Gateway", () => {
         sseText("GLM final image answer"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -699,7 +699,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.exit_code).toBe(0);
         expect(json.output).toContain("GLM final image answer");
         expect(gateway.catalogRequests).toBe(1);
@@ -715,7 +715,7 @@ describe("Vision route fake Gateway", () => {
         expect(gateway.chatRequests[1].body).toContain('"type":"file"');
         expect(gateway.chatRequests[1].body).not.toContain(fixture.rootRule);
         expect(gateway.chatRequests[1].body).not.toContain(fixture.nestedRule);
-        expect(gateway.chatRequests[2].body).toContain("FX LOGO");
+        expect(gateway.chatRequests[2].body).toContain("PF LOGO");
         expect(gateway.chatRequests[2].body).not.toContain('"type":"file"');
         expectScopedImageContext(gateway.chatRequests[2].body, fixture);
         const finalUserText = lastUserText(gateway.chatRequests[2].body);
@@ -731,7 +731,7 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask recovers when the model rejects the post-Vision prompt as assistant prefill",
+    "pf ask recovers when the model rejects the post-Vision prompt as assistant prefill",
     async () => {
       const root = createIsolatedRoot();
       const fixture = createScopedImageFixture(root);
@@ -756,7 +756,7 @@ describe("Vision route fake Gateway", () => {
         sseText("Recovered final image answer"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -773,7 +773,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.exit_code).toBe(0);
         expect(json.output).toContain("Recovered final image answer");
         expect(gateway.chatRequests).toHaveLength(4);
@@ -795,13 +795,13 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask executes path-source Vision and cleans transient snapshots without failure telemetry",
+    "pf ask executes path-source Vision and cleans transient snapshots without failure telemetry",
     async () => {
       const root = createIsolatedRoot();
       const imagePath = join(root.workspace, "path-source.png");
       const tracePath = join(root.root, "trace.log");
       const snapshotsBefore = readdirSync("/tmp")
-        .filter((name) => name.startsWith("fx-image-snapshots-"))
+        .filter((name) => name.startsWith("pf-image-snapshots-"))
         .sort();
       writeMarkedImage(imagePath, "HEADLESS_PATH_SOURCE");
       const gateway = startImageGateway([
@@ -814,7 +814,7 @@ describe("Vision route fake Gateway", () => {
         sseText("Path-source final answer"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -826,14 +826,14 @@ describe("Vision route fake Gateway", () => {
             cwd: root.workspace,
             env: {
               ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-              FX_TRACE_LOG: tracePath,
-              FX_TRACE_SCOPES: "images",
+              PF_TRACE_LOG: tracePath,
+              PF_TRACE_SCOPES: "images",
             },
             timeoutMs: TIMEOUT,
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("Path-source final answer");
         expect(gateway.chatRequests).toHaveLength(3);
         expect(gateway.chatRequests[0]!.body).toContain('"name":"vision"');
@@ -845,7 +845,7 @@ describe("Vision route fake Gateway", () => {
         expect(readFileSync(tracePath, "utf8")).not.toContain("snapshot_cleanup_failed");
         expect(
           readdirSync("/tmp")
-            .filter((name) => name.startsWith("fx-image-snapshots-"))
+            .filter((name) => name.startsWith("pf-image-snapshots-"))
             .sort(),
         ).toEqual(snapshotsBefore);
       } finally {
@@ -939,7 +939,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
         try {
-          const result = await runFx(
+          const result = await runPf(
             [
               "ask",
               "--json",
@@ -957,7 +957,7 @@ describe("Vision route fake Gateway", () => {
             },
           );
 
-          const json = parseFxJson(result);
+          const json = parsePfJson(result);
           expect(json.output).toContain(`final ${entry.name}`);
           expect(gateway.chatRequests).toHaveLength(3);
           expect(gateway.chatRequests[1].headers.get("ai-language-model-id")).toBe(GEMINI_MODEL);
@@ -966,8 +966,8 @@ describe("Vision route fake Gateway", () => {
           for (const request of gateway.chatRequests) {
             for (const imagePath of fixture.paths) expect(request.body).not.toContain(imagePath);
             expect(request.body).not.toContain("data:image");
-            expect(request.body).not.toContain("fx-image-snapshots");
-            expect(request.body).not.toContain(".fx/sessions");
+            expect(request.body).not.toContain("pf-image-snapshots");
+            expect(request.body).not.toContain(".pf/sessions");
           }
         } finally {
           gateway.stop();
@@ -994,7 +994,7 @@ describe("Vision route fake Gateway", () => {
         sseText("Recovered after required Vision rejection"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -1012,7 +1012,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("Recovered after required Vision rejection");
         expect(json.tool_calls).toContainEqual({ name: "read_file", status: "error" });
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "success" });
@@ -1030,7 +1030,7 @@ describe("Vision route fake Gateway", () => {
         expect(rejectedCall.input).toEqual({});
         expect(gateway.chatRequests[3].headers.get("ai-language-model-id")).toBe(GEMINI_MODEL);
         expect(filePartCount(gateway.chatRequests[3].body)).toBe(1);
-        expect(gateway.chatRequests[4].body).toContain("FX LOGO");
+        expect(gateway.chatRequests[4].body).toContain("PF LOGO");
         expect(gateway.chatRequests[4].body).not.toContain(forbiddenContents);
       } finally {
         gateway.stop();
@@ -1041,13 +1041,13 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask preserves native image parts for Gemini",
+    "pf ask preserves native image parts for Gemini",
     async () => {
       const root = createIsolatedRoot();
       const fixture = createScopedImageFixture(root);
       const gateway = startImageGateway([sseText("Gemini native image answer")]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -1064,7 +1064,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.exit_code).toBe(0);
         expect(json.output).toContain("Gemini native image answer");
         expect(gateway.catalogRequests).toBe(1);
@@ -1083,13 +1083,13 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask uses Kimi native vision without Vision tool",
+    "pf ask uses Kimi native vision without Vision tool",
     async () => {
       const root = createIsolatedRoot();
       const fixture = createScopedImageFixture(root);
       const gateway = startImageGateway([sseText("Kimi native image answer")]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -1106,7 +1106,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.exit_code).toBe(0);
         expect(json.output).toContain("Kimi native image answer");
         expect(gateway.catalogRequests).toBe(1);
@@ -1125,7 +1125,7 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask normalizes encoded-oversized native images on macOS and rejects elsewhere",
+    "pf ask normalizes encoded-oversized native images on macOS and rejects elsewhere",
     async () => {
       const root = createIsolatedRoot();
       const oversizedPath = join(root.workspace, "encoded-oversized.png");
@@ -1137,7 +1137,7 @@ describe("Vision route fake Gateway", () => {
       );
       try {
         if (process.platform === "darwin") {
-          const result = await runFx(
+          const result = await runPf(
             [
               "ask",
               "--json",
@@ -1154,7 +1154,7 @@ describe("Vision route fake Gateway", () => {
             },
           );
 
-          const json = parseFxJson(result);
+          const json = parsePfJson(result);
           expect(json.output).toContain("Normalized native image answer");
           expect(json.tool_calls).toHaveLength(0);
           expect(result.stderr).toBe("");
@@ -1166,7 +1166,7 @@ describe("Vision route fake Gateway", () => {
           return;
         }
 
-        const textResult = await runFx(
+        const textResult = await runPf(
           ["ask", "--no-save", "--image", oversizedPath, "Describe the image."],
           {
             cwd: root.workspace,
@@ -1178,7 +1178,7 @@ describe("Vision route fake Gateway", () => {
         expect(textResult.stdout).toBe("");
         expect(textResult.stderr).toContain(notice);
 
-        const jsonResult = await runFx(
+        const jsonResult = await runPf(
           ["ask", "--json", "--no-save", "--image", oversizedPath, "Describe the image."],
           {
             cwd: root.workspace,
@@ -1186,7 +1186,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const errorJson = parseFxErrorJson(jsonResult);
+        const errorJson = parsePfErrorJson(jsonResult);
         expect(errorJson.error).toBe("ImagePreparationFailed");
         expect(jsonResult.stderr).toBe("");
         expect(gateway.chatRequests).toHaveLength(0);
@@ -1199,14 +1199,14 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask downscales native PNG images over the model pixel limit",
+    "pf ask downscales native PNG images over the model pixel limit",
     async () => {
       const root = createIsolatedRoot();
       const widePath = join(root.workspace, "wide-screenshot.png");
       writeFileSync(widePath, solidPng(3420, 2224));
       const gateway = startImageGateway([sseText("Wide native image answer")]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -1223,7 +1223,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("Wide native image answer");
         expect(result.stderr).toBe("");
         expect(gateway.chatRequests).toHaveLength(1);
@@ -1244,18 +1244,18 @@ describe("Vision route fake Gateway", () => {
   // request building to withhold: there is no resizer on Linux, and sips
   // fails on macOS.
   test(
-    "fx ask leaves out attachments it cannot downscale and names their saved file",
+    "pf ask leaves out attachments it cannot downscale and names their saved file",
     async () => {
       const root = createIsolatedRoot();
       const photoPath = join(root.workspace, "photo.jpg");
       writeFileSync(photoPath, jpegHeader(4032, 3024));
       const gateway = startImageGateway([sseText("Photo note answer")]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           ["ask", "--json", "--no-save", "--image", photoPath, "Describe the attached image."],
           { cwd: root.workspace, env: fakeGatewayEnv(root, gateway, GEMINI_MODEL), timeoutMs: TIMEOUT },
         );
-        expect(parseFxJson(result).output).toContain("Photo note answer");
+        expect(parsePfJson(result).output).toContain("Photo note answer");
         expect(gateway.chatRequests).toHaveLength(1);
         const body = gateway.chatRequests[0]!.body;
         expect(nativeFileParts(body)).toHaveLength(0);
@@ -1264,7 +1264,7 @@ describe("Vision route fake Gateway", () => {
         );
         expect(body).toContain("Save a copy at most 2000 pixels per side to a new file ending in .jpg without changing this one, then read the copy.]");
         expect(result.stderr).toContain(
-          "An attached image is over 2000 pixels per side and fx can't downscale it here, so the model gets a note about it instead of the image.",
+          "An attached image is over 2000 pixels per side and pf can't downscale it here, so the model gets a note about it instead of the image.",
         );
       } finally {
         gateway.stop();
@@ -1294,7 +1294,7 @@ describe("Vision route fake Gateway", () => {
         sseText("Gemini continued without historical Vision evidence"),
       ]);
       try {
-        const first = await runFx(
+        const first = await runPf(
           [
             "ask",
             "--json",
@@ -1311,7 +1311,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const firstJson = parseFxJson(first);
+        const firstJson = parsePfJson(first);
         expect(firstJson.session_id.length).toBeGreaterThan(0);
         expect(firstJson.output).toContain("Gemini recovered after rejected Vision");
         expect(firstJson.tool_calls).toContainEqual({ name: "vision", status: "error" });
@@ -1346,11 +1346,11 @@ describe("Vision route fake Gateway", () => {
         });
         expect(rejectionOutput as string).not.toContain(fixture.imagePath);
         expect(filePartCount(recoveryRequest.body)).toBe(1);
-        const eventsPath = join(root.home, ".fx", "sessions", firstJson.session_id, "events.jsonl");
+        const eventsPath = join(root.home, ".pf", "sessions", firstJson.session_id, "events.jsonl");
         const originalEvents = readFileSync(eventsPath, "utf8");
         if (shape !== "plain") expect(originalEvents).toContain("removed-vision-signature");
 
-        const resumed = await runFx(
+        const resumed = await runPf(
           [
             "ask",
             "--json",
@@ -1366,7 +1366,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const resumedJson = parseFxJson(resumed);
+        const resumedJson = parsePfJson(resumed);
         expect(resumedJson.session_id).toBe(firstJson.session_id);
         expect(resumedJson.output).toContain(
           "Gemini continued without historical Vision evidence",
@@ -1401,7 +1401,7 @@ describe("Vision route fake Gateway", () => {
         expect(resumedUserText).not.toContain(root.home);
         expect(resumedUserText).not.toContain(root.workspace);
 
-        const detail = await runFx(
+        const detail = await runPf(
           ["session", "--id", firstJson.session_id, "--json"],
           {
             cwd: root.workspace,
@@ -1454,7 +1454,7 @@ describe("Vision route fake Gateway", () => {
           sseText(`final ${entry.name}`),
         ]);
         try {
-          const saved = await runFx(
+          const saved = await runPf(
             [
               "ask",
               "--json",
@@ -1470,16 +1470,16 @@ describe("Vision route fake Gateway", () => {
               timeoutMs: TIMEOUT,
             },
           );
-          const savedJson = parseFxJson(saved);
+          const savedJson = parsePfJson(saved);
           expect(savedJson.output).toContain(`saved ${entry.name}`);
           expect(gateway.chatRequests).toHaveLength(1);
 
-          const imageDir = join(root.home, ".fx", "sessions", savedJson.session_id, "images");
+          const imageDir = join(root.home, ".pf", "sessions", savedJson.session_id, "images");
           const snapshotNames = readdirSync(imageDir).filter((name) => name.endsWith(".bin"));
           expect(snapshotNames).toHaveLength(1);
           entry.damage(join(imageDir, snapshotNames[0]));
 
-          const reread = await runFx(
+          const reread = await runPf(
             [
               "ask",
               "--json",
@@ -1495,7 +1495,7 @@ describe("Vision route fake Gateway", () => {
               timeoutMs: TIMEOUT,
             },
           );
-          const rereadJson = parseFxJson(reread);
+          const rereadJson = parsePfJson(reread);
           expect(rereadJson.output).toContain(`final ${entry.name}`);
           expect(rereadJson.tool_calls).toContainEqual({ name: "vision", status: "error" });
           expect(gateway.chatRequests).toHaveLength(3);
@@ -1533,7 +1533,7 @@ describe("Vision route fake Gateway", () => {
   );
 
   test(
-    "fx ask applies image_adapter_output_bytes to Vision provider capture",
+    "pf ask applies image_adapter_output_bytes to Vision provider capture",
     async () => {
       const root = createIsolatedRoot();
       const fixture = createScopedImageFixture(root);
@@ -1543,7 +1543,7 @@ describe("Vision route fake Gateway", () => {
         sseText("bounded Vision answer"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "--context-limit",
             "image_adapter_output_bytes=64",
@@ -1562,7 +1562,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("bounded Vision answer");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "error" });
         expect(result.stderr).toBe("Inspecting images\n");
@@ -1598,7 +1598,7 @@ describe("Vision route fake Gateway", () => {
       const root = createIsolatedRoot();
       const gateway = startImageGateway([sseText("text only answer")]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           ["ask", "--json", "--no-save", "--no-color", "Reply exactly OK."],
           {
             cwd: root.workspace,
@@ -1607,7 +1607,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.exit_code).toBe(0);
         expect(json.output).toContain("text only answer");
         expect(gateway.catalogRequests).toBe(1);
@@ -1629,7 +1629,7 @@ describe("Vision route fake Gateway", () => {
       const root = createIsolatedRoot();
       const gateway = startImageGateway([sseText("Kimi text only answer")]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           ["ask", "--json", "--no-save", "--no-color", "Reply exactly OK."],
           {
             cwd: root.workspace,
@@ -1638,7 +1638,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.exit_code).toBe(0);
         expect(json.output).toContain("Kimi text only answer");
         expect(gateway.catalogRequests).toBe(1);
@@ -1664,7 +1664,7 @@ describe("Vision route fake Gateway", () => {
         new Response("catalog unavailable", { status: 503 }),
       );
       try {
-        const textResult = await runFx(
+        const textResult = await runPf(
           ["ask", "--json", "--no-save", "--no-color", "Reply exactly OK."],
           {
             cwd: textRoot.workspace,
@@ -1672,7 +1672,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const textJson = parseFxJson(textResult);
+        const textJson = parsePfJson(textResult);
         expect(textJson.exit_code).toBe(0);
         expect(textJson.output).toContain("text answer without Vision");
         expect(textGateway.catalogRequests).toBe(1);
@@ -1691,7 +1691,7 @@ describe("Vision route fake Gateway", () => {
         new Response("catalog unavailable", { status: 503 }),
       );
       try {
-        const imageResult = await runFx(
+        const imageResult = await runPf(
           [
             "ask",
             "--json",
@@ -1707,7 +1707,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const imageJson = parseFxErrorJson(imageResult);
+        const imageJson = parsePfErrorJson(imageResult);
         expect(imageJson.error).toContain("ModelImageCapabilityUnavailable");
         expect(imageGateway.catalogRequests).toBe(1);
         expect(imageGateway.chatRequests).toHaveLength(0);
@@ -1730,7 +1730,7 @@ describe("Vision route fake Gateway", () => {
         new Response("catalog unavailable", { status: 503 }),
       );
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--no-save",
@@ -1749,7 +1749,7 @@ describe("Vision route fake Gateway", () => {
         expect(result.code).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr).toBe(
-          "fx ask: Unable to verify image support for this model, so the image was not sent. Try again later, choose another model, or remove the image.\n",
+          "pf ask: Unable to verify image support for this model, so the image was not sent. Try again later, choose another model, or remove the image.\n",
         );
         expect(result.stderr).not.toContain("ModelImageCapabilityUnavailable");
         expect(gateway.catalogRequests).toBe(1);
@@ -1774,7 +1774,7 @@ describe("Vision route fake Gateway", () => {
         sseText("Vision unavailable final answer"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -1791,7 +1791,7 @@ describe("Vision route fake Gateway", () => {
           },
         );
 
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("Vision unavailable final answer");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "error" });
         expect(result.stderr).toContain("Inspecting images\n");
@@ -1845,7 +1845,7 @@ describe("Vision route fake Gateway", () => {
         sseText("historical reread completed"),
       ]);
       try {
-        const first = await runFx(
+        const first = await runPf(
           [
             "ask",
             "--json",
@@ -1861,11 +1861,11 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const firstJson = parseFxJson(first);
+        const firstJson = parsePfJson(first);
         expect(firstJson.session_id.length).toBeGreaterThan(0);
         expect(firstJson.tool_calls).toContainEqual({ name: "vision", status: "success" });
 
-        const native = await runFx(
+        const native = await runPf(
           [
             "ask",
             "--json",
@@ -1883,12 +1883,12 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const nativeJson = parseFxJson(native);
+        const nativeJson = parsePfJson(native);
         expect(nativeJson.session_id).toBe(firstJson.session_id);
         expect(nativeJson.output).toContain("native route completed");
         expect(nativeJson.tool_calls).toHaveLength(0);
 
-        const reread = await runFx(
+        const reread = await runPf(
           [
             "ask",
             "--json",
@@ -1904,7 +1904,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const rereadJson = parseFxJson(reread);
+        const rereadJson = parsePfJson(reread);
         expect(rereadJson.session_id).toBe(firstJson.session_id);
         expect(rereadJson.output).toContain("historical reread completed");
         expect(rereadJson.tool_calls).toContainEqual({ name: "vision", status: "success" });
@@ -1931,7 +1931,7 @@ describe("Vision route fake Gateway", () => {
         expect(gateway.chatRequests[6].body).toContain("second image evidence");
         expect(gateway.chatRequests[6].body).not.toContain('"type":"file"');
 
-        const detail = await runFx(
+        const detail = await runPf(
           ["session", "--id", firstJson.session_id, "--json"],
           {
             cwd: root.workspace,
@@ -1986,7 +1986,7 @@ describe("Vision route fake Gateway", () => {
         sseText("legacy text reread completed"),
       ]);
       try {
-        const native = await runFx(
+        const native = await runPf(
           [
             "ask",
             "--json",
@@ -2004,7 +2004,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const nativeJson = parseFxJson(native);
+        const nativeJson = parsePfJson(native);
         expect(nativeJson.session_id).toBe(sessionId);
         expect(nativeJson.output).toContain("legacy native replay completed");
         expect(nativeJson.tool_calls).toHaveLength(0);
@@ -2018,7 +2018,7 @@ describe("Vision route fake Gateway", () => {
         expect(gateway.chatRequests[0].body).toContain(firstPayload);
         expect(gateway.chatRequests[0].body).toContain(secondPayload);
 
-        const detail = await runFx(
+        const detail = await runPf(
           ["session", "--id", sessionId, "--json"],
           {
             cwd: root.workspace,
@@ -2032,7 +2032,7 @@ describe("Vision route fake Gateway", () => {
         expect(persisted).toContain("Legacy first image: [Image #1]");
         expect(persisted).toContain("Legacy second image: [Image #2]");
 
-        const reread = await runFx(
+        const reread = await runPf(
           [
             "ask",
             "--json",
@@ -2048,7 +2048,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const rereadJson = parseFxJson(reread);
+        const rereadJson = parsePfJson(reread);
         expect(rereadJson.session_id).toBe(sessionId);
         expect(rereadJson.output).toContain("legacy text reread completed");
         expect(rereadJson.tool_calls).toContainEqual({ name: "vision", status: "success" });
@@ -2092,7 +2092,7 @@ describe("Vision route fake Gateway", () => {
         sseText("recovered after invalid Vision result"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -2109,7 +2109,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("recovered after invalid Vision result");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "error" });
         expect(result.stderr).toBe("Inspecting images\n");
@@ -2148,7 +2148,7 @@ describe("Vision route fake Gateway", () => {
         sseText("recovered after malformed Vision result"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -2165,7 +2165,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("recovered after malformed Vision result");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "error" });
         expect(gateway.chatRequests).toHaveLength(4);
@@ -2201,7 +2201,7 @@ describe("Vision route fake Gateway", () => {
         sseText("recovered without re-uploading the image"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -2218,7 +2218,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("recovered without re-uploading the image");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "success" });
         expect(result.stderr).toBe("Inspecting images\n");
@@ -2235,7 +2235,7 @@ describe("Vision route fake Gateway", () => {
         expect(JSON.parse(gateway.chatRequests[3].body).responseFormat).toBeUndefined();
         // Byte-identical retry payload: same verified snapshot, ids, focus, and batch.
         expect(gateway.chatRequests[2].body).toBe(gateway.chatRequests[1].body);
-        expect(gateway.chatRequests[3].body).toContain("FX LOGO");
+        expect(gateway.chatRequests[3].body).toContain("PF LOGO");
         expect(gateway.chatRequests[3].body).not.toContain("provider_response_invalid");
         expect(gateway.chatRequests[3].body).not.toContain("missing_provider_record");
         expect(gateway.chatRequests[3].body).not.toContain(IMAGE_PATH);
@@ -2266,7 +2266,7 @@ describe("Vision route fake Gateway", () => {
         sseText("continued with retained provider evidence"),
       ]);
       try {
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -2285,7 +2285,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("continued with retained provider evidence");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "success" });
         expect(gateway.chatRequests).toHaveLength(3);
@@ -2345,7 +2345,7 @@ describe("Vision route fake Gateway", () => {
         sseText("mixed-result recovery completed"),
       ]);
       try {
-        const saved = await runFx(
+        const saved = await runPf(
           [
             "ask",
             "--json",
@@ -2363,13 +2363,13 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const savedJson = parseFxJson(saved);
-        const imageDir = join(root.home, ".fx", "sessions", savedJson.session_id, "images");
+        const savedJson = parsePfJson(saved);
+        const imageDir = join(root.home, ".pf", "sessions", savedJson.session_id, "images");
         const firstSnapshot = readdirSync(imageDir).find((name) => name.startsWith("image-1-"));
         expect(firstSnapshot).toBeDefined();
         writeFileSync(join(imageDir, firstSnapshot!), "corrupt");
 
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -2385,7 +2385,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("mixed-result recovery completed");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "success" });
         expect(gateway.chatRequests).toHaveLength(4);
@@ -2441,7 +2441,7 @@ describe("Vision route fake Gateway", () => {
       ]);
       try {
         const imageArgs = imagePaths.flatMap((imagePath) => ["--image", imagePath]);
-        const saved = await runFx(
+        const saved = await runPf(
           ["ask", "--json", "--auto", "--no-color", ...imageArgs, "Save every image."],
           {
             cwd: root.workspace,
@@ -2449,13 +2449,13 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const savedJson = parseFxJson(saved);
-        const imageDir = join(root.home, ".fx", "sessions", savedJson.session_id, "images");
+        const savedJson = parsePfJson(saved);
+        const imageDir = join(root.home, ".pf", "sessions", savedJson.session_id, "images");
         const firstSnapshot = readdirSync(imageDir).find((name) => name.startsWith("image-1-"));
         expect(firstSnapshot).toBeDefined();
         writeFileSync(join(imageDir, firstSnapshot!), "corrupt");
 
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -2471,7 +2471,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("twenty-image mixed-result recovery completed");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "success" });
         expect(gateway.chatRequests).toHaveLength(6);
@@ -2532,7 +2532,7 @@ describe("Vision route fake Gateway", () => {
       ]);
       try {
         const imageArgs = imagePaths.flatMap((imagePath) => ["--image", imagePath]);
-        const result = await runFx(
+        const result = await runPf(
           [
             "ask",
             "--json",
@@ -2548,7 +2548,7 @@ describe("Vision route fake Gateway", () => {
             timeoutMs: TIMEOUT,
           },
         );
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(json.output).toContain("twenty image answer");
         expect(json.tool_calls).toContainEqual({ name: "vision", status: "success" });
         expect(gateway.chatRequests).toHaveLength(5);
@@ -2582,7 +2582,7 @@ describe("Vision route fake Gateway", () => {
       const imagePath = join(desktop, "test.png");
       writeMarkedImage(imagePath, "TMUX_AT_HOME_IMAGE");
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({ permission_mode: "ask", permission: {} }),
       );
       const gateway = startImageGateway([
@@ -2595,12 +2595,12 @@ describe("Vision route fake Gateway", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_PERMISSION_MODE: "ask",
-            FX_AUTO_UPGRADE: "0",
+            PF_PERMISSION_MODE: "ask",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -2653,11 +2653,11 @@ describe("Vision route fake Gateway", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_AUTO_UPGRADE: "0",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -2697,7 +2697,7 @@ describe("Vision route fake Gateway", () => {
       const imagePath = join(desktop, "test.png");
       writeMarkedImage(imagePath, "TMUX_PATH_SOURCE_APPROVAL");
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({ permission_mode: "ask", permission: {} }),
       );
       const gateway = startImageGateway([
@@ -2714,12 +2714,12 @@ describe("Vision route fake Gateway", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_PERMISSION_MODE: "ask",
-            FX_AUTO_UPGRADE: "0",
+            PF_PERMISSION_MODE: "ask",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -2766,7 +2766,7 @@ describe("Vision route fake Gateway", () => {
       const payload = writeMarkedImage(sourcePath, "TMUX_HARD_LINKED_IMAGE");
       linkSync(sourcePath, approvedPath);
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({ permission_mode: "ask", permission: {} }),
       );
       const gateway = startImageGateway([
@@ -2783,12 +2783,12 @@ describe("Vision route fake Gateway", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_PERMISSION_MODE: "ask",
-            FX_AUTO_UPGRADE: "0",
+            PF_PERMISSION_MODE: "ask",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -2837,7 +2837,7 @@ describe("Vision route fake Gateway", () => {
       const payloadB = writeMarkedImage(targetB, "TMUX_RETARGETED_TARGET_B");
       symlinkSync(targetA, approvedPath);
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({ permission_mode: "ask", permission: {} }),
       );
       const gateway = startImageGateway([
@@ -2854,12 +2854,12 @@ describe("Vision route fake Gateway", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_PERMISSION_MODE: "ask",
-            FX_AUTO_UPGRADE: "0",
+            PF_PERMISSION_MODE: "ask",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -3037,7 +3037,7 @@ describe("Vision route fake Gateway", () => {
       const imagePath = join(root.workspace, "feedback.png");
       writeMarkedImage(imagePath, "TMUX_PERMISSION_FEEDBACK");
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({ permission_mode: "ask", permission: {} }),
       );
       const feedback = "Do not modify any more files.";
@@ -3052,12 +3052,12 @@ describe("Vision route fake Gateway", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_PERMISSION_MODE: "ask",
-            FX_AUTO_UPGRADE: "0",
+            PF_PERMISSION_MODE: "ask",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -3070,7 +3070,7 @@ describe("Vision route fake Gateway", () => {
         await session.sendText(rootRequest);
         await session.waitForText("Would you like to allow this action?", TIMEOUT);
         await session.sendKeys("Tab");
-        await session.waitForText("Yes, and tell fx what to do next", TIMEOUT);
+        await session.waitForText("Yes, and tell pf what to do next", TIMEOUT);
         await session.sendLiteralText(feedback);
         await session.waitForText(`Yes, ${feedback}`, TIMEOUT);
         await session.sendKeys("Enter");
@@ -3083,7 +3083,7 @@ describe("Vision route fake Gateway", () => {
         expect(selectedFollowup).toContain(rootRequest);
         expect(selectedFollowup).not.toContain(imagePath);
 
-        const sessionsRoot = join(root.home, ".fx", "sessions");
+        const sessionsRoot = join(root.home, ".pf", "sessions");
         const sessionIds = readdirSync(sessionsRoot, { withFileTypes: true })
           .filter((entry) => entry.isDirectory() && entry.name !== "latest")
           .map((entry) => entry.name);
@@ -3115,7 +3115,7 @@ describe("Vision route fake Gateway", () => {
       const firstMutatedPayload = writeMarkedImage(firstMutatedPath, "TMUX_PERMISSION_B");
       writeMarkedImage(secondImagePath, "TMUX_OUTAGE_A");
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({ permission_mode: "ask", permission: {} }),
       );
       const gateway = startImageGateway([
@@ -3133,12 +3133,12 @@ describe("Vision route fake Gateway", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: FX_BIN,
+          cmd: PF_BIN,
           cwd: root.workspace,
           env: {
             ...fakeGatewayEnv(root, gateway, GLM_MODEL),
-            FX_PERMISSION_MODE: "ask",
-            FX_AUTO_UPGRADE: "0",
+            PF_PERMISSION_MODE: "ask",
+            PF_AUTO_UPGRADE: "0",
             NO_COLOR: "1",
           },
           stderrPath,
@@ -3220,10 +3220,10 @@ for (const sourceChange of ["removed", "changed", "saved snapshot missing", "sav
     ]);
     const options = { cwd: root.workspace, env: fakeGatewayEnv(root, gateway, GLM_MODEL), timeoutMs: TIMEOUT };
     try {
-      const failed = await runFx(["ask", "--json", "--auto", "--image", input, "Describe the saved image."], options);
+      const failed = await runPf(["ask", "--json", "--auto", "--image", input, "Describe the saved image."], options);
       expect(failed.code).toBe(1);
       expect(failed.stdout).toContain("RequiredVisionToolCallMissing");
-      const sessions = join(root.home, ".fx", "sessions");
+      const sessions = join(root.home, ".pf", "sessions");
       const id = readdirSync(sessions).find(name => existsSync(join(sessions, name, "recovery.json")))!;
       expect(id).toBeDefined();
       const checkpointPath = join(sessions, id, "recovery.json");
@@ -3237,7 +3237,7 @@ for (const sourceChange of ["removed", "changed", "saved snapshot missing", "sav
       else if (sourceChange === "changed") writeMarkedImage(input, "REPLACEMENT_MUST_NOT_BE_USED");
       else if (sourceChange === "saved snapshot missing") rmSync(snapshot);
       else writeFileSync(snapshot, "corrupted saved bytes");
-      const resumed = await runFx(["ask", "--json", "--auto", "--resume-id", id, "--continue-recovery"], options);
+      const resumed = await runPf(["ask", "--json", "--auto", "--resume-id", id, "--continue-recovery"], options);
       if (sourceChange.startsWith("saved snapshot")) {
         expect(resumed.code).toBe(1);
         expect(resumed.stdout).toContain(sourceChange.endsWith("missing") ? "MissingImageSnapshot" : "ImageSnapshotCorrupt");
@@ -3245,7 +3245,7 @@ for (const sourceChange of ["removed", "changed", "saved snapshot missing", "sav
         expect(readFileSync(checkpointPath).equals(checkpointBytes)).toBe(true);
         return;
       }
-      expect(parseFxJson(resumed).output).toContain("RECOVERY_IMAGE_COMPLETE");
+      expect(parsePfJson(resumed).output).toContain("RECOVERY_IMAGE_COMPLETE");
       expect(gateway.chatRequests).toHaveLength(4);
       const parts = nativeFileParts(gateway.chatRequests[2]!.body);
       expect(parts).toHaveLength(1);
@@ -3277,14 +3277,14 @@ test.skipIf(!tmuxAvailable())("TUI recovery retains images through failure and c
   let session: TmuxSession | null = null;
   const env = fakeGatewayEnv(root, gateway, GLM_MODEL);
   try {
-    session = await TmuxSession.create({ cmd: FX_BIN, cwd: root.workspace, env, isolated: true, remainOnExit: true });
+    session = await TmuxSession.create({ cmd: PF_BIN, cwd: root.workspace, env, isolated: true, remainOnExit: true });
     await session.waitForStableComposer(TIMEOUT);
     await session.sendText(`/image ${input}`);
     await session.waitForText("attached image:", TIMEOUT);
     await session.sendText("Describe this image.");
     await session.waitForText("RequiredVisionToolCallMissing", TIMEOUT);
     await session.waitForStableComposer(TIMEOUT);
-    const sessions = join(root.home, ".fx", "sessions");
+    const sessions = join(root.home, ".pf", "sessions");
     const id = readdirSync(sessions).find(name => existsSync(join(sessions, name, "recovery.json")))!;
     const checkpoint = JSON.parse(readFileSync(join(sessions, id, "recovery.json"), "utf8")).checkpoint;
     const snapshot = join(sessions, id, checkpoint.user.images[0].snapshot_path);
@@ -3295,7 +3295,7 @@ test.skipIf(!tmuxAvailable())("TUI recovery retains images through failure and c
     await session.kill();
     session = null;
     rmSync(input);
-    session = await TmuxSession.create({ cmd: `${FX_BIN} --resume ${id}`, cwd: root.workspace, env, isolated: true, remainOnExit: true });
+    session = await TmuxSession.create({ cmd: `${PF_BIN} --resume ${id}`, cwd: root.workspace, env, isolated: true, remainOnExit: true });
     await session.waitForStableComposer(TIMEOUT);
     // A pending recovery checkpoint continues automatically on resume.
     await session.waitForText(/continues\s+automatically/, TIMEOUT);

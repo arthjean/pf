@@ -19,7 +19,7 @@ pub const Bundle = struct {
     };
     pub const Capabilities = struct {
         gateway_prompt_caching: bool = false,
-        fx_search: bool = false,
+        pf_search: bool = false,
         vision_fallback: bool = false,
     };
 
@@ -36,7 +36,7 @@ pub const Bundle = struct {
     permission_reviewer: ?auto_classifier.Provider = null,
     deferred_usage: ?generation_usage_provider.Provider = null,
     credits: ?gateway_provider.CreditsProvider = null,
-    fx_search: ?web_search_provider.Provider = null,
+    pf_search: ?web_search_provider.Provider = null,
 
     pub fn agent_stream_or_unavailable(self: Bundle) stream_provider.Provider {
         return self.agent_stream orelse stream_provider.unavailable_provider;
@@ -126,7 +126,7 @@ test "provider set selects each provider's complete route" {
     };
 
     const gateway = Bundle{
-        .capabilities = .{ .fx_search = true, .vision_fallback = true },
+        .capabilities = .{ .pf_search = true, .vision_fallback = true },
         .presentation = provider_catalog.find(.gateway),
         .auth_strategy = .vercel,
         .agent_stream = stream_provider.Provider{
@@ -159,12 +159,12 @@ test "provider set selects each provider's complete route" {
     var providers = Set{ .gateway = gateway, .codex = codex, .grok = grok };
 
     try std.testing.expect(providers.select(.gateway).agent_stream.?.context.? == @as(*anyopaque, @ptrCast(&gateway_tag)));
-    try std.testing.expect(providers.select(.gateway).capabilities.fx_search);
+    try std.testing.expect(providers.select(.gateway).capabilities.pf_search);
     try std.testing.expect(providers.select(.gateway).capabilities.vision_fallback);
     try std.testing.expect(providers.select(.gateway).deferred_usage != null);
     try std.testing.expectEqualStrings("vercel", providers.select(.gateway).presentation.?.slug);
     try std.testing.expectEqual(Bundle.AuthStrategy.vercel, providers.select(.gateway).auth_strategy.?);
-    try std.testing.expect(!providers.select(.codex).capabilities.fx_search);
+    try std.testing.expect(!providers.select(.codex).capabilities.pf_search);
     try std.testing.expect(providers.select(.codex).deferred_usage == null);
     try std.testing.expect(providers.select(.gateway).cli_model_catalog.?.context.? == @as(*anyopaque, @ptrCast(&gateway_tag)));
     try std.testing.expect(providers.select(.codex).model_catalog.?.context.? == @as(*anyopaque, @ptrCast(&codex_tag)));

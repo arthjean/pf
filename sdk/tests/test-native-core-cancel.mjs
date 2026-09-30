@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 let requestStartedResolve;
 const requestStarted = new Promise((resolveStarted) => { requestStartedResolve = resolveStarted; });
@@ -16,13 +16,13 @@ const server = createServer((request) => {
 await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
 const { port } = server.address();
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addon = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libfx.node"));
+const addon = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libpf.node"));
 const timeout = (label, ms = 5000) => new Promise((_, reject) => {
   setTimeout(() => reject(new Error(`timed out waiting for ${label}`)), ms);
 });
 try {
   let aborted = false;
-  const agent = await createFxAgent({
+  const agent = await createPfAgent({
     nativeAddon: addon,
     backend: "native",
     fetch(input, init) {

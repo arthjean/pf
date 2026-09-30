@@ -2,10 +2,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxTerminal, supportsJspi } from "../node.js";
+import { createPfTerminal, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const defaultWasm = resolve(scriptDir, "../../zig-out/bin/fx-term.wasm");
+const defaultWasm = resolve(scriptDir, "../../zig-out/bin/pf-term.wasm");
 const wasmPath = resolve(process.argv[2] || defaultWasm);
 
 if (!supportsJspi()) {
@@ -40,7 +40,7 @@ const sessionStore = {
     const current = records.get(id);
     if (current?.revision !== expectedRevision) {
       const error = new Error("session revision conflict");
-      error.code = "FX_SESSION_REVISION_CONFLICT";
+      error.code = "PF_SESSION_REVISION_CONFLICT";
       throw error;
     }
     const revision = String(nextRevision++);
@@ -90,18 +90,18 @@ async function waitFor(predicate, label, diagnostics = () => "") {
 
 async function start(args = []) {
   const capture = createTerminalCapture();
-  const runtime = await createFxTerminal({
+  const runtime = await createPfTerminal({
   backend: "wasm",
     wasm,
     args,
     terminal: capture.terminal,
-    env: { AI_GATEWAY_API_KEY: "term-session-test-key", FX_THEME: "dark" },
+    env: { AI_GATEWAY_API_KEY: "term-session-test-key", PF_THEME: "dark" },
     fetch: mockFetch,
     sessionStore,
   });
   await waitFor(
     () => capture.text().includes(args.length ? "session resumed" : "Run /help for commands"),
-    "fx-term startup",
+    "pf-term startup",
     () => `output=${JSON.stringify(capture.text().slice(-1000))}`,
   );
   return { capture, runtime };

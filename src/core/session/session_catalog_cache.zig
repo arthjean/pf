@@ -1,6 +1,6 @@
 //! The session index: the single derived owner of "which saved sessions exist
 //! and how they summarize". Every listing surface (the resume picker,
-//! `fx sessions`, `fx session last`, ACP listing, and latest-session resume)
+//! `pf sessions`, `pf session last`, ACP listing, and latest-session resume)
 //! reads it through `listActionableCatalog`, so no listing surface scans
 //! session directories on its own.
 //!
@@ -24,7 +24,7 @@ const Allocator = std.mem.Allocator;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 // v6 stores the disposable row payload in a bounded binary encoding. Every
 // older format remains a cache miss and is rebuilt from canonical sessions.
-const magic = "fx-resume-catalog-v6\n";
+const magic = "pf-resume-catalog-v6\n";
 const file_name = ".resume-catalog";
 const max_bytes = 64 * 1024 * 1024;
 const max_records = 100_000;
@@ -607,7 +607,7 @@ const CatalogWorker = struct {
             const managed = child_state.isDiscoveredManagedChildSession(self.read.store, self.alloc, candidate.summary.id, candidate.subagent_child) catch |err| switch (err) {
                 error.OutOfMemory => return err,
                 // An unverifiable marker or first event stays listed, as
-                // `fx sessions` always did; exact resume still refuses a real
+                // `pf sessions` always did; exact resume still refuses a real
                 // child. The row is not cached, so the check runs again.
                 else => blk: {
                     cacheable = false;
@@ -731,7 +731,7 @@ test "actionable catalog preserves discovery and child visibility" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "home/.fx");
+    try tmp.dir.createDirPath(std.testing.io, "home/.pf");
     try tmp.dir.createDirPath(std.testing.io, "workspace");
     const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home);
@@ -858,7 +858,7 @@ test "actionable catalog lists and caches legacy sessions without event logs" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "home/.fx/sessions/legacy-old");
+    try tmp.dir.createDirPath(std.testing.io, "home/.pf/sessions/legacy-old");
     try tmp.dir.createDirPath(std.testing.io, "workspace");
     const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home);
@@ -867,7 +867,7 @@ test "actionable catalog lists and caches legacy sessions without event logs" {
     // Oldest persisted format: a schema v2 snapshot with no event log.
     const manifest = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":\"legacy-old\",\"created_at_ms\":1,\"updated_at_ms\":2,\"workspace_root\":\"{s}\",\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{workspace});
     defer alloc.free(manifest);
-    var file = try tmp.dir.createFile(std.testing.io, "home/.fx/sessions/legacy-old/session.json", .{});
+    var file = try tmp.dir.createFile(std.testing.io, "home/.pf/sessions/legacy-old/session.json", .{});
     try file.writeStreamingAll(std.testing.io, manifest);
     file.close(std.testing.io);
 
@@ -905,7 +905,7 @@ test "a summary outside the row contract stays listed without disabling the inde
         .{ .id = "legacy-ok", .created_at_ms = 1, .updated_at_ms = 2 },
         .{ .id = "clock-skewed", .created_at_ms = 2000, .updated_at_ms = 1000 },
     }) |snapshot| {
-        const dir_path = try std.fmt.allocPrint(alloc, "home/.fx/sessions/{s}", .{snapshot.id});
+        const dir_path = try std.fmt.allocPrint(alloc, "home/.pf/sessions/{s}", .{snapshot.id});
         defer alloc.free(dir_path);
         try tmp.dir.createDirPath(std.testing.io, dir_path);
         const path = try std.fmt.allocPrint(alloc, "{s}/session.json", .{dir_path});
@@ -933,7 +933,7 @@ test "a summary outside the row contract stays listed without disabling the inde
         try std.testing.expect(!saved.contains("clock-skewed"));
     }
     // The next listing reuses the saved row and leaves the index untouched.
-    const index_path = "home/.fx/sessions/.resume-catalog";
+    const index_path = "home/.pf/sessions/.resume-catalog";
     const before = try tmp.dir.statFile(std.testing.io, index_path, .{});
     var again = try listActionableCatalog(store, alloc, null, &stopped, &writer);
     defer again.deinit(alloc);
@@ -946,7 +946,7 @@ test "actionable catalog lists an interrupted legacy upgrade without caching it"
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "home/.fx/sessions/fenced");
+    try tmp.dir.createDirPath(std.testing.io, "home/.pf/sessions/fenced");
     try tmp.dir.createDirPath(std.testing.io, "workspace");
     const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home);
@@ -954,9 +954,9 @@ test "actionable catalog lists an interrupted legacy upgrade without caching it"
     defer alloc.free(workspace);
     const snapshot = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":\"fenced\",\"created_at_ms\":1,\"updated_at_ms\":2,\"workspace_root\":\"{s}\",\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{workspace});
     defer alloc.free(snapshot);
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.fx/sessions/fenced/session.legacy.json", .data = snapshot });
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.fx/sessions/fenced/authority.pending.json", .data = "pending" });
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.fx/sessions/fenced/session.json", .data = "interrupted replacement" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/fenced/session.legacy.json", .data = snapshot });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/fenced/authority.pending.json", .data = "pending" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/fenced/session.json", .data = "interrupted replacement" });
 
     var store = try session_store.Store.initFromHome(alloc, home, workspace);
     defer store.deinit(alloc);
@@ -979,7 +979,7 @@ test "actionable catalog lists an unverifiable child marker without caching it" 
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "home/.fx");
+    try tmp.dir.createDirPath(std.testing.io, "home/.pf");
     try tmp.dir.createDirPath(std.testing.io, "workspace");
     const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home);
@@ -1000,8 +1000,8 @@ test "actionable catalog lists an unverifiable child marker without caching it" 
         .preferences = .{ .model = @constCast("test"), .effort = .auto, .fast_mode = false },
     });
     writable.deinit(alloc);
-    try tmp.dir.createDir(std.testing.io, "home/.fx/sessions/unverified/subagent", .fromMode(0o700));
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.fx/sessions/unverified/subagent/control.json", .data = "not a control record", .flags = .{ .permissions = .fromMode(0o600) } });
+    try tmp.dir.createDir(std.testing.io, "home/.pf/sessions/unverified/subagent", .fromMode(0o700));
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/unverified/subagent/control.json", .data = "not a control record", .flags = .{ .permissions = .fromMode(0o600) } });
 
     var writer = (try Writer.init(store)).?;
     defer writer.deinit();
@@ -1118,7 +1118,7 @@ test "catalog older versions cancellation and bounds are misses" {
     // Every earlier format, including v4 files that still carry legacy
     // ranking rows, is ignored and rebuilt rather than partially trusted.
     for ([_][]const u8{ "1", "2", "3", "4", "5" }) |version| {
-        try file.writePositionalAll(std.testing.io, version, "fx-resume-catalog-v".len);
+        try file.writePositionalAll(std.testing.io, version, "pf-resume-catalog-v".len);
         var old_version = try Loaded.load(alloc, writer.dir, null);
         defer old_version.deinit(alloc);
         try std.testing.expect(!old_version.present());

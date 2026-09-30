@@ -1261,14 +1261,14 @@ pub fn authorizeInteractive(
 }
 
 const slack_callback_url = "https://fx.sh/api/slack/oauth/callback";
-const fx_slack_client_id = "12364000946.12017137861236";
+const pf_slack_client_id = "12364000946.12017137861236";
 
 const SlackBridgeConfig = struct { origin: []const u8, scope: []u8 };
 
 fn slack_bridge_config(alloc: Allocator, endpoint: []const u8, client_config: ClientConfig) !?SlackBridgeConfig {
     const configured_client = client_config.client_id orelse return null;
-    if (!std.mem.eql(u8, configured_client, fx_slack_client_id)) return null;
-    const origin = io_mod.getenv("FX_E2E_SLACK_ORIGIN") orelse "https://fx.sh";
+    if (!std.mem.eql(u8, configured_client, pf_slack_client_id)) return null;
+    const origin = io_mod.getenv("PF_E2E_SLACK_ORIGIN") orelse "https://fx.sh";
     const fixture = !std.mem.eql(u8, origin, "https://fx.sh");
     if (fixture) {
         if (!std.mem.startsWith(u8, origin, "http://127.0.0.1:")) return error.InvalidSlackTestOrigin;
@@ -1317,7 +1317,7 @@ fn slack_bridge_config(alloc: Allocator, endpoint: []const u8, client_config: Cl
 
 pub fn authentication_error_message(err: anyerror) []const u8 {
     return switch (err) {
-        error.SlackScopeConfigurationMismatch => "Your configured Slack scopes request fewer permissions than fx requires. Authorization was not started. Custom scope subsets are not supported for the fx app. Remove the local scopes override only if you want to authorize the full shared scope set",
+        error.SlackScopeConfigurationMismatch => "Your configured Slack scopes request fewer permissions than pf requires. Authorization was not started. Custom scope subsets are not supported for the pf app. Remove the local scopes override only if you want to authorize the full shared scope set",
         else => @errorName(err),
     };
 }
@@ -1901,7 +1901,7 @@ fn resolveClientRegistration(
     var payload: std.Io.Writer.Allocating = .init(alloc);
     defer payload.deinit();
     try payload.writer.writeAll(
-        "{\"client_name\":\"fx\",\"application_type\":\"native\",\"redirect_uris\":[",
+        "{\"client_name\":\"pf\",\"application_type\":\"native\",\"redirect_uris\":[",
     );
     try std.json.Stringify.value(redirect_uri, .{}, &payload.writer);
     try payload.writer.writeAll("],\"response_types\":[\"code\"],\"grant_types\":[\"authorization_code\"");

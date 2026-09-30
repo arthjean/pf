@@ -4,12 +4,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addon = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libfx.node"));
-const home = await mkdtemp(join(tmpdir(), "fx-native-tool-frame-"));
-const rich = { type: "libfx.tool-result", text: '"'.repeat(3 * 1024 * 1024), images: [] };
+const addon = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libpf.node"));
+const home = await mkdtemp(join(tmpdir(), "pf-native-tool-frame-"));
+const rich = { type: "libpf.tool-result", text: '"'.repeat(3 * 1024 * 1024), images: [] };
 const content = JSON.stringify({ text: rich.text, images: rich.images });
 const encoded = JSON.stringify({ jsonrpc: "2.0", id: 1, result: { content, isError: false, contentType: "rich" } });
 assert.ok(Buffer.byteLength(content) < 8 * 1024 * 1024);
@@ -27,7 +27,7 @@ const sse = (...events) => new Response(
 );
 
 try {
-  agent = await createFxAgent({
+  agent = await createPfAgent({
     backend: "native",
     nativeAddon: addon,
     home,

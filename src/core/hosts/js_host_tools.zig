@@ -6,7 +6,7 @@ const image_data = @import("../images/image_data.zig");
 const Allocator = std.mem.Allocator;
 const bridge_max_result_bytes: usize = 64 * 1024;
 
-extern "fx" fn fx_host_tool_call(
+extern "pf" fn pf_host_tool_call(
     name_ptr: [*]const u8,
     name_len: usize,
     arguments_ptr: [*]const u8,
@@ -16,8 +16,8 @@ extern "fx" fn fx_host_tool_call(
     status_ptr: *u8,
 ) i32;
 
-extern "fx" fn fx_host_tool_result_read(offset: usize, ptr: [*]u8, cap: usize) i32;
-extern "fx" fn fx_host_tool_result_release() void;
+extern "pf" fn pf_host_tool_result_read(offset: usize, ptr: [*]u8, cap: usize) i32;
+extern "pf" fn pf_host_tool_result_release() void;
 
 var provider_context: u8 = 0;
 
@@ -42,7 +42,7 @@ fn call(
     const output = try alloc.alloc(u8, cap);
     defer alloc.free(output);
     var status: u8 = 0;
-    const raw = fx_host_tool_call(
+    const raw = pf_host_tool_call(
         name.ptr,
         name.len,
         arguments_json.ptr,
@@ -61,7 +61,7 @@ fn call(
             else => "Host tool failed",
         }) };
     }
-    defer fx_host_tool_result_release();
+    defer pf_host_tool_result_release();
     const len: usize = @intCast(raw);
     if (status == 2 or status == 3) {
         if (len > image_data.max_result_frame_bytes) return .{ .failure = try alloc.dupe(u8, "Host image result exceeded its frame limit") };
@@ -71,7 +71,7 @@ fn call(
             var offset: usize = 0;
             while (offset < len) {
                 if (cancel_flag) |flag| if (flag.load(.seq_cst)) return error.Cancelled;
-                const count = fx_host_tool_result_read(offset, collected[offset..].ptr, @min(64 * 1024, len - offset));
+                const count = pf_host_tool_result_read(offset, collected[offset..].ptr, @min(64 * 1024, len - offset));
                 if (count <= 0 or @as(usize, @intCast(count)) > len - offset) {
                     const failure = try alloc.dupe(u8, "Host image result transfer failed");
                     alloc.free(collected);

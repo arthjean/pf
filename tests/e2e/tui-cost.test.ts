@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import {
   fakeGatewaySse,
   startFakeGateway,
@@ -44,9 +44,9 @@ function gatewayEnvironment(home: string) {
   return {
     HOME: home,
     AI_GATEWAY_API_KEY: "test-key",
-    FX_GATEWAY_BASE_URL: gateway.baseUrl,
-    FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+    PF_GATEWAY_BASE_URL: gateway.baseUrl,
+    PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
   };
 }
 
@@ -130,7 +130,7 @@ async function waitForProfileUsage(
   generationId: string,
 ): Promise<void> {
   const deadline = Date.now() + TIMEOUT;
-  const usagePath = join(home, ".fx", "usage.jsonl");
+  const usagePath = join(home, ".pf", "usage.jsonl");
   while (Date.now() < deadline) {
     try {
       if (readFileSync(usagePath, "utf8").includes(generationId)) return;
@@ -140,7 +140,7 @@ async function waitForProfileUsage(
   throw new Error("Timed out waiting for profile usage publication");
 }
 
-// Holds the profile-wide usage ledger lock the way another fx process would.
+// Holds the profile-wide usage ledger lock the way another pf process would.
 async function holdProfileUsageLock(home: string) {
   const holder = Bun.spawn(
     [
@@ -151,7 +151,7 @@ async function holdProfileUsageLock(home: string) {
         "fcntl.flock(fd, fcntl.LOCK_EX)\n" +
         "print('locked', flush=True)\n" +
         "time.sleep(120)",
-      join(home, ".fx", "usage.lock"),
+      join(home, ".pf", "usage.lock"),
     ],
     { stdout: "pipe", stderr: "pipe" },
   );
@@ -168,9 +168,9 @@ async function holdProfileUsageLock(home: string) {
 }
 
 test(
-  "fx ask settles authoritative stream usage without delayed reconciliation",
+  "pf ask settles authoritative stream usage without delayed reconciliation",
   async () => {
-    root = mkdtempSync(join(tmpdir(), "fx-cost-ask-exit-"));
+    root = mkdtempSync(join(tmpdir(), "pf-cost-ask-exit-"));
     const home = join(root, "home");
     const workspace = join(root, "workspace");
     mkdirSync(home, { recursive: true });
@@ -221,7 +221,7 @@ test(
       },
     );
 
-    const proc = Bun.spawn([FX_BIN, "ask", "Reply with the sentinel."], {
+    const proc = Bun.spawn([PF_BIN, "ask", "Reply with the sentinel."], {
       cwd: workspace,
       env: { ...process.env, ...gatewayEnvironment(home) },
       stdout: "pipe",
@@ -253,8 +253,8 @@ test(
   10_000,
 );
 
-test("fx ask gives immediate generation reconciliation a bounded drain", async () => {
-  root = mkdtempSync(join(tmpdir(), "fx-cost-ask-reconcile-"));
+test("pf ask gives immediate generation reconciliation a bounded drain", async () => {
+  root = mkdtempSync(join(tmpdir(), "pf-cost-ask-reconcile-"));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   mkdirSync(home, { recursive: true });
@@ -286,7 +286,7 @@ test("fx ask gives immediate generation reconciliation a bounded drain", async (
     },
   );
 
-  const proc = Bun.spawn([FX_BIN, "ask", "Reply with the sentinel."], {
+  const proc = Bun.spawn([PF_BIN, "ask", "Reply with the sentinel."], {
     cwd: workspace,
     env: { ...process.env, ...gatewayEnvironment(home) },
     stdout: "pipe",
@@ -303,8 +303,8 @@ test("fx ask gives immediate generation reconciliation a bounded drain", async (
   expect(usage.pending).toEqual([]);
 });
 
-test("fx usage reports an unresolved delayed fallback as pending", async () => {
-  root = mkdtempSync(join(tmpdir(), "fx-cost-pending-profile-"));
+test("pf usage reports an unresolved delayed fallback as pending", async () => {
+  root = mkdtempSync(join(tmpdir(), "pf-cost-pending-profile-"));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   mkdirSync(home, { recursive: true });
@@ -336,7 +336,7 @@ test("fx usage reports an unresolved delayed fallback as pending", async () => {
     },
   );
 
-  const ask = Bun.spawn([FX_BIN, "ask", "Reply with the sentinel."], {
+  const ask = Bun.spawn([PF_BIN, "ask", "Reply with the sentinel."], {
     cwd: workspace,
     env: { ...process.env, ...gatewayEnvironment(home) },
     stdout: "pipe",
@@ -347,7 +347,7 @@ test("fx usage reports an unresolved delayed fallback as pending", async () => {
   await waitForProfileUsage(home, GENERATION_ID);
 
   const usage = Bun.spawn(
-    [FX_BIN, "usage", "--period", "24h", "--json"],
+    [PF_BIN, "usage", "--period", "24h", "--json"],
     {
       cwd: workspace,
       env: { ...process.env, HOME: home },
@@ -364,8 +364,8 @@ test("fx usage reports an unresolved delayed fallback as pending", async () => {
   expect(gateway.generationRequests).toEqual([GENERATION_ID]);
 });
 
-test("fx usage reports a missing generation identity as incomplete", async () => {
-  root = mkdtempSync(join(tmpdir(), "fx-cost-incomplete-profile-"));
+test("pf usage reports a missing generation identity as incomplete", async () => {
+  root = mkdtempSync(join(tmpdir(), "pf-cost-incomplete-profile-"));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   mkdirSync(home, { recursive: true });
@@ -388,7 +388,7 @@ test("fx usage reports a missing generation identity as incomplete", async () =>
     },
   );
 
-  const ask = Bun.spawn([FX_BIN, "ask", "Reply with the sentinel."], {
+  const ask = Bun.spawn([PF_BIN, "ask", "Reply with the sentinel."], {
     cwd: workspace,
     env: { ...process.env, ...gatewayEnvironment(home) },
     stdout: "pipe",
@@ -398,7 +398,7 @@ test("fx usage reports a missing generation identity as incomplete", async () =>
   expect(await ask.exited, askStderr).toBe(0);
 
   const usage = Bun.spawn(
-    [FX_BIN, "usage", "--period", "24h", "--json"],
+    [PF_BIN, "usage", "--period", "24h", "--json"],
     {
       cwd: workspace,
       env: { ...process.env, HOME: home },
@@ -420,7 +420,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
     test(
       `pending generation reconciliation survives ${resumeMode} resume`,
       async () => {
-        root = mkdtempSync(join(tmpdir(), `fx-cost-${resumeMode}-resume-`));
+        root = mkdtempSync(join(tmpdir(), `pf-cost-${resumeMode}-resume-`));
         const home = join(root, "home");
         const workspace = join(root, "workspace");
         const stderrPath = join(root, "stderr.log");
@@ -477,7 +477,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
         );
 
         const fixture = Bun.spawn(
-          [FX_BIN, "ask", "Create pending usage for resume."],
+          [PF_BIN, "ask", "Create pending usage for resume."],
           {
             cwd: workspace,
             env: { ...process.env, ...gatewayEnvironment(home) },
@@ -496,7 +496,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
           .toEqual([GENERATION_ID]);
 
         session = await TmuxSession.create({
-          cmd: resumeMode === "startup" ? `${FX_BIN} --resume-last` : FX_BIN,
+          cmd: resumeMode === "startup" ? `${PF_BIN} --resume-last` : PF_BIN,
           cwd: workspace,
           env: gatewayEnvironment(home),
           stderrPath,
@@ -552,7 +552,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
   test(
     "authoritative generation totals survive process resume",
     async () => {
-      root = mkdtempSync(join(tmpdir(), "fx-cost-"));
+      root = mkdtempSync(join(tmpdir(), "pf-cost-"));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       mkdirSync(home, { recursive: true });
@@ -630,7 +630,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
       session = null;
 
       session = await TmuxSession.create({
-        cmd: `${FX_BIN} --resume-last`,
+        cmd: `${PF_BIN} --resume-last`,
         cwd: workspace,
         env: gatewayEnvironment(home),
       });
@@ -661,7 +661,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
   test(
     "interactive exit keeps pending usage without waiting on a held ledger lock",
     async () => {
-      root = mkdtempSync(join(tmpdir(), "fx-cost-held-ledger-"));
+      root = mkdtempSync(join(tmpdir(), "pf-cost-held-ledger-"));
       const home = join(root, "home");
       const workspace = join(root, "workspace");
       const stderrPath = join(root, "stderr.log");
@@ -694,7 +694,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
         },
       );
 
-      const fixture = Bun.spawn([FX_BIN, "ask", "Create pending usage."], {
+      const fixture = Bun.spawn([PF_BIN, "ask", "Create pending usage."], {
         cwd: workspace,
         env: { ...process.env, ...gatewayEnvironment(home) },
         stdout: "pipe",
@@ -706,7 +706,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
       const holder = await holdProfileUsageLock(home);
       try {
         session = await TmuxSession.create({
-          cmd: `${FX_BIN} --resume-last`,
+          cmd: `${PF_BIN} --resume-last`,
           cwd: workspace,
           env: gatewayEnvironment(home),
           stderrPath,
@@ -722,7 +722,7 @@ describe.skipIf(!tmuxAvailable())("tui: durable session cost", () => {
 
       const report = JSON.parse(
         readFileSync(
-          join(home, ".fx", "diagnostics", "last-shutdown.json"),
+          join(home, ".pf", "diagnostics", "last-shutdown.json"),
           "utf8",
         ),
       );

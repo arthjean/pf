@@ -11,8 +11,8 @@ pub const Theme = enum {
 
 const Palette = shared_theme.SyntaxPalette;
 
-const dark_palette: Palette = shared_theme.fx_dark.syntax;
-const light_palette: Palette = shared_theme.fx_light.syntax;
+const dark_palette: Palette = shared_theme.pf_dark.syntax;
+const light_palette: Palette = shared_theme.pf_light.syntax;
 
 fn paletteForTheme(theme: Theme) Palette {
     const active = shared_theme.current();
@@ -578,7 +578,7 @@ test "themed attribute slots close fully without bleeding into later text" {
     const previous = shared_theme.current();
     defer shared_theme.activate(previous);
 
-    var custom = shared_theme.fx_dark;
+    var custom = shared_theme.pf_dark;
     custom.syntax.comment_style = "\x1b[3;38;2;106;153;85m";
     custom.syntax.keyword_style = "\x1b[1;38;2;130;210;206m";
     shared_theme.activate(custom);
@@ -607,7 +607,7 @@ test "base style wraps the span and restores after each token" {
 
 test "a theme with syntax disabled passes the source through" {
     const alloc = std.testing.allocator;
-    var no_syntax = shared_theme.fx_dark;
+    var no_syntax = shared_theme.pf_dark;
     no_syntax.syntax.enabled = false;
 
     const previous = shared_theme.current();
@@ -765,7 +765,7 @@ test "diff lines paint with the caller's marker colors" {
     try std.testing.expect(std.mem.indexOf(u8, styled, "\x1b[38;5;245mdiff --git a/f b/f\x1b[39m") != null);
     try std.testing.expect(std.mem.indexOf(u8, styled, "\n context") != null);
 
-    var no_syntax = shared_theme.fx_dark;
+    var no_syntax = shared_theme.pf_dark;
     no_syntax.syntax.enabled = false;
     const previous = shared_theme.current();
     defer shared_theme.activate(previous);
@@ -781,14 +781,14 @@ test "text blocks stay byte-identical and markdown colors inline code" {
     defer alloc.free(text);
     try std.testing.expectEqualStrings("plain prose with 42 numbers and # no comment", text);
 
-    const md = try highlight(alloc, "run `fx upgrade` to update", languages.resolve("md").?, .dark, null);
+    const md = try highlight(alloc, "run `pf upgrade` to update", languages.resolve("md").?, .dark, null);
     defer alloc.free(md);
-    try std.testing.expect(std.mem.indexOf(u8, md, "\x1b[38;5;250m`fx upgrade`\x1b[39m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, md, "\x1b[38;5;250m`pf upgrade`\x1b[39m") != null);
 }
 
 test "split slots let themes color commands variables and operators apart" {
     const alloc = std.testing.allocator;
-    var themed = shared_theme.fx_dark;
+    var themed = shared_theme.pf_dark;
     themed.syntax.function_style = "\x1b[38;5;201m";
     themed.syntax.variable_style = "\x1b[38;5;202m";
     themed.syntax.operator_style = "\x1b[38;5;203m";

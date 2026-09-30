@@ -327,7 +327,7 @@ const AcpContext = struct {
     fn toolContext(self: *AcpContext) tool_runtime.Context {
         const session = if (self.state.active_session) |*active| active else unreachable;
         const provider_capabilities = self.state.cfg.provider_set.select(session.provider).capabilities;
-        if (provider_capabilities.fx_search) {
+        if (provider_capabilities.pf_search) {
             self.state.web_search_runtime.configure(.{
                 .api_key = session.api_key,
                 .credential_source = session.credential_source,
@@ -403,7 +403,7 @@ const AcpContext = struct {
             .web_fetch_artifact_store = session.session_rt.webFetchArtifactStore(),
             .web_fetch_artifact_error = session.session_rt.webFetchArtifactError(),
             .web_search_runtime_ready = false,
-            .web_search_backend = if (provider_capabilities.fx_search) self.state.web_search_runtime.dispatchBackend() else null,
+            .web_search_backend = if (provider_capabilities.pf_search) self.state.web_search_runtime.dispatchBackend() else null,
             .model_capability_resolver = .{
                 .ctx = @ptrCast(self),
                 .resolve_fn = resolveModelCapabilities,
@@ -496,7 +496,7 @@ fn callHostTool(
     state.writer.writeRequest(
         alloc,
         .{ .integer = @intCast(outbound_id) },
-        "libfx/tool_call",
+        "libpf/tool_call",
         params.written(),
     ) catch return .{ .failure = try alloc.dupe(u8, "Host tool request failed") };
 
@@ -697,7 +697,7 @@ pub fn handlePrompt(
     defer prompt_input.deinit(alloc);
     if (prompt_input.pending_images.len > 0) {
         if (session.store == null and session.wasm_state == null) {
-            // libfx kernel session: images stay in memory and ride the kernel
+            // libpf kernel session: images stay in memory and ride the kernel
             // checkpoint, so no filesystem snapshot backend is needed.
             prompt_input.captureImagesInline(alloc) catch |err|
                 return promptInputFailure(err);
@@ -1161,7 +1161,7 @@ const ParsedPromptInput = struct {
         self.images = images;
     }
 
-    /// libfx kernel sessions have no filesystem snapshot backend on either
+    /// libpf kernel sessions have no filesystem snapshot backend on either
     /// host (native or wasm), so their prompt images keep validated bytes on
     /// the attachment itself and serialize through the kernel checkpoint.
     fn captureImagesInline(self: *ParsedPromptInput, alloc: Allocator) !void {
@@ -1228,9 +1228,9 @@ fn parsePromptInputWithFirstImageId(
     const continue_recovery = blk: {
         const meta = parsed.value.object.get("_meta") orelse break :blk false;
         if (meta != .object) break :blk false;
-        const fx = meta.object.get("fx") orelse break :blk false;
-        if (fx != .object) break :blk false;
-        const value = fx.object.get("continueRecovery") orelse break :blk false;
+        const pf = meta.object.get("pf") orelse break :blk false;
+        if (pf != .object) break :blk false;
+        const value = pf.object.get("continueRecovery") orelse break :blk false;
         break :blk value == .bool and value.bool;
     };
 
@@ -1433,7 +1433,7 @@ fn agentRuntimeDeps(ctx: *AcpContext) agent_runtime.AgentRuntimeDeps {
         .context_registry = ctx.state.cfg.context_registry,
         .context_enabled = ctx.state.context_enabled,
         .finalize_turn = finalizeTurn,
-        .take_steering_boundary = if (ctx.state.cfg.minimal_kernel) takeLibfxSteeringBoundary else null,
+        .take_steering_boundary = if (ctx.state.cfg.minimal_kernel) takeLibpfSteeringBoundary else null,
         .release_agent_terminal_lease = releaseAgentTerminalLease,
         .append_runtime_context = appendRuntimeContext,
         .append_static_context = appendStaticContext,
@@ -1483,7 +1483,7 @@ fn agentRuntimeDeps(ctx: *AcpContext) agent_runtime.AgentRuntimeDeps {
     };
 }
 
-fn takeLibfxSteeringBoundary(
+fn takeLibpfSteeringBoundary(
     raw_ctx: *anyopaque,
     arena: Allocator,
     _: u64,
@@ -1494,7 +1494,7 @@ fn takeLibfxSteeringBoundary(
     const messages = if (comptime host_target.is_wasm)
         try js_host_steering.takeAll(arena)
     else
-        try server.takeLibfxSteering(ctx.state, arena, close_if_empty);
+        try server.takeLibpfSteering(ctx.state, arena, close_if_empty);
     if (messages.len > 0) return .{ .continue_turn = messages };
     if (comptime host_target.is_wasm) {
         if (close_if_empty) js_host_steering.close();
@@ -2513,7 +2513,7 @@ fn requestAcpElicitation(
 
     var id_buffer: [48]u8 = undefined;
     const url_id = if (input_request.mode == .url)
-        try std.fmt.bufPrint(&id_buffer, "fx-{d}", .{outbound_id})
+        try std.fmt.bufPrint(&id_buffer, "pf-{d}", .{outbound_id})
     else
         null;
     const legacy_source_id = if (origin.wire.isLegacy() and input_request.mode == .url)
@@ -2641,12 +2641,12 @@ fn formatAcpElicitationMessage(
     return switch (request.mode) {
         .form => std.fmt.allocPrint(
             alloc,
-            "fx received a form request from MCP server {s}. {s}",
+            "pf received a form request from MCP server {s}. {s}",
             .{ server_name, request.message },
         ),
         .url => std.fmt.allocPrint(
             alloc,
-            "fx received a URL request from MCP server {s} for host {s}. {s}",
+            "pf received a URL request from MCP server {s} for host {s}. {s}",
             .{ server_name, request.url_host orelse "unknown", request.message },
         ),
         .unknown => error.McpInputRequired,
@@ -3268,7 +3268,7 @@ test "parsePromptInput handles empty prompt array" {
 test "parsePromptInput accepts explicit recovery continuation metadata" {
     const alloc = std.testing.allocator;
     const params =
-        "{\"sessionId\":\"s1\",\"prompt\":[],\"_meta\":{\"fx\":{\"continueRecovery\":true}}}";
+        "{\"sessionId\":\"s1\",\"prompt\":[],\"_meta\":{\"pf\":{\"continueRecovery\":true}}}";
     var result = try parsePromptInput(alloc, params);
     defer result.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 0), result.text.len);
@@ -3338,14 +3338,14 @@ test "parsePromptInput preserves resource text and accepts only local absolute f
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "Fx Project/src");
-    var file = try tmp.dir.createFile(std.testing.io, "Fx Project/src/main.zig", .{});
+    try tmp.dir.createDirPath(std.testing.io, "Pf Project/src");
+    var file = try tmp.dir.createFile(std.testing.io, "Pf Project/src/main.zig", .{});
     file.close(std.testing.io);
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const expected_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "Fx Project/src/main.zig");
+    const expected_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "Pf Project/src/main.zig");
     defer alloc.free(expected_path);
-    const local_uri = try std.fmt.allocPrint(alloc, "file://{s}/Fx%20Project/src/main.zig", .{root});
+    const local_uri = try std.fmt.allocPrint(alloc, "file://{s}/Pf%20Project/src/main.zig", .{root});
     defer alloc.free(local_uri);
     const remote_uri = "https://example.test/reference.txt";
     const params = try std.fmt.allocPrint(
@@ -3641,7 +3641,7 @@ test "ACP stream adapter forwards raw Markdown and suppresses rendered duplicate
     };
     const operational_span =
         "\x1b[1mstatus\x1b[22m\n" ++
-        "\x1b]8;id=fx-1;https://example.com\x1b\\docs\x1b]8;;\x1b\\\n";
+        "\x1b]8;id=pf-1;https://example.com\x1b\\docs\x1b]8;;\x1b\\\n";
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
@@ -3796,7 +3796,7 @@ test "ACP tool updates preserve typed permission failures without truncation" {
 
 test "ACP plan mode validates registered tools against mode policy" {
     const alloc = std.testing.allocator;
-    var state = try initTestAcpState(alloc, "/tmp/fx-acp-plan-mode", .ask);
+    var state = try initTestAcpState(alloc, "/tmp/pf-acp-plan-mode", .ask);
     defer state.deinit();
     state.active_session.?.mode = "plan";
     var ctx = AcpContext{
@@ -3937,7 +3937,7 @@ fn initTestAcpState(alloc: Allocator, workspace_root: []const u8, mode: Permissi
         .api_key = api_key,
         .credential_source = .ai_gateway_api_key,
         .web_search_runtime = @import("../core/tooling/web_search_runtime.zig").Runtime.init(.{
-            .provider = cfg.provider_set.gateway.fx_search.?,
+            .provider = cfg.provider_set.gateway.pf_search.?,
         }),
         .active_session = .{
             .session_id = session_id,
@@ -3974,7 +3974,7 @@ test "stripAnsiAlloc returns the original slice for clean text and strips escape
 
 test "stripAnsiAlloc converts OSC-8 hyperlinks with params and BEL terminators" {
     const alloc = std.testing.allocator;
-    const with_params = try stripAnsiAlloc(alloc, "\x1b]8;id=fx-1;https://ziglang.org/download/\x1b\\Zig downloads\x1b]8;;\x1b\\ ready");
+    const with_params = try stripAnsiAlloc(alloc, "\x1b]8;id=pf-1;https://ziglang.org/download/\x1b\\Zig downloads\x1b]8;;\x1b\\ ready");
     defer alloc.free(with_params);
     try std.testing.expectEqualStrings("[Zig downloads](https://ziglang.org/download/) ready", with_params);
 
@@ -4884,8 +4884,8 @@ test "ACP prompt agent config carries request options from active session" {
     const tool_ctx = ctx.toolContext();
     try std.testing.expect(!tool_ctx.web_search_runtime_ready);
     try std.testing.expect(tool_ctx.web_search_backend != null);
-    try std.testing.expect(state.web_search_runtime.provider.?.execute_fn == state.cfg.provider_set.gateway.fx_search.?.execute_fn);
-    try std.testing.expect(state.web_search_runtime.provider.?.preferred_backends_fn == state.cfg.provider_set.gateway.fx_search.?.preferred_backends_fn);
+    try std.testing.expect(state.web_search_runtime.provider.?.execute_fn == state.cfg.provider_set.gateway.pf_search.?.execute_fn);
+    try std.testing.expect(state.web_search_runtime.provider.?.preferred_backends_fn == state.cfg.provider_set.gateway.pf_search.?.preferred_backends_fn);
     try std.testing.expect(tool_ctx.web_fetch_runtime.? == &state.web_fetch_runtime);
     try std.testing.expectEqualStrings("team_123", tool_ctx.gateway_team.?);
     try std.testing.expectEqualStrings("team_123", state.web_search_runtime.gateway_team.?);

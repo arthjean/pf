@@ -33,7 +33,7 @@ export default function Page() {
 
   return <main>
     <h1>Next.js agent</h1>
-    <p>A native libfx agent in an App Router route. Each request starts a new conversation.</p>
+    <p>A native libpf agent in an App Router route. Each request starts a new conversation.</p>
     <form onSubmit={send}>
       <label htmlFor="prompt">Prompt</label><br />
       <textarea id="prompt" name="prompt" rows={3} cols={30} required maxLength={2000} defaultValue="Explain server components in two sentences." /><br />

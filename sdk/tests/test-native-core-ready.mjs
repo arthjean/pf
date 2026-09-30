@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addonPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libfx.node"));
+const addonPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libpf.node"));
 const addon = require(addonPath);
 
 let wake;

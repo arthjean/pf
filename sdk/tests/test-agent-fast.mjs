@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const backend = process.argv[2] || "native";
@@ -50,11 +50,11 @@ const baseOptions = {
   backend,
   apiKey: "sdk-fast-test-key",
   ...(backend === "native"
-    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node") }
-    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }),
+    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node") }
+    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }),
 };
 const createAgent = (gateway, overrides) =>
-  createFxAgent({ ...baseOptions, fetch: gateway.fetch, ...overrides });
+  createPfAgent({ ...baseOptions, fetch: gateway.fetch, ...overrides });
 
 async function runPrompt(agent) {
   const turn = agent.prompt("say ok");
@@ -90,7 +90,7 @@ async function runPrompt(agent) {
   await assert.rejects(
     createAgent(gateway, { model: "sdk/plain-model", fast: true }),
     (error) => {
-      assert.equal(error.code, "LIBFX_MODEL_UNSUPPORTED_FAST");
+      assert.equal(error.code, "LIBPF_MODEL_UNSUPPORTED_FAST");
       assert.equal(error.model, "sdk/plain-model");
       assert.equal(error.capability, "fast");
       assert.match(error.message, /Fast mode is not available/);
@@ -107,7 +107,7 @@ if (backend === "native") {
   const gateway = mockGateway();
   await assert.rejects(
     createAgent(gateway, { backend: "auto", model: { id: "sdk/plain-model", fast: true } }),
-    (error) => error.code === "LIBFX_MODEL_UNSUPPORTED_FAST" && error.model === "sdk/plain-model",
+    (error) => error.code === "LIBPF_MODEL_UNSUPPORTED_FAST" && error.model === "sdk/plain-model",
   );
   assert.equal(gateway.state.catalogFetches, 1);
 }

@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, HAS_API_KEY, runFx } from "../evals/eval-helpers";
+import { PF_BIN, HAS_API_KEY, runPf } from "../evals/eval-helpers";
 import {
   FAKE_GATEWAY_MODEL,
   fakeGatewayFinalText,
@@ -27,7 +27,7 @@ import {
 const HAS_TMUX = tmuxAvailable();
 const tmuxTest = test.skipIf(!HAS_TMUX);
 const liveTmuxTest = test.skipIf(
-  !HAS_TMUX || !HAS_API_KEY || process.env.FX_E2E_REAL_API !== "1",
+  !HAS_TMUX || !HAS_API_KEY || process.env.PF_E2E_REAL_API !== "1",
 );
 const TIMEOUT = 60_000;
 const LIFECYCLE_FILE_COUNT = 12_024;
@@ -37,13 +37,13 @@ const LIFECYCLE_CANDIDATE_COUNT = PART4_STRESS
   ? PART4_STRESS_CANDIDATE_COUNT
   : LIFECYCLE_FILE_COUNT + 1;
 const LIFECYCLE_CYCLES = boundedEnvInt(
-  "FX_FILE_PICKER_LIFECYCLE_CYCLES",
+  "PF_FILE_PICKER_LIFECYCLE_CYCLES",
   PART4_STRESS ? 100 : 25,
   PART4_STRESS ? 100 : 2,
   10_000,
 );
 const LIFECYCLE_MEASURED_CYCLES = boundedEnvInt(
-  "FX_FILE_PICKER_MEASURED_CYCLES",
+  "PF_FILE_PICKER_MEASURED_CYCLES",
   PART4_STRESS ? 120 : 12,
   PART4_STRESS ? 100 : 2,
   1_000,
@@ -56,12 +56,12 @@ const PROVISIONAL_STRESS_P95_MS = 500;
 const PROVISIONAL_STRESS_MAX_MS = 1_000;
 
 function stressCandidateCount(): number {
-  const raw = process.env.FX_FILE_PICKER_PART4_CANDIDATE_COUNT;
+  const raw = process.env.PF_FILE_PICKER_PART4_CANDIDATE_COUNT;
   if (raw === undefined || raw === "0") return 0;
   const value = Number.parseInt(raw, 10);
   if (!Number.isSafeInteger(value) || value < 50_000 || value > 100_000) {
     throw new Error(
-      "FX_FILE_PICKER_PART4_CANDIDATE_COUNT must be 0 or an integer in [50000, 100000]",
+      "PF_FILE_PICKER_PART4_CANDIDATE_COUNT must be 0 or an integer in [50000, 100000]",
     );
   }
   return value;
@@ -165,7 +165,7 @@ function createFixture(prefix: string): Fixture {
   const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   const created = {
     root,
@@ -173,7 +173,7 @@ function createFixture(prefix: string): Fixture {
     workspace: realpathSync(workspace),
     stderrPath: join(root, "stderr.log"),
     tracePath: join(root, "trace.log"),
-    tapePath: join(root, "session.fxtape"),
+    tapePath: join(root, "session.pftape"),
   };
   writeFileSync(created.stderrPath, "");
   writeFileSync(created.tracePath, "");
@@ -192,7 +192,7 @@ function initGit(workspace: string): void {
   git(workspace, "init", "--quiet");
 }
 
-async function startMockFx(
+async function startMockPf(
   current: Fixture,
   responses: Response[] = [],
   startupWaitMs = 0,
@@ -200,9 +200,9 @@ async function startMockFx(
 ): Promise<TmuxSession> {
   gateway = startFakeGateway(responses);
   session = await TmuxSession.create({
-    cmd: FX_BIN,
+    cmd: PF_BIN,
     cwd: current.workspace,
-    env: mockFxEnvironment(current, gateway, extraEnv),
+    env: mockPfEnvironment(current, gateway, extraEnv),
     width: 112,
     height: 32,
     stderrPath: current.stderrPath,
@@ -212,7 +212,7 @@ async function startMockFx(
   return session;
 }
 
-function mockFxEnvironment(
+function mockPfEnvironment(
   current: Fixture,
   activeGateway: ReturnType<typeof startFakeGateway>,
   extraEnv: Record<string, string | undefined> = {},
@@ -221,14 +221,14 @@ function mockFxEnvironment(
     HOME: current.home,
     AI_GATEWAY_API_KEY: "fake-file-picker-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_GATEWAY_BASE_URL: activeGateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: activeGateway.chatUrl,
-    FX_MODEL: FAKE_GATEWAY_MODEL,
-    FX_AUTO_UPGRADE: "0",
-    FX_TRACE_LOG: current.tracePath,
-    FX_TRACE_SCOPES: "input,core,prompt,gateway,resize",
-    FX_RECORD: current.tapePath,
-    FX_RECORD_INPUT: "1",
+    PF_GATEWAY_BASE_URL: activeGateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: activeGateway.chatUrl,
+    PF_MODEL: FAKE_GATEWAY_MODEL,
+    PF_AUTO_UPGRADE: "0",
+    PF_TRACE_LOG: current.tracePath,
+    PF_TRACE_SCOPES: "input,core,prompt,gateway,resize",
+    PF_RECORD: current.tapePath,
+    PF_RECORD_INPUT: "1",
     ...extraEnv,
   };
 }
@@ -417,7 +417,7 @@ function expectCleanRuntime(current: Fixture, active: TmuxSession): void {
 async function replayTape(current: Fixture): Promise<void> {
   await session?.kill();
   session = null;
-  const replay = await runFx(["replay", current.tapePath], {
+  const replay = await runPf(["replay", current.tapePath], {
     cwd: current.workspace,
     env: { HOME: current.home },
     timeoutMs: TIMEOUT,
@@ -430,14 +430,14 @@ describe("@ file picker", () => {
   tmuxTest(
     "opens and selects a file while a turn is in flight",
     async () => {
-      const current = createFixture("fx-file-picker-in-flight-");
+      const current = createFixture("pf-file-picker-in-flight-");
       initGit(current.workspace);
       writeFileSync(join(current.workspace, "in-flight-context.txt"), "context");
       git(current.workspace, "add", "in-flight-context.txt");
       const held = heldFakeGatewayFinalText();
 
       try {
-        const active = await startMockFx(current, [held.response], 1_000);
+        const active = await startMockPf(current, [held.response], 1_000);
         await active.sendText("Keep this turn active.");
         await waitForGatewayRequestCount(1);
 
@@ -470,8 +470,8 @@ describe("@ file picker", () => {
   tmuxTest(
     "keeps the completed result visible through rapid large-index refreshes",
     async () => {
-      const current = createFixture("fx-file-picker-stable-refresh-");
-      const artifactDir = process.env.FX_FILE_PICKER_LIFECYCLE_ARTIFACT_DIR;
+      const current = createFixture("pf-file-picker-stable-refresh-");
+      const artifactDir = process.env.PF_FILE_PICKER_LIFECYCLE_ARTIFACT_DIR;
       const fixtureStartedAt = performance.now();
       let fixtureFileCount = 0;
       let fixtureFileBytes = 0;
@@ -589,7 +589,7 @@ describe("@ file picker", () => {
       }
       const fixtureConstructionMs = performance.now() - fixtureStartedAt;
 
-      const active = await startMockFx(
+      const active = await startMockPf(
         current,
         PART4_STRESS ? [fakeGatewayFinalText("PART4_PROFILE_PROMPT_OK")] : [],
       );
@@ -640,8 +640,8 @@ describe("@ file picker", () => {
         }
       };
       stressSamplerCleanup = () => stopSamplers(true);
-      const profileReadyPath = process.env.FX_FILE_PICKER_PROFILE_READY;
-      const profileGoPath = process.env.FX_FILE_PICKER_PROFILE_GO;
+      const profileReadyPath = process.env.PF_FILE_PICKER_PROFILE_READY;
+      const profileGoPath = process.env.PF_FILE_PICKER_PROFILE_GO;
       if (profileReadyPath && profileGoPath) {
         writeFileSync(profileReadyPath, `${targetPid}\n`);
         await waitForFile(profileGoPath);
@@ -1101,7 +1101,7 @@ describe("@ file picker", () => {
           join(artifactDir, "terminal-escapes.txt"),
           terminalRecordingEscapes,
         );
-        copyFileSync(current.tapePath, join(artifactDir, "session.fxtape"));
+        copyFileSync(current.tapePath, join(artifactDir, "session.pftape"));
       }
 
       await active.kill();
@@ -1113,12 +1113,12 @@ describe("@ file picker", () => {
   tmuxTest(
     "refreshes a completed startup index on the first picker episode",
     async () => {
-      const current = createFixture("fx-file-picker-first-episode-refresh-");
+      const current = createFixture("pf-file-picker-first-episode-refresh-");
       initGit(current.workspace);
       writeFileSync(join(current.workspace, "startup-visible.txt"), "startup");
       git(current.workspace, "add", "startup-visible.txt");
 
-      const active = await startMockFx(current, [], 1000);
+      const active = await startMockPf(current, [], 1000);
       const initialGeneration = await waitForReadyAndAdoptedFileIndex(
         current.tracePath,
         1,
@@ -1141,8 +1141,8 @@ describe("@ file picker", () => {
   tmuxTest(
     "submits an unmatched file mention without requiring dismissal",
     async () => {
-      const current = createFixture("fx-file-picker-unmatched-submit-");
-      const active = await startMockFx(current, [
+      const current = createFixture("pf-file-picker-unmatched-submit-");
+      const active = await startMockPf(current, [
         fakeGatewayFinalText("UNMATCHED_FILE_PROMPT_OK"),
       ]);
 
@@ -1167,13 +1167,13 @@ describe("@ file picker", () => {
   tmuxTest(
     "opens after quotes and parentheses and submits the selected path",
     async () => {
-      const current = createFixture("fx-file-picker-boundaries-");
+      const current = createFixture("pf-file-picker-boundaries-");
       initGit(current.workspace);
       mkdirSync(join(current.workspace, "src"));
       writeFileSync(join(current.workspace, "src", "main.zig"), "fixture");
       git(current.workspace, "add", "src/main.zig");
 
-      const active = await startMockFx(
+      const active = await startMockPf(
         current,
         [fakeGatewayFinalText("FILE_BOUNDARY_PROMPT_OK")],
         1000,
@@ -1201,7 +1201,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "keeps shared-prefix paths distinguishable at narrow widths",
     async () => {
-      const current = createFixture("fx-file-picker-narrow-prefix-");
+      const current = createFixture("pf-file-picker-narrow-prefix-");
       initGit(current.workspace);
       const directory = join(
         current.workspace,
@@ -1219,7 +1219,7 @@ describe("@ file picker", () => {
       }
       git(current.workspace, "add", "deeply-nested-source-directory");
 
-      const active = await startMockFx(current, [], 1000);
+      const active = await startMockPf(current, [], 1000);
       await active.resizeWindow(40, 12);
       await active.sendLiteral("@alpha");
       await active.waitForText("alpha-component-01", TIMEOUT);
@@ -1239,7 +1239,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "keeps duplicate basenames distinguishable at narrow widths",
     async () => {
-      const current = createFixture("fx-file-picker-duplicate-basename-");
+      const current = createFixture("pf-file-picker-duplicate-basename-");
       initGit(current.workspace);
       const basename = "shared-component-id-with-a-very-long-name.zig";
       const directories = [
@@ -1252,7 +1252,7 @@ describe("@ file picker", () => {
       }
       git(current.workspace, "add", ...directories);
 
-      const active = await startMockFx(current, [], 1000);
+      const active = await startMockPf(current, [], 1000);
       await active.resizeWindow(40, 12);
       await active.sendLiteral("@shared-component");
       const resultPane = await active.waitForPane((pane) => {
@@ -1279,7 +1279,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "workspace mutation exposes absolute added-root files and directories",
     async () => {
-      const current = createFixture("fx-file-picker-added-root-");
+      const current = createFixture("pf-file-picker-added-root-");
       const shared = join(current.root, "shared");
       mkdirSync(join(shared, "added-root-directory"), { recursive: true });
       const sharedRoot = realpathSync(shared);
@@ -1288,7 +1288,7 @@ describe("@ file picker", () => {
       writeFileSync(addedFile, "added root picker fixture");
       writeFileSync(join(addedDirectory, "member.txt"), "directory member");
 
-      const active = await startMockFx(current, [], 1000, {
+      const active = await startMockPf(current, [], 1000, {
       });
       await active.sendText(`/workspace add ${sharedRoot}`);
       await active.waitForText("saved_changed=true runtime_changed=true", TIMEOUT);
@@ -1323,7 +1323,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "shows a 50k result and releases zero-match Enter after dismissal",
     async () => {
-      const current = createFixture("fx-file-picker-repaint-");
+      const current = createFixture("pf-file-picker-repaint-");
       for (let index = 0; index < 50_000; index += 1) {
         writeFileSync(
           join(current.workspace, `bulk-${index.toString().padStart(5, "0")}.txt`),
@@ -1332,7 +1332,7 @@ describe("@ file picker", () => {
       }
       writeFileSync(join(current.workspace, "z_target_unique.txt"), "target");
 
-      const active = await startMockFx(current, [
+      const active = await startMockPf(current, [
         fakeGatewayFinalText("dismissed file prompt submitted"),
       ]);
       await active.sendLiteral("@z_target_unique");
@@ -1371,7 +1371,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "updates tracked and untracked membership while preserving ignores",
     async () => {
-      const current = createFixture("fx-file-picker-refresh-");
+      const current = createFixture("pf-file-picker-refresh-");
       initGit(current.workspace);
       writeFileSync(join(current.workspace, ".gitignore"), "ignored.txt\n");
       writeFileSync(join(current.workspace, "tracked.txt"), "tracked");
@@ -1380,7 +1380,7 @@ describe("@ file picker", () => {
       writeFileSync(join(current.workspace, "untracked.txt"), "untracked");
       git(current.workspace, "add", ".gitignore", "tracked.txt", "stale.txt");
 
-      const active = await startMockFx(current, [], 1000);
+      const active = await startMockPf(current, [], 1000);
       await active.sendLiteral("@track");
       await active.waitForText("tracked.txt", TIMEOUT);
       await active.sendKeys("Enter");
@@ -1434,7 +1434,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "omits unsafe filenames while Unicode matches remain selectable",
     async () => {
-      const current = createFixture("fx-file-picker-safety-");
+      const current = createFixture("pf-file-picker-safety-");
       initGit(current.workspace);
       const unsafe = "evil-\x1b[2J.txt";
       writeFileSync(join(current.workspace, unsafe), "unsafe");
@@ -1442,7 +1442,7 @@ describe("@ file picker", () => {
       writeFileSync(join(current.workspace, "Ärger-file.txt"), "unicode");
       git(current.workspace, "add", unsafe, "evil-safe.txt", "Ärger-file.txt");
 
-      const active = await startMockFx(current, [], 1000);
+      const active = await startMockPf(current, [], 1000);
       await active.sendLiteral("@evil-");
       await active.waitForText("evil-safe.txt", TIMEOUT);
       await waitForFileText(current.tracePath, "file index omitted unsafe candidate");
@@ -1463,7 +1463,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "renders and accepts fuzzy results across typed file kind changes",
     async () => {
-      const current = createFixture("fx-file-picker-typed-integration-");
+      const current = createFixture("pf-file-picker-typed-integration-");
       initGit(current.workspace);
       writeFileSync(
         join(current.workspace, ".gitignore"),
@@ -1503,7 +1503,7 @@ describe("@ file picker", () => {
         "flip-dir/item.txt",
       );
 
-      const active = await startMockFx(
+      const active = await startMockPf(
         current,
         [fakeGatewayFinalText("TYPED_PATH_PROMPT_OK")],
         1000,
@@ -1605,7 +1605,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "consumes loading Tab and Enter without duplicate directory jobs or delayed submit",
     async () => {
-      const current = createFixture("fx-file-picker-directory-job-");
+      const current = createFixture("pf-file-picker-directory-job-");
       initGit(current.workspace);
       mkdirSync(join(current.workspace, "first"));
       mkdirSync(join(current.workspace, "second"));
@@ -1613,7 +1613,7 @@ describe("@ file picker", () => {
       writeFileSync(join(current.workspace, "second", "beta.txt"), "second");
       gateway = startFakeGateway([]);
       session = await TmuxSession.create({
-        cmd: FX_BIN, cwd: current.workspace, env: mockFxEnvironment(current, gateway),
+        cmd: PF_BIN, cwd: current.workspace, env: mockPfEnvironment(current, gateway),
         isolated: true, width: 112, height: 32, stderrPath: current.stderrPath,
       });
       const active = session;
@@ -1647,7 +1647,7 @@ describe("@ file picker", () => {
       await active.waitForSessionEnd(TIMEOUT);
       expect(active.paneStatus()).toEqual({ dead: true, status: 0 });
       expect(readFileSync(current.stderrPath, "utf8")).toBe("");
-      const replay = await runFx(["replay", current.tapePath, "--frames"], {
+      const replay = await runPf(["replay", current.tapePath, "--frames"], {
         cwd: current.workspace, env: { HOME: current.home }, timeoutMs: TIMEOUT,
       });
       expect(replay.code).toBe(0);
@@ -1661,14 +1661,14 @@ describe("@ file picker", () => {
   tmuxTest(
     "keeps presented file identity without rescanning on navigation and repaint",
     async () => {
-      const current = createFixture("fx-file-picker-presented-");
+      const current = createFixture("pf-file-picker-presented-");
       initGit(current.workspace);
       writeFileSync(join(current.workspace, "b.txt"), "b");
       writeFileSync(join(current.workspace, "c.txt"), "c");
       git(current.workspace, "add", "b.txt", "c.txt");
       gateway = startFakeGateway([fakeGatewayFinalText("PRESENTED_PICKER_OK")]);
       session = await TmuxSession.create({
-        cmd: FX_BIN, cwd: current.workspace, env: mockFxEnvironment(current, gateway),
+        cmd: PF_BIN, cwd: current.workspace, env: mockPfEnvironment(current, gateway),
         isolated: true, width: 112, height: 32, stderrPath: current.stderrPath,
       });
       const active = session;
@@ -1736,7 +1736,7 @@ describe("@ file picker", () => {
       await active.waitForSessionEnd(TIMEOUT);
       expect(active.paneStatus()).toEqual({ dead: true, status: 0 });
       expect(readFileSync(current.stderrPath, "utf8")).toBe("");
-      const replay = await runFx(["replay", current.tapePath, "--frames"], {
+      const replay = await runPf(["replay", current.tapePath, "--frames"], {
         cwd: current.workspace, env: { HOME: current.home }, timeoutMs: TIMEOUT,
       });
       expect(replay.code).toBe(0);
@@ -1750,7 +1750,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "fuzzy home basenames match suffixes and subsequences without scanning descendants",
     async () => {
-      const current = createFixture("fx-file-picker-fuzzy-home-");
+      const current = createFixture("pf-file-picker-fuzzy-home-");
       initGit(current.workspace);
       mkdirSync(join(current.home, "Desktop"));
       mkdirSync(join(current.home, "other"));
@@ -1758,7 +1758,7 @@ describe("@ file picker", () => {
       writeFileSync(join(current.home, "other", "ktop.txt"), "not an immediate child");
       gateway = startFakeGateway([fakeGatewayFinalText("FUZZY_HOME_OK")]);
       session = await TmuxSession.create({
-        cmd: FX_BIN, cwd: current.workspace, env: mockFxEnvironment(current, gateway),
+        cmd: PF_BIN, cwd: current.workspace, env: mockPfEnvironment(current, gateway),
         isolated: true, width: 112, height: 32, stderrPath: current.stderrPath,
       });
       const active = session;
@@ -1796,7 +1796,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "browses bare directory shortcuts from startup through submission and exit",
     async () => {
-      const current = createFixture("fx-file-picker-shortcuts-");
+      const current = createFixture("pf-file-picker-shortcuts-");
       initGit(current.workspace);
       writeFileSync(join(current.home, "home-target.txt"), "DO_NOT_ATTACH_HOME_CONTENT");
       writeFileSync(join(current.workspace, "local-target.txt"), "local");
@@ -1805,9 +1805,9 @@ describe("@ file picker", () => {
       git(current.workspace, "add", "local-target.txt", ".gitignore");
       gateway = startFakeGateway([fakeGatewayFinalText("SHORTCUT_FLOW_OK")]);
       session = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: current.workspace,
-        env: mockFxEnvironment(current, gateway),
+        env: mockPfEnvironment(current, gateway),
         isolated: true,
         width: 112,
         height: 32,
@@ -1871,7 +1871,7 @@ describe("@ file picker", () => {
       expect(active.paneStatus()).toEqual({ dead: true, status: 0 });
       expect(readFileSync(current.stderrPath, "utf8")).toBe("");
 
-      const replay = await runFx(["replay", current.tapePath, "--frames"], {
+      const replay = await runPf(["replay", current.tapePath, "--frames"], {
         cwd: current.workspace,
         env: { HOME: current.home },
         timeoutMs: TIMEOUT,
@@ -1888,7 +1888,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "browses current, parent, home, and absolute filesystem paths",
     async () => {
-      const current = createFixture("fx-file-picker-filesystem-");
+      const current = createFixture("pf-file-picker-filesystem-");
       initGit(current.workspace);
       mkdirSync(join(current.workspace, "empty-workspace"));
       mkdirSync(join(current.workspace, "filled-dir"));
@@ -1909,7 +1909,7 @@ describe("@ file picker", () => {
       writeFileSync(join(current.root, "absolute-dir", "absolute.txt"), "absolute");
       git(current.workspace, "add", "filled-dir/inside.txt", "build/tracked.txt");
 
-      const active = await startMockFx(
+      const active = await startMockPf(
         current,
         [fakeGatewayFinalText("FILESYSTEM_PATH_PROMPT_OK")],
         1000,
@@ -2004,13 +2004,13 @@ describe("@ file picker", () => {
   tmuxTest(
     "claims a typed separator after end completion without duplicating it",
     async () => {
-      const current = createFixture("fx-file-picker-owned-spacing-");
+      const current = createFixture("pf-file-picker-owned-spacing-");
       initGit(current.workspace);
       writeFileSync(join(current.workspace, "AGENTS.md"), "agents");
       writeFileSync(join(current.workspace, "README.md"), "readme");
       git(current.workspace, "add", "AGENTS.md", "README.md");
 
-      const active = await startMockFx(
+      const active = await startMockPf(
         current,
         [fakeGatewayFinalText("FILE_PICKER_OWNED_SPACING_OK")],
         1000,
@@ -2037,12 +2037,12 @@ describe("@ file picker", () => {
   tmuxTest(
     "middle completion preserves one separator and submits the exact prompt",
     async () => {
-      const current = createFixture("fx-file-picker-spacing-");
+      const current = createFixture("pf-file-picker-spacing-");
       initGit(current.workspace);
       writeFileSync(join(current.workspace, "first-file.txt"), "first");
       git(current.workspace, "add", "first-file.txt");
 
-      const active = await startMockFx(
+      const active = await startMockPf(
         current,
         [fakeGatewayFinalText("FILE_PICKER_MOCK_OK")],
         1000,
@@ -2066,7 +2066,7 @@ describe("@ file picker", () => {
   tmuxTest(
     "persists a selected plain-text path across two process resume cycles",
     async () => {
-      const current = createFixture("fx-file-picker-resume-");
+      const current = createFixture("pf-file-picker-resume-");
       initGit(current.workspace);
       writeFileSync(
         join(current.workspace, "resume-context.txt"),
@@ -2079,7 +2079,7 @@ describe("@ file picker", () => {
         "FILE_PICKER_RESUME_ONE",
         "FILE_PICKER_RESUME_TWO",
       ];
-      const active = await startMockFx(
+      const active = await startMockPf(
         current,
         responses.map((text) => fakeGatewayFinalText(text)),
         1_000,
@@ -2100,7 +2100,7 @@ describe("@ file picker", () => {
       session = null;
       expect(readFileSync(current.stderrPath, "utf8")).toBe("");
 
-      const listed = await runFx(["sessions", "--json"], {
+      const listed = await runPf(["sessions", "--json"], {
         cwd: current.workspace,
         env: { HOME: current.home },
         timeoutMs: TIMEOUT,
@@ -2111,7 +2111,7 @@ describe("@ file picker", () => {
         sessions: Array<{ id: string }>;
       }).sessions[0]?.id;
       expect(sessionId).toBeDefined();
-      const saved = await runFx(["session", "--id", sessionId!, "--json"], {
+      const saved = await runPf(["session", "--id", sessionId!, "--json"], {
         cwd: current.workspace,
         env: { HOME: current.home },
         timeoutMs: TIMEOUT,
@@ -2124,10 +2124,10 @@ describe("@ file picker", () => {
         writeFileSync(current.stderrPath, "");
         const activeGateway = gateway!;
         session = await TmuxSession.create({
-          cmd: `${FX_BIN} --resume-last`,
+          cmd: `${PF_BIN} --resume-last`,
           cwd: current.workspace,
-          env: mockFxEnvironment(current, activeGateway, {
-            FX_RECORD: join(current.root, `resume-${cycle}.fxtape`),
+          env: mockPfEnvironment(current, activeGateway, {
+            PF_RECORD: join(current.root, `resume-${cycle}.pftape`),
           }),
           width: cycle === 1 ? 48 : 160,
           height: cycle === 1 ? 12 : 50,
@@ -2151,7 +2151,7 @@ describe("@ file picker", () => {
         session = null;
       }
 
-      const resumedSaved = await runFx(
+      const resumedSaved = await runPf(
         ["session", "--id", sessionId!, "--json"],
         {
           cwd: current.workspace,
@@ -2171,7 +2171,7 @@ describe("@ file picker", () => {
   liveTmuxTest(
     "browses a bare home shortcut through the live Gateway and exits cleanly",
     async () => {
-      const current = createFixture("fx-file-picker-live-");
+      const current = createFixture("pf-file-picker-live-");
       initGit(current.workspace);
       mkdirSync(join(current.home, "live space"));
       writeFileSync(
@@ -2180,17 +2180,17 @@ describe("@ file picker", () => {
       );
 
       session = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: current.workspace,
         env: {
           HOME: current.home,
           AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
           VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
-          FX_AUTO_UPGRADE: "0",
-          FX_MODEL: process.env.FX_FILE_PICKER_LIVE_MODEL ?? "anthropic/claude-sonnet-4.6",
-          FX_TRACE_LOG: current.tracePath,
-          FX_TRACE_SCOPES: "input,prompt,gateway",
-          FX_RECORD: current.tapePath,
+          PF_AUTO_UPGRADE: "0",
+          PF_MODEL: process.env.PF_FILE_PICKER_LIVE_MODEL ?? "anthropic/claude-sonnet-4.6",
+          PF_TRACE_LOG: current.tracePath,
+          PF_TRACE_SCOPES: "input,prompt,gateway",
+          PF_RECORD: current.tapePath,
         },
         isolated: true,
         width: 112,
@@ -2219,7 +2219,7 @@ describe("@ file picker", () => {
       await session.waitForSessionEnd(TIMEOUT);
       expect(session.paneStatus()).toEqual({ dead: true, status: 0 });
       expect(readFileSync(current.stderrPath, "utf8")).toBe("");
-      const replay = await runFx(["replay", current.tapePath, "--frames"], {
+      const replay = await runPf(["replay", current.tapePath, "--frames"], {
         cwd: current.workspace,
         env: { HOME: current.home },
         timeoutMs: TIMEOUT,

@@ -500,13 +500,13 @@ pub const ProfileStore = struct {
             }),
         };
         defer home_dir.close();
-        var fx_dir = try io_mod.openOrCreateVerifiedPrivateDir(
+        var pf_dir = try io_mod.openOrCreateVerifiedPrivateDir(
             &home_dir,
             profile_paths.root_dir_name,
         );
-        defer fx_dir.close();
+        defer pf_dir.close();
         var sessions_dir = try io_mod.openOrCreateVerifiedPrivateDir(
-            &fx_dir,
+            &pf_dir,
             profile_paths.sessions_dir_name,
         );
         errdefer sessions_dir.close();
@@ -1841,7 +1841,7 @@ fn proof_verifier(
     grant: contracts.AuthorityGrant,
 ) contracts.CheckpointChecksum {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    hash.update("fx.terminal.holder-proof.v2\x00");
+    hash.update("pf.terminal.holder-proof.v2\x00");
     hash.update(&proof.bytes);
     hash_u64(&hash, grant.generation.value);
     hash.update(@tagName(grant.actor));
@@ -1870,7 +1870,7 @@ fn close_initiator_verifier(
     claim: contracts.AuthorityClaim,
 ) contracts.CheckpointChecksum {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    hash.update("fx.terminal.close-initiator.v2\x00");
+    hash.update("pf.terminal.close-initiator.v2\x00");
     hash.update(&claim.proof.bytes);
     hash_u64(&hash, claim.generation.value);
     hash_text(&hash, @tagName(claim.actor));
@@ -1898,7 +1898,7 @@ fn owner_catalog_key(
     actor: contracts.ActorRole,
 ) [64]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    hash.update("fx.terminal.owner-catalog-key.v2\x00");
+    hash.update("pf.terminal.owner-catalog-key.v2\x00");
     hash.update(@tagName(actor));
     hash.update(@tagName(principal.transport_role));
     hash_text(&hash, principal.profile_user);
@@ -1913,7 +1913,7 @@ fn owner_catalog_verifier(
     claim: contracts.OwnerCatalogAuthorityClaim,
 ) contracts.CheckpointChecksum {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    hash.update("fx.terminal.owner-catalog-proof.v2\x00");
+    hash.update("pf.terminal.owner-catalog-proof.v2\x00");
     hash.update(&claim.proof.bytes);
     hash.update(@tagName(claim.actor));
     hash.update(@tagName(claim.principal.transport_role));
@@ -2181,7 +2181,7 @@ pub fn loadOrCreateOwnerCatalogClaim(
     return operation.ownOwnerCatalogClaim(alloc, claim);
 }
 
-/// Reloads authority for the current fx owner without trusting caller-supplied
+/// Reloads authority for the current pf owner without trusting caller-supplied
 /// cwd, backend, or generation. Those facts are recovered from durable state;
 /// the active profile/session/workspace/transport identity must still match.
 pub fn reloadOwnerAuthorityClaim(
@@ -2273,7 +2273,7 @@ pub fn reloadHumanTakeoverAuthorityClaim(
     }, .humanTakeover());
 }
 
-/// Reloads a proof only through the managed-child capability of the durable fx
+/// Reloads a proof only through the managed-child capability of the durable pf
 /// session that owns it. A terminal id alone cannot select proof storage.
 pub fn reloadAuthorityClaim(
     alloc: Allocator,
@@ -5785,9 +5785,9 @@ const TestStoreFixture = struct {
             .{ .iterate = true, .follow_symlinks = false },
         ) };
         defer root.close();
-        var fx = try io_mod.openOrCreateVerifiedPrivateDir(&root, ".fx");
-        defer fx.close();
-        var sessions = try io_mod.openOrCreateVerifiedPrivateDir(&fx, "sessions");
+        var pf = try io_mod.openOrCreateVerifiedPrivateDir(&root, ".pf");
+        defer pf.close();
+        var sessions = try io_mod.openOrCreateVerifiedPrivateDir(&pf, "sessions");
         defer sessions.close();
         var owner = try io_mod.openOrCreateVerifiedPrivateDir(
             &sessions,
@@ -6836,7 +6836,7 @@ test "tmux recovery propagates proof capability failure without durable loss" {
     defer alloc.free(name);
     const path = try std.fs.path.join(alloc, &.{
         fixture.home,
-        ".fx",
+        ".pf",
         "sessions",
         "terminal-store-owner",
         "terminal",
@@ -7533,7 +7533,7 @@ test "human owner takeover proof is narrow and excludes agent writes" {
     );
 }
 
-test "human takeover lease is reclaimable only after its fx process owner is gone" {
+test "human takeover lease is reclaimable only after its pf process owner is gone" {
     const Match = struct {
         var result: process_identity.TokenMatch = .matched;
 

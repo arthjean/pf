@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import { readTapeFrames, type TapeFrame } from "./render-lab/tape";
 import {
   composerContains,
@@ -26,8 +26,8 @@ import {
   tmuxAvailable,
 } from "./tmux-helpers";
 
-const ENABLED = process.env.FX_TUI_PERFORMANCE === "1";
-const LIVE_ENABLED = process.env.FX_E2E_REAL_API === "1" &&
+const ENABLED = process.env.PF_TUI_PERFORMANCE === "1";
+const LIVE_ENABLED = process.env.PF_E2E_REAL_API === "1" &&
   typeof process.env.AI_GATEWAY_API_KEY === "string" &&
   process.env.AI_GATEWAY_API_KEY.length > 0;
 const WARMUPS = 5;
@@ -369,7 +369,7 @@ function longTranscript(): string {
     if (index === 0) rows.push("PERF_TRANSCRIPT_HEAD");
     else if (index === 1_050) rows.push("PERF_TRANSCRIPT_MIDDLE");
     else if (index === 2_099) rows.push("PERF_TRANSCRIPT_TAIL");
-    else if (index % 17 === 0) rows.push(`| ${index} | wide unicode 𝒇x 漢字 | wrapped ${"x".repeat(96)} |`);
+    else if (index % 17 === 0) rows.push(`| ${index} | wide unicode 𝒑f 漢字 | wrapped ${"x".repeat(96)} |`);
     else if (index % 11 === 0) rows.push("");
     else rows.push(`transcript row ${String(index).padStart(4, "0")}`);
   }
@@ -377,11 +377,11 @@ function longTranscript(): string {
 }
 
 function createFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-tui-performance-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-tui-performance-")));
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const skillsRoot = join(workspace, ".agents", "skills");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(skillsRoot, { recursive: true });
   const hash = createHash("sha256");
   let generationSkillPath = "";
@@ -406,7 +406,7 @@ function createFixture() {
     root,
     home,
     workspace: realpathSync(workspace),
-    tapePath: join(root, "performance.fxtape"),
+    tapePath: join(root, "performance.pftape"),
     stderrPath: join(root, "stderr.log"),
     fixtureHash: hash.digest("hex"),
     transcript,
@@ -443,14 +443,14 @@ test.skipIf(!tmuxAvailable())(
     let session: TmuxSession | null = null;
     try {
       session = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: fixture.workspace,
         env: {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_SOUND: "0",
+          PF_AUTO_UPGRADE: "0",
+          PF_SOUND: "0",
           NO_COLOR: "1",
         },
         stderrPath: fixture.stderrPath,
@@ -486,19 +486,19 @@ test.skipIf(!tmuxAvailable())(
     let active: TmuxSession | null = null;
     try {
       active = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: fixture.workspace,
         env: {
           HOME: undefined,
           AI_GATEWAY_API_KEY: "missing-home-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: noHomeGateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: noHomeGateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_AUTO_UPGRADE: "0",
-          FX_DISABLE_KEYCHAIN: "1",
-          FX_SKIP_ONBOARDING: "1",
-          FX_SOUND: "0",
+          PF_GATEWAY_BASE_URL: noHomeGateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: noHomeGateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_AUTO_UPGRADE: "0",
+          PF_DISABLE_KEYCHAIN: "1",
+          PF_SKIP_ONBOARDING: "1",
+          PF_SOUND: "0",
           NO_COLOR: "1",
         },
         stderrPath: fixture.stderrPath,
@@ -534,14 +534,14 @@ test.skipIf(!tmuxAvailable())(
     let active: TmuxSession | null = null;
     try {
       active = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: fixture.workspace,
         env: {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_SOUND: "0",
+          PF_AUTO_UPGRADE: "0",
+          PF_SOUND: "0",
           NO_COLOR: "1",
         },
         stderrPath: fixture.stderrPath,
@@ -592,19 +592,19 @@ test.skipIf(!tmuxAvailable())(
     let active: TmuxSession | null = null;
     try {
       active = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: fixture.workspace,
         env: {
           HOME: linkedHome,
           AI_GATEWAY_API_KEY: "symlinked-home-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: linkedHomeGateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: linkedHomeGateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_AUTO_UPGRADE: "0",
-          FX_DISABLE_KEYCHAIN: "1",
-          FX_SKIP_ONBOARDING: "1",
-          FX_SOUND: "0",
+          PF_GATEWAY_BASE_URL: linkedHomeGateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: linkedHomeGateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_AUTO_UPGRADE: "0",
+          PF_DISABLE_KEYCHAIN: "1",
+          PF_SKIP_ONBOARDING: "1",
+          PF_SOUND: "0",
           NO_COLOR: "1",
         },
         stderrPath: fixture.stderrPath,
@@ -696,21 +696,21 @@ test.skipIf(!ENABLED || !tmuxAvailable())(
     let session: TmuxSession | null = null;
     try {
       session = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: fixture.workspace,
         env: {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: "fake-performance-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_MODEL: FAKE_GATEWAY_MODEL,
-          FX_PERMISSION_MODE: "ask",
-          FX_AUTO_UPGRADE: "0",
-          FX_SOUND: "0",
-          FX_RECORD: fixture.tapePath,
-          FX_RECORD_INPUT: "1",
-          FX_TERMINAL_HOST_IDLE_MS: "250",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: FAKE_GATEWAY_MODEL,
+          PF_PERMISSION_MODE: "ask",
+          PF_AUTO_UPGRADE: "0",
+          PF_SOUND: "0",
+          PF_RECORD: fixture.tapePath,
+          PF_RECORD_INPUT: "1",
+          PF_TERMINAL_HOST_IDLE_MS: "250",
           NO_COLOR: "1",
         },
         stderrPath: fixture.stderrPath,
@@ -1012,7 +1012,7 @@ test.skipIf(!ENABLED || !tmuxAvailable())(
           after: resourcesAfter,
         },
       };
-      const reportPath = process.env.FX_TUI_PERFORMANCE_REPORT;
+      const reportPath = process.env.PF_TUI_PERFORMANCE_REPORT;
       if (reportPath) writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 
       for (const [name, values] of Object.entries(samples)) {
@@ -1056,7 +1056,7 @@ test.skipIf(!ENABLED || !tmuxAvailable())(
     } finally {
       await session?.kill();
       gateway.stop();
-      if (process.env.FX_TUI_PERFORMANCE_KEEP !== "1") {
+      if (process.env.PF_TUI_PERFORMANCE_KEEP !== "1") {
         rmSync(fixture.root, { recursive: true, force: true });
       } else {
         console.error(`retained TUI performance fixture at ${fixture.root}`);
@@ -1073,14 +1073,14 @@ test.skipIf(!LIVE_ENABLED || !tmuxAvailable())(
     let session: TmuxSession | null = null;
     try {
       session = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: fixture.workspace,
         env: {
           HOME: fixture.home,
           AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
           VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
-          FX_AUTO_UPGRADE: "0",
-          FX_SOUND: "0",
+          PF_AUTO_UPGRADE: "0",
+          PF_SOUND: "0",
           NO_COLOR: "1",
         },
         stderrPath: fixture.stderrPath,

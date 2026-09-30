@@ -2510,7 +2510,7 @@ test "persisted file index paints a stale preview and the real scan replaces it"
     // become git-authoritative, and a git failure would replace the walk.
     var random_suffix: [8]u8 = undefined;
     io_mod.getIo().random(&random_suffix);
-    const base = try std.fmt.allocPrint(alloc, "/tmp/fx-fileidx-{s}", .{std.fmt.bytesToHex(random_suffix, .lower)});
+    const base = try std.fmt.allocPrint(alloc, "/tmp/pf-fileidx-{s}", .{std.fmt.bytesToHex(random_suffix, .lower)});
     defer alloc.free(base);
     const zio = io_mod.getIo();
     var base_dir = try std.Io.Dir.openDirAbsolute(zio, "/", .{});

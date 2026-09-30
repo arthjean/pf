@@ -827,7 +827,7 @@ pub fn activityProjectionLabel(projection: ActivityProjection) ?[]const u8 {
 
 test "skillsMenuProjection mirrors runtime menu state" {
     var skills = [_]skill_runtime.Skill{
-        .{ .name = "managed", .description = "managed desc", .path = "/tmp/managed/SKILL.md", .source = .global_fx },
+        .{ .name = "managed", .description = "managed desc", .path = "/tmp/managed/SKILL.md", .source = .global_pf },
         .{ .name = "workspace", .description = "workspace desc", .path = "/tmp/workspace/SKILL.md", .source = .workspace_shared },
     };
     var runtime: skill_runtime.Runtime = .{ .items = &skills };
@@ -849,7 +849,7 @@ test "skillsMenuProjection mirrors runtime menu state" {
 
 test "skillsMenuProjection hides zero-result mentions and preserves command menus" {
     var skills = [_]skill_runtime.Skill{
-        .{ .name = "managed", .description = "managed desc", .path = "/tmp/managed/SKILL.md", .source = .global_fx },
+        .{ .name = "managed", .description = "managed desc", .path = "/tmp/managed/SKILL.md", .source = .global_pf },
     };
     var runtime: skill_runtime.Runtime = .{ .items = &skills };
 

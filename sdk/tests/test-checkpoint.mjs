@@ -4,13 +4,13 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const sourceBackend = process.argv[2] || "native";
 const targetBackend = process.argv[3] || "wasm";
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addon = resolve(scriptDir, "../../zig-out/lib/libfx.node");
-const wasm = await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm"));
+const addon = resolve(scriptDir, "../../zig-out/lib/libpf.node");
+const wasm = await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm"));
 const pngData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP0cAAAAASUVORK5CYII=";
 for (const shape of ["plain", "reasoning-text", "reasoning-only", "provider-terminal", "image"]) {
   let modelRequests = 0;
@@ -109,7 +109,7 @@ for (const shape of ["plain", "reasoning-text", "reasoning-only", "provider-term
   let source;
   let target;
   try {
-    source = await createFxAgent(options(sourceBackend));
+    source = await createPfAgent(options(sourceBackend));
     const first = source.prompt(shape === "image"
       ? [{ type: "text", text: "store this context" }, { type: "image", data: pngData, mimeType: "image/png" }]
       : "store this context");
@@ -120,7 +120,7 @@ for (const shape of ["plain", "reasoning-text", "reasoning-only", "provider-term
     assert.equal(await source.close(), undefined);
     source = null;
 
-    target = await createFxAgent(options(targetBackend, checkpoint));
+    target = await createPfAgent(options(targetBackend, checkpoint));
     const second = target.prompt("continue");
     let text = "";
     for await (const update of second) {

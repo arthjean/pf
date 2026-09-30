@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import { readTapeFrames, stdoutFrames } from "./render-lab/tape";
 import {
   assertPaneContains,
@@ -24,12 +24,12 @@ const SKIP = !tmuxAvailable();
 const TIMEOUT = 45_000;
 const TRACE_SCOPES =
   "paint,render,scroll,footer.clean,input,resize,frame_layout,frame_plan,frame_diff,frame_commit,frame_owner_violation";
-const TRANSIENT_ACTIVITY_CAPTURE_TARBALL = "/private/tmp/fx-render-bug-20260510-073148.tar.gz";
-const TRANSIENT_ACTIVITY_CAPTURE_DIR = "/private/tmp/fx-render-bug-20260510-073148";
+const TRANSIENT_ACTIVITY_CAPTURE_TARBALL = "/private/tmp/pf-render-bug-20260510-073148.tar.gz";
+const TRANSIENT_ACTIVITY_CAPTURE_DIR = "/private/tmp/pf-render-bug-20260510-073148";
 const READ_ONLY_TOOLS_CAPTURE_TARBALL = join(
   import.meta.dirname,
   "fixtures",
-  "fx-render-bug-20260510-075848.tar.gz",
+  "pf-render-bug-20260510-075848.tar.gz",
 );
 
 let session: TmuxSession | null = null;
@@ -54,30 +54,30 @@ async function launch(options: {
   goldenPath: string;
   tracePath: string;
 }> {
-  const workDir = mkdtempSync(join(tmpdir(), "fx-render-replay-"));
+  const workDir = mkdtempSync(join(tmpdir(), "pf-render-replay-"));
   workDirs.push(workDir);
 
-  const tapePath = join(workDir, "render.fxtape");
+  const tapePath = join(workDir, "render.pftape");
   const goldenPath = join(workDir, "grid.txt");
   const tracePath = join(workDir, "trace.log");
-  mkdirSync(join(workDir, ".fx"), { recursive: true });
+  mkdirSync(join(workDir, ".pf"), { recursive: true });
   writeFileSync(
-    join(workDir, ".fx", "settings.json"),
+    join(workDir, ".pf", "settings.json"),
     JSON.stringify({}),
   );
 
   const s = await TmuxSession.create({
-    cmd: `env -u AI_GATEWAY_API_KEY -u VERCEL_OIDC_TOKEN FX_DISABLE_KEYCHAIN=1 FX_SKIP_ONBOARDING=1 ${FX_BIN}`,
+    cmd: `env -u AI_GATEWAY_API_KEY -u VERCEL_OIDC_TOKEN PF_DISABLE_KEYCHAIN=1 PF_SKIP_ONBOARDING=1 ${PF_BIN}`,
     cwd: workDir,
     width: 88,
     height: 30,
     env: {
       HOME: workDir,
-      FX_RECORD: tapePath,
-      ...(options.recordInput ? { FX_RECORD_INPUT: "1" } : {}),
-      ...(options.syncUpdates ? { FX_SYNC_UPDATES: options.syncUpdates } : {}),
-      FX_TRACE_LOG: tracePath,
-      FX_TRACE_SCOPES: TRACE_SCOPES,
+      PF_RECORD: tapePath,
+      ...(options.recordInput ? { PF_RECORD_INPUT: "1" } : {}),
+      ...(options.syncUpdates ? { PF_SYNC_UPDATES: options.syncUpdates } : {}),
+      PF_TRACE_LOG: tracePath,
+      PF_TRACE_SCOPES: TRACE_SCOPES,
     },
   });
   session = s;
@@ -102,30 +102,30 @@ async function launchAutomaticRecording(options: {
   tracePath: string;
   home: string;
 }> {
-  const workDir = mkdtempSync("/tmp/fx-render-auto-replay-");
+  const workDir = mkdtempSync("/tmp/pf-render-auto-replay-");
   workDirs.push(workDir);
   const home = join(workDir, "home");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({}),
   );
 
   const goldenPath = join(workDir, "grid.txt");
   const tracePath = join(workDir, "trace.log");
   const s = await TmuxSession.create({
-    cmd: `env -u AI_GATEWAY_API_KEY -u VERCEL_OIDC_TOKEN FX_DISABLE_KEYCHAIN=1 FX_SKIP_ONBOARDING=1 ${FX_BIN}`,
+    cmd: `env -u AI_GATEWAY_API_KEY -u VERCEL_OIDC_TOKEN PF_DISABLE_KEYCHAIN=1 PF_SKIP_ONBOARDING=1 ${PF_BIN}`,
     cwd: workDir,
     width: 180,
     height: 36,
     env: {
       HOME: home,
-      FX_DEBUG_RECORD: "1",
+      PF_DEBUG_RECORD: "1",
       ...(options.silentBanner
-        ? { FX_DEBUG_RECORD_SILENT_BANNER: "1" }
+        ? { PF_DEBUG_RECORD_SILENT_BANNER: "1" }
         : {}),
-      FX_TRACE_LOG: tracePath,
-      FX_TRACE_SCOPES: TRACE_SCOPES,
+      PF_TRACE_LOG: tracePath,
+      PF_TRACE_SCOPES: TRACE_SCOPES,
     },
   });
   session = s;
@@ -133,9 +133,9 @@ async function launchAutomaticRecording(options: {
     await s.waitForText("visual terminal capture:", 10_000);
   }
   await s.waitForComposer(10_000);
-  const recordingsDir = join(home, ".fx", "recordings");
+  const recordingsDir = join(home, ".pf", "recordings");
   const tapes = readdirSync(recordingsDir).filter((name) =>
-    name.endsWith(".fxtape")
+    name.endsWith(".pftape")
   );
   if (tapes.length !== 1) {
     throw new Error(`expected one automatic tape, found ${tapes.length}`);
@@ -145,25 +145,25 @@ async function launchAutomaticRecording(options: {
 }
 
 describe("tui: render record/replay", () => {
-  test.skipIf(!existsSync(TRANSIENT_ACTIVITY_CAPTURE_TARBALL) && !existsSync(join(TRANSIENT_ACTIVITY_CAPTURE_DIR, "bug.fxtape")))(
+  test.skipIf(!existsSync(TRANSIENT_ACTIVITY_CAPTURE_TARBALL) && !existsSync(join(TRANSIENT_ACTIVITY_CAPTURE_DIR, "bug.pftape")))(
     "replays transient activity capture without layout validation failures",
     () => {
       const failures: string[] = [];
       let captureDir = TRANSIENT_ACTIVITY_CAPTURE_DIR;
-      if (!existsSync(join(captureDir, "bug.fxtape"))) {
-        const workDir = mkdtempSync(join(tmpdir(), "fx-render-capture-"));
+      if (!existsSync(join(captureDir, "bug.pftape"))) {
+        const workDir = mkdtempSync(join(tmpdir(), "pf-render-capture-"));
         workDirs.push(workDir);
         execFileSync("tar", ["-xzf", TRANSIENT_ACTIVITY_CAPTURE_TARBALL, "-C", workDir]);
-        captureDir = join(workDir, "fx-render-bug-20260510-073148");
+        captureDir = join(workDir, "pf-render-bug-20260510-073148");
       }
 
-      const tapePath = join(captureDir, "bug.fxtape");
-      const workDir = mkdtempSync(join(tmpdir(), "fx-render-capture-replay-"));
+      const tapePath = join(captureDir, "bug.pftape");
+      const workDir = mkdtempSync(join(tmpdir(), "pf-render-capture-replay-"));
       workDirs.push(workDir);
       const goldenPath = join(workDir, "grid.txt");
       const tracePath = join(workDir, "trace.log");
 
-      const replayJsonOutput = execFileSync(FX_BIN, ["replay", tapePath, "--json"], {
+      const replayJsonOutput = execFileSync(PF_BIN, ["replay", tapePath, "--json"], {
         encoding: "utf8",
       });
       const replay = parseReplayJson(replayJsonOutput);
@@ -171,11 +171,11 @@ describe("tui: render record/replay", () => {
       expect(replay.resize_count).toBe(0);
       expect(replay.stdout_bytes).toBeGreaterThan(0);
 
-      execFileSync(FX_BIN, ["replay", tapePath, "--golden", goldenPath], {
+      execFileSync(PF_BIN, ["replay", tapePath, "--golden", goldenPath], {
         env: {
           ...process.env,
-          FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: TRACE_SCOPES,
+          PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: TRACE_SCOPES,
         },
       });
       const trace = readTrace(tracePath);
@@ -235,7 +235,7 @@ describe("tui: render record/replay", () => {
 
       const scrollback = await session.captureFullScrollback();
       expect(scrollback).toContain("why");
-      execFileSync(FX_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
+      execFileSync(PF_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
       const grid = readFileSync(launched.goldenPath, "utf8");
       expect(grid).toContain("why");
 
@@ -266,7 +266,7 @@ describe("tui: render record/replay", () => {
 
       const scrollback = await session.captureFullScrollback();
       expect(scrollback).toContain("x");
-      execFileSync(FX_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
+      execFileSync(PF_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
       expect(readFileSync(launched.goldenPath, "utf8")).toContain("x");
 
       await session.sendKeys("C-u");
@@ -281,17 +281,17 @@ describe("tui: render record/replay", () => {
     "replays read-only tools capture without layout validation failures",
     () => {
       const failures: string[] = [];
-      const extractDir = mkdtempSync(join(tmpdir(), "fx-render-read-only-tools-"));
+      const extractDir = mkdtempSync(join(tmpdir(), "pf-render-read-only-tools-"));
       workDirs.push(extractDir);
       execFileSync("tar", ["-xzf", READ_ONLY_TOOLS_CAPTURE_TARBALL, "-C", extractDir]);
-      const captureDir = join(extractDir, "fx-render-bug-20260510-075848");
-      const tapePath = join(captureDir, "bug.fxtape");
-      const workDir = mkdtempSync(join(tmpdir(), "fx-render-read-only-tools-replay-"));
+      const captureDir = join(extractDir, "pf-render-bug-20260510-075848");
+      const tapePath = join(captureDir, "bug.pftape");
+      const workDir = mkdtempSync(join(tmpdir(), "pf-render-read-only-tools-replay-"));
       workDirs.push(workDir);
       const goldenPath = join(workDir, "grid.txt");
       const tracePath = join(workDir, "trace.log");
 
-      const replayJsonOutput = execFileSync(FX_BIN, ["replay", tapePath, "--json"], {
+      const replayJsonOutput = execFileSync(PF_BIN, ["replay", tapePath, "--json"], {
         encoding: "utf8",
       });
       const replay = parseReplayJson(replayJsonOutput);
@@ -299,11 +299,11 @@ describe("tui: render record/replay", () => {
       expect(replay.resize_count).toBe(0);
       expect(replay.stdout_bytes).toBeGreaterThan(0);
 
-      execFileSync(FX_BIN, ["replay", tapePath, "--golden", goldenPath], {
+      execFileSync(PF_BIN, ["replay", tapePath, "--golden", goldenPath], {
         env: {
           ...process.env,
-          FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: TRACE_SCOPES,
+          PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: TRACE_SCOPES,
         },
       });
       const trace = readTrace(tracePath);
@@ -329,14 +329,14 @@ describe("tui: render record/replay", () => {
         { length: 33 },
         (_, index) => `captured input line ${index + 1}: ${"x".repeat(32)}`,
       ).join("\n");
-      const authNotice = "auth: fx needs access to Vercel AI Gateway. Run /login to sign in, /provider to use an API key, or set AI_GATEWAY_API_KEY.";
+      const authNotice = "auth: pf needs access to Vercel AI Gateway. Run /login to sign in, /provider to use an API key, or set AI_GATEWAY_API_KEY.";
       const launched = await launch({ recordInput: true });
       session = launched.session;
 
       await session.pasteText(pasted);
       await session.waitForText("[Pasted text #1, 33 lines]", 5_000);
       await session.sendKeys("Enter");
-      await session.waitForText("auth: fx needs access", 5_000);
+      await session.waitForText("auth: pf needs access", 5_000);
       expect((await session.captureFullScrollback()).replace(/\s+/g, " ")).toContain(authNotice);
 
       const stdin = readTapeFrames(launched.tapePath)
@@ -348,7 +348,7 @@ describe("tui: render record/replay", () => {
       expect(pasteEnd).toBeGreaterThanOrEqual(recordedPaste.length);
       expect(stdin.slice(pasteEnd)).toMatch(/^(?:\x1b\[\?[\d;]*c)*\r/);
 
-      execFileSync(FX_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
+      execFileSync(PF_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
       expect(
         readFileSync(launched.goldenPath, "utf8").replaceAll("|", " ").replace(/\s+/g, " "),
       ).toContain(authNotice);
@@ -371,7 +371,7 @@ describe("tui: render record/replay", () => {
       session = launched.session;
 
       await session.sendText(marker);
-      await session.waitForText("fx needs access to Vercel AI Gateway", 5_000);
+      await session.waitForText("pf needs access to Vercel AI Gateway", 5_000);
       await session.sendKeys("C-u");
       await session.sendText("/status");
       await session.waitForText("permission_mode", 5_000);
@@ -382,7 +382,7 @@ describe("tui: render record/replay", () => {
       await session.resizeWindow(88, 30);
 
       const replayJsonOutput = execFileSync(
-        FX_BIN,
+        PF_BIN,
         ["replay", launched.tapePath, "--json"],
         { encoding: "utf8" },
       );
@@ -391,7 +391,7 @@ describe("tui: render record/replay", () => {
       if (replay.stdout_bytes <= 0) failures.push("replay reported no stdout bytes");
       if (replay.resize_count < 3) failures.push("replay reported too few resize frames");
 
-      execFileSync(FX_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
+      execFileSync(PF_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
       const gridText = readFileSync(launched.goldenPath, "utf8");
       const grid = gridText.replace(/\n$/, "").split("\n");
       assertPaneContains(gridText, inputTail, failures, "replay grid");
@@ -422,26 +422,26 @@ describe("tui: render record/replay", () => {
       const launched = await launchAutomaticRecording();
       session = launched.session;
 
-      expect(launched.tapePath.startsWith(join(launched.home, ".fx", "recordings"))).toBe(true);
+      expect(launched.tapePath.startsWith(join(launched.home, ".pf", "recordings"))).toBe(true);
       expect(statSync(launched.tapePath).mode & 0o077).toBe(0);
       expect(await session.captureFullScrollback()).toContain(
         "visual terminal capture:",
       );
       await session.sendText(marker);
-      await session.waitForText("fx needs access to Vercel AI Gateway", 5_000);
+      await session.waitForText("pf needs access to Vercel AI Gateway", 5_000);
       await session.sendKeys(`-l '${inputTail}'`);
       await session.waitForText(inputTail, 5_000);
       await session.resizeWindow(120, 28);
 
       const replayJsonOutput = execFileSync(
-        FX_BIN,
+        PF_BIN,
         ["replay", launched.tapePath, "--json"],
         { encoding: "utf8" },
       );
       const replay = parseReplayJson(replayJsonOutput);
       if (replay.resize_count < 1) failures.push("replay reported no resize frame");
 
-      execFileSync(FX_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
+      execFileSync(PF_BIN, ["replay", launched.tapePath, "--golden", launched.goldenPath]);
       const gridText = readFileSync(launched.goldenPath, "utf8");
       assertPaneContains(gridText, inputTail, failures, "automatic recording replay grid");
 
@@ -478,8 +478,8 @@ describe("tui: render record/replay", () => {
       );
 
       await session.sendText(marker);
-      await session.waitForText("fx needs access to Vercel AI Gateway", 5_000);
-      execFileSync(FX_BIN, [
+      await session.waitForText("pf needs access to Vercel AI Gateway", 5_000);
+      execFileSync(PF_BIN, [
         "replay",
         launched.tapePath,
         "--golden",
@@ -501,7 +501,7 @@ describe("tui: render record/replay", () => {
       const forbiddenPrompt = "trace_secret_prompt_token_6179";
       const forbiddenTokens = [
         forbiddenPrompt,
-        "fx needs access to Vercel AI Gateway",
+        "pf needs access to Vercel AI Gateway",
         "footer row preview secret",
         "shimmer label secret",
         "command output secret",
@@ -512,7 +512,7 @@ describe("tui: render record/replay", () => {
       session = launched.session;
 
       await session.sendText(forbiddenPrompt);
-      await session.waitForText("fx needs access to Vercel AI Gateway", 5_000);
+      await session.waitForText("pf needs access to Vercel AI Gateway", 5_000);
       await session.resizeWindow(72, 24);
       await session.sendKeys("C-u");
       await session.sendText("/status");

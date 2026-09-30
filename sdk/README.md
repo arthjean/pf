@@ -1,11 +1,11 @@
-# libfx
+# libpf
 
-`libfx` is the small fx agent kernel for JavaScript hosts. One agent is one
+`libpf` is the small pf agent kernel for JavaScript hosts. One agent is one
 in-memory conversation with `prompt`, `checkpoint`, and `close` operations,
 plus mid-turn steering on each running turn.
 
 ```sh
-npm install libfx
+npm install libpf
 ```
 
 Node.js uses the native addon when available and falls back to WebAssembly.
@@ -16,9 +16,9 @@ filesystem read when imported.
 ## Agent
 
 ```js
-import { createFxAgent } from "libfx";
+import { createPfAgent } from "libpf";
 
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   apiKey: process.env.AI_GATEWAY_API_KEY,
   model: "google/gemini-2.5-flash-lite",
   onEvent(event) {
@@ -37,13 +37,13 @@ const checkpoint = await agent.checkpoint();
 await agent.close();
 ```
 
-`apiKey` is required. `model` is optional and defaults to fx's built-in model.
+`apiKey` is required. `model` is optional and defaults to pf's built-in model.
 Agent configuration uses named options; `env` is reserved for
-`createFxTerminal()`. The canonical model configuration groups the model ID
+`createPfTerminal()`. The canonical model configuration groups the model ID
 and model-specific options:
 
 ```js
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   apiKey,
   model: { id: "anthropic/claude-opus-5.5-fast", effort: "low", fast: true },
 });
@@ -54,26 +54,26 @@ A string `model` remains supported as shorthand. Top-level `effort` and
 they cannot be mixed with a model object. New code should use the model object.
 
 `model.effort` sets the reasoning effort for models that advertise effort
-levels. It uses the same vocabulary as the fx CLI's `--effort` flag:
+levels. It uses the same vocabulary as the pf CLI's `--effort` flag:
 `"default"` leaves the choice to the model; named levels such as `"low"`,
 `"medium"`, `"high"`, or `"xhigh"` request a specific level. A named level is
 validated at creation; an unsupported level rejects with an Error carrying
-`code: "LIBFX_MODEL_UNSUPPORTED_EFFORT"`, `model`, and
+`code: "LIBPF_MODEL_UNSUPPORTED_EFFORT"`, `model`, and
 `capability: "effort"`. Its message names the supported set when available.
 Omitting effort or using `"default"` leaves the model default in place.
 
 `model.fast` enables the fast lane for models that advertise one, matching the
-fx CLI's `--fast` flag. A model without a fast path rejects at creation with
-`code: "LIBFX_MODEL_UNSUPPORTED_FAST"`, `model`, and `capability: "fast"`.
+pf CLI's `--fast` flag. A model without a fast path rejects at creation with
+`code: "LIBPF_MODEL_UNSUPPORTED_FAST"`, `model`, and `capability: "fast"`.
 Omitting fast or setting it to `false` leaves the model default in place.
-The new codes replace `LIBFX_UNSUPPORTED_EFFORT` and `LIBFX_UNSUPPORTED_FAST`
+The new codes replace `LIBPF_UNSUPPORTED_EFFORT` and `LIBPF_UNSUPPORTED_FAST`
 for both nested and legacy top-level settings. Callers that check the old codes
 must update their error handling.
 
 The host selects the model. Agent creation does not fetch the Gateway model
 catalog unless effort requests a named level or fast is enabled. Prompting
 can resolve model capabilities and context capacity through the supplied
-`fetch`; fx caches that metadata for the agent.
+`fetch`; pf caches that metadata for the agent.
 
 `onEvent` receives runtime diagnostics separately from model output. Transport
 events report request start, response status and elapsed time, safe Gateway
@@ -84,7 +84,7 @@ per 250 ms rather than entering the normalized turn queue, so an unread turn
 cannot accumulate heartbeat events. Credentials and raw headers are never
 included.
 
-libfx makes at most one automatic retry after a retryable transport failure and
+libpf makes at most one automatic retry after a retryable transport failure and
 only before model output or tool effects escape. Cancellation prevents a retry.
 
 `prompt(input, { signal? })` accepts a string or text, image, and resource
@@ -113,7 +113,7 @@ A turn has one event consumer. Breaking out of its iterator cancels the turn;
 `turn.cancel()` and `agent.close()` also release blocked output. Embedded agents
 have no implicit model-step cap, so hosts should cancel turns that exceed their
 own budgets. The CLI's `max_agent_steps` setting does not apply to
-`createFxAgent()`. Transport or message-decoding failures reject the result
+`createPfAgent()`. Transport or message-decoding failures reject the result
 instead of returning success with missing text.
 
 Native transport buffers at most 8 MiB of output bytes. Unread SDK events apply
@@ -180,7 +180,7 @@ turn, so an idle `checkpoint()` includes the full steered conversation.
 creating a fresh agent:
 
 ```js
-const restored = await createFxAgent({ apiKey, model, checkpoint });
+const restored = await createPfAgent({ apiKey, model, checkpoint });
 ```
 
 An already-aborted prompt signal returns `cancelled` without a model request
@@ -199,7 +199,7 @@ Model discovery is explicit and does not create an Agent or load native or Wasm
 artifacts:
 
 ```js
-import { listModels } from "libfx";
+import { listModels } from "libpf";
 
 const models = await listModels({
   apiKey: process.env.AI_GATEWAY_API_KEY,
@@ -213,7 +213,7 @@ API.
 ## JavaScript tools and instructions
 
 ```js
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   apiKey,
   model,
   instructions: "Keep answers concise.",
@@ -236,7 +236,7 @@ Gateway web search can run at the provider instead of in the JavaScript host.
 Mark its canonical tool name with `providerExecuted: true` and omit `execute`:
 
 ```js
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   apiKey,
   tools: [{ name: "web_search", providerExecuted: true }],
 });
@@ -263,12 +263,12 @@ a host-defined `write_file` calls the host's `execute()` rather than the
 builtin file mutation.
 Instructions are limited to 64 KiB of UTF-8 text, including text assembled by
 the MCP and skills adapters. They are the complete host-owned system context:
-libfx adds no hidden base prompt, and omitting `instructions` sends no system
+libpf adds no hidden base prompt, and omitting `instructions` sends no system
 message.
 
 ## MCP
 
-`libfx/mcp` accepts a host-owned MCP client. Transport, authentication,
+`libpf/mcp` accepts a host-owned MCP client. Transport, authentication,
 elicitation, and cleanup remain outside the kernel. The client uses the MCP
 TypeScript SDK v1 signature: `callTool(params, resultSchema?, options?)`, with
 cancellation passed in `options`. Tool text and structured data
@@ -284,7 +284,7 @@ for calls to the MCP client. Each tool description and JSON schema may contain u
 to 64 KiB, within the control message's 8 MiB limit.
 
 ```js
-import { createMcpAdapter } from "libfx/mcp";
+import { createMcpAdapter } from "libpf/mcp";
 
 const mcp = await createMcpAdapter(client, {
   prefix: "github_",
@@ -292,7 +292,7 @@ const mcp = await createMcpAdapter(client, {
   prompts: ["review"],
 });
 
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   apiKey,
   model,
   tools: mcp.tools,
@@ -306,27 +306,27 @@ await mcp.close();
 
 ## Skills
 
-Use `libfx/skills` for already-loaded records or `libfx/skills/node` to load a
+Use `libpf/skills` for already-loaded records or `libpf/skills/node` to load a
 `SKILL.md` explicitly in Node or Bun.
 
 ```js
-import { loadSkillFile } from "libfx/skills/node";
-import { createSkillsAdapter } from "libfx/skills";
+import { loadSkillFile } from "libpf/skills/node";
+import { createSkillsAdapter } from "libpf/skills";
 
 const record = await loadSkillFile("./skills/review/SKILL.md");
 const skills = createSkillsAdapter([record]);
-const agent = await createFxAgent({ apiKey, model, ...skills });
+const agent = await createPfAgent({ apiKey, model, ...skills });
 ```
 
 ## Backends
 
 ```js
-await createFxAgent({ apiKey, backend: "auto" });   // native, then Wasm fallback
-await createFxAgent({ apiKey, backend: "native" }); // require N-API
-await createFxAgent({ apiKey, backend: "wasm" });   // require Wasm + JSPI
+await createPfAgent({ apiKey, backend: "auto" });   // native, then Wasm fallback
+await createPfAgent({ apiKey, backend: "native" }); // require N-API
+await createPfAgent({ apiKey, backend: "wasm" });   // require Wasm + JSPI
 ```
 
-CommonJS applications can load the same Node API with `require("libfx")`. The
+CommonJS applications can load the same Node API with `require("libpf")`. The
 package chooses its generated CommonJS entry automatically and keeps asset
 paths relative to the installed package.
 
@@ -334,7 +334,7 @@ Use `getBackendInfo()` to inspect backend availability without creating an
 Agent or terminal:
 
 ```js
-import { getBackendInfo } from "libfx";
+import { getBackendInfo } from "libpf";
 
 const info = await getBackendInfo({ surface: "agent", backend: "auto" });
 // {
@@ -357,21 +357,21 @@ options reject with `TypeError`. The stable reason codes are:
 
 | Code | Meaning |
 | --- | --- |
-| `LIBFX_UNSUPPORTED_PLATFORM` | No packaged native addon supports the current platform and architecture. |
-| `LIBFX_NATIVE_ARTIFACT_MISSING` | The selected native addon file is absent. |
-| `LIBFX_NATIVE_LOAD_FAILED` | Node could not load the selected native addon. |
-| `LIBFX_NATIVE_API_MISMATCH` | The addon API version is incompatible. |
-| `LIBFX_NATIVE_SURFACE_MISSING` | The addon does not implement the selected Agent or terminal surface. |
-| `LIBFX_NATIVE_DISABLED` | `nativeAddon: false` disabled native loading. |
-| `LIBFX_JSPI_UNAVAILABLE` | The current JavaScript runtime does not provide JSPI. |
-| `LIBFX_WASM_LOAD_FAILED` | The selected Wasm asset could not be loaded or compiled. |
+| `LIBPF_UNSUPPORTED_PLATFORM` | No packaged native addon supports the current platform and architecture. |
+| `LIBPF_NATIVE_ARTIFACT_MISSING` | The selected native addon file is absent. |
+| `LIBPF_NATIVE_LOAD_FAILED` | Node could not load the selected native addon. |
+| `LIBPF_NATIVE_API_MISMATCH` | The addon API version is incompatible. |
+| `LIBPF_NATIVE_SURFACE_MISSING` | The addon does not implement the selected Agent or terminal surface. |
+| `LIBPF_NATIVE_DISABLED` | `nativeAddon: false` disabled native loading. |
+| `LIBPF_JSPI_UNAVAILABLE` | The current JavaScript runtime does not provide JSPI. |
+| `LIBPF_WASM_LOAD_FAILED` | The selected Wasm asset could not be loaded or compiled. |
 
 The optional `causeCode` field retains a Node error code such as `ENOENT` or
 `ERR_DLOPEN_FAILED` when one exists. Probe success establishes backend loading
 only; it does not validate credentials, a future Agent initialization, or a
 model request.
 
-Within one loaded SDK module, libfx compiles each stable Wasm source once and
+Within one loaded SDK module, libpf compiles each stable Wasm source once and
 creates a separate WebAssembly instance for every Agent. Agent memory, history,
 tools, cancellation, and shutdown remain isolated. Workers and separate
 processes maintain their own module caches, as do the ESM and CommonJS entries.
@@ -379,7 +379,7 @@ processes maintain their own module caches, as do the ESM and CommonJS entries.
 Node factories and `getBackendInfo()` also accept a `wasm` Promise resolving
 to an HTTP(S) URL string, a `Response`, Wasm bytes, or a compiled
 `WebAssembly.Module`. Asset resolver failures propagate from factories and
-appear as `LIBFX_WASM_LOAD_FAILED` in diagnostics.
+appear as `LIBPF_WASM_LOAD_FAILED` in diagnostics.
 
 Node.js 20+ is supported. Browser WebAssembly requires a JSPI-capable browser.
 The Linux x64 and arm64 native addons require glibc 2.34 or newer. Native
@@ -391,7 +391,7 @@ JIT tier-up.
 
 ### Next.js and Vercel
 
-Create agents in a server route using the Node.js runtime. Import `libfx`
+Create agents in a server route using the Node.js runtime. Import `libpf`
 normally; the package includes its native assets and exposes both ESM and
 CommonJS Node entrypoints. Native agents support Next.js 15 with webpack and
 Next.js 16 with webpack or Turbopack, without `serverExternalPackages` or manual
@@ -403,13 +403,13 @@ JSPI and available Wasm assets; Next.js's standalone tracer excludes `.wasm`
 files, so a standalone Wasm host must supply those assets separately.
 
 ```js
-import { createFxAgent } from "libfx";
+import { createPfAgent } from "libpf";
 
 export const runtime = "nodejs";
 
 export async function POST(request) {
   const { prompt } = await request.json();
-  const agent = await createFxAgent({ apiKey: process.env.AI_GATEWAY_API_KEY });
+  const agent = await createPfAgent({ apiKey: process.env.AI_GATEWAY_API_KEY });
   try {
     let text = "";
     const turn = agent.prompt(prompt, { signal: request.signal });
@@ -431,13 +431,13 @@ backend does not enable the CLI's built-in shell or filesystem tools.
 
 ## Interactive terminal
 
-`createFxTerminal()` remains a separate terminal harness API. In browsers,
+`createPfTerminal()` remains a separate terminal harness API. In browsers,
 connect it to xterm.js with `xtermAdapter()`:
 
 ```js
-import { createFxTerminal, xtermAdapter } from "libfx/browser";
+import { createPfTerminal, xtermAdapter } from "libpf/browser";
 
-const runtime = await createFxTerminal({
+const runtime = await createPfTerminal({
   terminal: xtermAdapter(term),
   env: { AI_GATEWAY_API_KEY: "<short-lived credential>" },
 });
@@ -470,4 +470,4 @@ resume with the same or a newer SDK build. Older snapshots remain readable.
 Treat `nativeAddon` and `gatewayChatUrl` as trusted host
 configuration. Do not embed long-lived credentials in public browser code.
 Host tool functions, MCP clients, and skill loaders retain their own authority;
-libfx validates and sequences them but does not grant operating-system access.
+libpf validates and sequences them but does not grant operating-system access.

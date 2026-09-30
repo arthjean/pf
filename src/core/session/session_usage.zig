@@ -2685,7 +2685,7 @@ pub fn billingProjectionEql(first: Snapshot, second: Snapshot) bool {
 pub fn writeSnapshot(writer: *std.Io.Writer, snapshot: Snapshot) !void {
     try validateSnapshot(snapshot);
     // Keep the durable session payload in the exact pre-usage-dashboard
-    // shape. Older fx binaries reject unknown snapshot fields instead of
+    // shape. Older pf binaries reject unknown snapshot fields instead of
     // ignoring them; richer metrics and recovery hints live in the validated
     // session sidecar.
     try writer.writeAll("{\"billing\":");
@@ -3316,7 +3316,7 @@ fn reconciliationKeyDigest(api_key: []const u8) [Sha256.digest_length]u8 {
 }
 
 fn hostManagedReconciliationDigest() [Sha256.digest_length]u8 {
-    return reconciliationKeyDigest("fx-host-managed-auth-v1");
+    return reconciliationKeyDigest("pf-host-managed-auth-v1");
 }
 
 fn reconcilePendingBlocking(
@@ -5100,7 +5100,7 @@ test "deferred usage preserves provider and credential authority" {
     var usage = Usage.initFresh();
     defer usage.deinit(alloc);
     const identity = @import("../auth/credential_authority.zig").derive(
-        .fx_login,
+        .pf_login,
         "acct_1",
     ).?;
     const observation = try InvocationObservation.begin(&usage);
@@ -5110,14 +5110,14 @@ test "deferred usage preserves provider and credential authority" {
         .scope = "https://ai-gateway.vercel.sh",
         .tenant = "team_1",
         .account_id = "acct_1",
-        .credential_source = .fx_login,
+        .credential_source = .pf_login,
         .credential_identity = identity,
     } });
 
     var snapshot = try usage.snapshot(alloc);
     defer snapshot.deinit(alloc);
     try std.testing.expectEqual(model_provider.ProviderId.gateway, snapshot.pending[0].provider);
-    try std.testing.expectEqual(types.CredentialSource.fx_login, snapshot.pending[0].credential_source.?);
+    try std.testing.expectEqual(types.CredentialSource.pf_login, snapshot.pending[0].credential_source.?);
     try std.testing.expect(snapshot.pending[0].credential_identity.?.eql(identity));
 }
 

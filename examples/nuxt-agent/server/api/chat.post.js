@@ -1,4 +1,4 @@
-import { createFxAgent } from 'libfx'
+import { createPfAgent } from 'libpf'
 import { toWebRequest } from 'h3'
 import { model } from '../../../shared/model.mjs'
 import { errorResponse, gatewayFetch, readPrompt } from '../../../shared/gateway.mjs'
@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   try {
     const request = toWebRequest(event)
     const prompt = await readPrompt(request)
-    const agent = await createFxAgent({ apiKey: process.env.AI_GATEWAY_API_KEY, model, fetch: gatewayFetch })
+    const agent = await createPfAgent({ apiKey: process.env.AI_GATEWAY_API_KEY, model, fetch: gatewayFetch })
     async function* reply() {
       try {
         const turn = agent.prompt(prompt, { signal: request.signal })

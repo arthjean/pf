@@ -2003,9 +2003,9 @@ test "session_commands handleSettings shows startup scrollback status" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"startup_scrollback\":false}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"startup_scrollback\":false}");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
@@ -2076,7 +2076,7 @@ test "session_commands startup scrollback ignores project profile-only shadowing
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     try writeFixtureFile(
         tmp.dir,
-        "workspace/.fx.json",
+        "workspace/.pf.json",
         "{\"startup_scrollback\":true}\n",
     );
     const home_root = try io_mod.dirRealpathAlloc(
@@ -2213,7 +2213,7 @@ test "session_commands handleModel resolves fuzzy cached model and syncs queued 
     try std.testing.expectEqualStrings("anthropic/claude-sonnet-4-20250514", app.worker.synced_model.?);
     try std.testing.expectEqual(model_provider.ProviderId.codex, app.last_preference_provider.?);
     try std.testing.expectEqualStrings(
-        "fx v" ++ build_options.app_version ++ " | workspace",
+        "pf v" ++ build_options.app_version ++ " | workspace",
         app.terminalTitleLabelText(),
     );
     try expectTranscriptContains(&app, "* Switched to anthropic/claude-sonnet-4-20250514");
@@ -2230,7 +2230,7 @@ test "session_commands handleModel falls back to raw query when model fetch fail
     try std.testing.expectEqualStrings("custom/provider-model", app.selected_model.items);
     try std.testing.expectEqualStrings("custom/provider-model", app.worker.synced_model.?);
     try std.testing.expectEqualStrings(
-        "fx v" ++ build_options.app_version ++ " | workspace",
+        "pf v" ++ build_options.app_version ++ " | workspace",
         app.terminalTitleLabelText(),
     );
 }
@@ -2479,7 +2479,7 @@ test "session_commands allowlist view reports unsafe settings without returning 
     try tmp.dir.createDirPath(io_mod.getIo(), "home");
     try tmp.dir.createDirPath(io_mod.getIo(), "outside");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    tmp.dir.symLink(io_mod.getIo(), "../outside", "home/.fx", .{
+    tmp.dir.symLink(io_mod.getIo(), "../outside", "home/.pf", .{
         .is_directory = true,
     }) catch |err| switch (err) {
         error.AccessDenied => return error.SkipZigTest,
@@ -2766,7 +2766,7 @@ test "session_commands model picker accepts the current selected model slice" {
     try std.testing.expectEqualStrings("anthropic/claude-opus-4.6", app.worker.synced_model.?);
     try std.testing.expectEqualStrings("anthropic/claude-opus-4.6", app.last_preference_model.items);
     try std.testing.expectEqualStrings(
-        "fx v" ++ build_options.app_version ++ " | workspace",
+        "pf v" ++ build_options.app_version ++ " | workspace",
         app.terminalTitleLabelText(),
     );
     try std.testing.expectEqual(types.ReasoningEffort.literal("high"), app.effort);
@@ -2894,7 +2894,7 @@ test "session_commands user save notice uses one post-commit load after legacy c
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -2906,8 +2906,8 @@ test "session_commands user save notice uses one post-commit load after legacy c
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"model\":\"project/model\"}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"model\":\"project/model\"}\n");
 
     const home = try SessionCommandTestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -2928,7 +2928,7 @@ test "session_commands durable user save survives post-commit resolver failure" 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -2940,7 +2940,7 @@ test "session_commands durable user save survives post-commit resolver failure" 
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try SessionCommandTestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -2969,7 +2969,7 @@ test "session_commands durable user save survives post-commit resolver diagnosti
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3012,7 +3012,7 @@ test "session_commands allowlist durable save survives post-commit resolver diag
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);

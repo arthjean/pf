@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import { composerContains, FAKE_GATEWAY_MODEL, fakeGatewayFinalText, fakeShellRun, startFakeGateway, TmuxSession, tmuxAvailable } from "./tmux-helpers";
 
 const tmuxTest = test.skipIf(!tmuxAvailable());
@@ -45,24 +45,24 @@ function textHex(text: string): string[] {
 }
 
 tmuxTest("direct native-clear recovery resets the view and replays the held draft", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fx-native-clear-"));
+  const dir = mkdtempSync(join(tmpdir(), "pf-native-clear-"));
   temp_dirs.push(dir);
   const trace_path = join(dir, "trace.log");
   const stderr_path = join(dir, "stderr.log");
   const old_marker = "PRE_NATIVE_CLEAR_MARKER_8213";
 
   session = await TmuxSession.create({
-    cmd: `sh -c "printf '${old_marker}\\n'; exec '${FX_BIN}'"`,
+    cmd: `sh -c "printf '${old_marker}\\n'; exec '${PF_BIN}'"`,
     width: 100,
     height: 30,
     stderrPath: stderr_path,
     env: {
       AI_GATEWAY_API_KEY: undefined,
       VERCEL_OIDC_TOKEN: undefined,
-      FX_THEME: undefined,
+      PF_THEME: undefined,
       TMUX: undefined,
-      FX_TRACE_LOG: trace_path,
-      FX_TRACE_SCOPES: "native_clear,frame_schedule",
+      PF_TRACE_LOG: trace_path,
+      PF_TRACE_SCOPES: "native_clear,frame_schedule",
     },
   });
   await session.waitForComposer(10_000);
@@ -74,17 +74,17 @@ tmuxTest("direct native-clear recovery resets the view and replays the held draf
   await session.waitForPane((pane) => composerContains(pane, "abc"), 10_000);
   const history = await session.captureFullScrollback();
   expect(history).not.toContain(old_marker);
-  expect(history).toContain("𝒇x v");
+  expect(history).toContain("𝒑f v");
   expect(readFileSync(stderr_path, "utf8")).toBe("");
 }, 30_000);
 
-tmuxTest("native-clear recovery after a tool call keeps fx running and the tool in full history", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fx-native-clear-tool-"));
+tmuxTest("native-clear recovery after a tool call keeps pf running and the tool in full history", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pf-native-clear-tool-"));
   temp_dirs.push(dir);
   const trace_path = join(dir, "trace.log");
   const stderr_path = join(dir, "stderr.log");
-  mkdirSync(join(dir, ".fx"), { recursive: true });
-  writeFileSync(join(dir, ".fx", "settings.json"), JSON.stringify({ sandbox: "none" }));
+  mkdirSync(join(dir, ".pf"), { recursive: true });
+  writeFileSync(join(dir, ".pf", "settings.json"), JSON.stringify({ sandbox: "none" }));
   const gateway = startFakeGateway([
     fakeShellRun("native_clear_tool", "echo TOOL_BEFORE_CLEAR"),
     fakeGatewayFinalText("TOOL_TURN_DONE"),
@@ -99,15 +99,15 @@ tmuxTest("native-clear recovery after a tool call keeps fx running and the tool 
       HOME: dir,
       AI_GATEWAY_API_KEY: "fake-native-clear-tool-key",
       VERCEL_OIDC_TOKEN: undefined,
-      FX_THEME: undefined,
-      FX_GATEWAY_BASE_URL: gateway.baseUrl,
-      FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-      FX_MODEL: FAKE_GATEWAY_MODEL,
-      FX_AUTO_UPGRADE: "0",
-      FX_PERMISSION_MODE: "yolo",
+      PF_THEME: undefined,
+      PF_GATEWAY_BASE_URL: gateway.baseUrl,
+      PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+      PF_MODEL: FAKE_GATEWAY_MODEL,
+      PF_AUTO_UPGRADE: "0",
+      PF_PERMISSION_MODE: "yolo",
       TMUX: undefined,
-      FX_TRACE_LOG: trace_path,
-      FX_TRACE_SCOPES: "native_clear",
+      PF_TRACE_LOG: trace_path,
+      PF_TRACE_SCOPES: "native_clear",
     },
   });
   try {
@@ -123,7 +123,7 @@ tmuxTest("native-clear recovery after a tool call keeps fx running and the tool 
 
     const history = await session.captureFullScrollback();
     expect(history).not.toContain("TOOL_TURN_DONE");
-    expect(history).toContain("𝒇x v");
+    expect(history).toContain("𝒑f v");
 
     await session.sendKeys("C-o");
     await session.waitForText("echo TOOL_BEFORE_CLEAR", 10_000);
@@ -138,24 +138,24 @@ tmuxTest("native-clear recovery after a tool call keeps fx running and the tool 
 }, 30_000);
 
 tmuxTest("direct healthy screens retain an ordinary burst without resetting", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fx-native-clear-match-"));
+  const dir = mkdtempSync(join(tmpdir(), "pf-native-clear-match-"));
   temp_dirs.push(dir);
   const trace_path = join(dir, "trace.log");
   const stderr_path = join(dir, "stderr.log");
   const old_marker = "PRE_NATIVE_MATCH_MARKER_4051";
 
   session = await TmuxSession.create({
-    cmd: `sh -c "printf '${old_marker}\\n'; exec '${FX_BIN}'"`,
+    cmd: `sh -c "printf '${old_marker}\\n'; exec '${PF_BIN}'"`,
     width: 100,
     height: 30,
     stderrPath: stderr_path,
     env: {
       AI_GATEWAY_API_KEY: undefined,
       VERCEL_OIDC_TOKEN: undefined,
-      FX_THEME: undefined,
+      PF_THEME: undefined,
       TMUX: undefined,
-      FX_TRACE_LOG: trace_path,
-      FX_TRACE_SCOPES: "native_clear",
+      PF_TRACE_LOG: trace_path,
+      PF_TRACE_SCOPES: "native_clear",
     },
   });
   await session.waitForComposer(10_000);
@@ -171,7 +171,7 @@ tmuxTest("direct healthy screens retain an ordinary burst without resetting", as
 }, 30_000);
 
 tmuxTest("native-clear replay settles a complete paste before the next key", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fx-native-clear-paste-"));
+  const dir = mkdtempSync(join(tmpdir(), "pf-native-clear-paste-"));
   temp_dirs.push(dir);
   const trace_path = join(dir, "trace.log");
   const stderr_path = join(dir, "stderr.log");
@@ -183,10 +183,10 @@ tmuxTest("native-clear replay settles a complete paste before the next key", asy
     env: {
       AI_GATEWAY_API_KEY: undefined,
       VERCEL_OIDC_TOKEN: undefined,
-      FX_THEME: undefined,
+      PF_THEME: undefined,
       TMUX: undefined,
-      FX_TRACE_LOG: trace_path,
-      FX_TRACE_SCOPES: "native_clear,input",
+      PF_TRACE_LOG: trace_path,
+      PF_TRACE_SCOPES: "native_clear,input",
     },
   });
   await session.waitForComposer(10_000);
@@ -206,7 +206,7 @@ tmuxTest("native-clear replay settles a complete paste before the next key", asy
 }, 30_000);
 
 tmuxTest("tmux leaves native-clear probing disabled and preserves ordinary input", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fx-native-clear-tmux-"));
+  const dir = mkdtempSync(join(tmpdir(), "pf-native-clear-tmux-"));
   temp_dirs.push(dir);
   const trace_path = join(dir, "trace.log");
   const stderr_path = join(dir, "stderr.log");
@@ -218,8 +218,8 @@ tmuxTest("tmux leaves native-clear probing disabled and preserves ordinary input
     env: {
       AI_GATEWAY_API_KEY: undefined,
       VERCEL_OIDC_TOKEN: undefined,
-      FX_TRACE_LOG: trace_path,
-      FX_TRACE_SCOPES: "native_clear",
+      PF_TRACE_LOG: trace_path,
+      PF_TRACE_SCOPES: "native_clear",
     },
   });
   await session.waitForComposer(10_000);
@@ -232,12 +232,12 @@ tmuxTest("tmux leaves native-clear probing disabled and preserves ordinary input
 }, 30_000);
 
 tmuxTest("typing inside the ctrl+o full transcript never starts the native-clear probe", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fx-native-clear-ctrl-o-"));
+  const dir = mkdtempSync(join(tmpdir(), "pf-native-clear-ctrl-o-"));
   temp_dirs.push(dir);
   const trace_path = join(dir, "trace.log");
   const stderr_path = join(dir, "stderr.log");
-  mkdirSync(join(dir, ".fx"), { recursive: true });
-  writeFileSync(join(dir, ".fx", "settings.json"), JSON.stringify({ sandbox: "none" }));
+  mkdirSync(join(dir, ".pf"), { recursive: true });
+  writeFileSync(join(dir, ".pf", "settings.json"), JSON.stringify({ sandbox: "none" }));
   const gateway = startFakeGateway([fakeGatewayFinalText("ctrl-o probe target")]);
 
   session = await TmuxSession.create({
@@ -248,14 +248,14 @@ tmuxTest("typing inside the ctrl+o full transcript never starts the native-clear
       HOME: dir,
       AI_GATEWAY_API_KEY: "fake-native-clear-key",
       VERCEL_OIDC_TOKEN: undefined,
-      FX_THEME: undefined,
-      FX_GATEWAY_BASE_URL: gateway.baseUrl,
-      FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-      FX_MODEL: FAKE_GATEWAY_MODEL,
-      FX_AUTO_UPGRADE: "0",
+      PF_THEME: undefined,
+      PF_GATEWAY_BASE_URL: gateway.baseUrl,
+      PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+      PF_MODEL: FAKE_GATEWAY_MODEL,
+      PF_AUTO_UPGRADE: "0",
       TMUX: undefined,
-      FX_TRACE_LOG: trace_path,
-      FX_TRACE_SCOPES: "native_clear",
+      PF_TRACE_LOG: trace_path,
+      PF_TRACE_SCOPES: "native_clear",
     },
   });
   try {

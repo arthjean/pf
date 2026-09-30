@@ -62,28 +62,28 @@ for (const runtime of ["node", "bun"]) {
 
   const competitive = await read(`competitive-${runtime}.json`);
   check(competitive.rounds?.length === 3, `${label} native versus Pi benchmark needs three rounds`);
-  const expectedOrder = [["libfx", "pi"], ["pi", "libfx"], ["libfx", "pi"]];
+  const expectedOrder = [["libpf", "pi"], ["pi", "libpf"], ["libpf", "pi"]];
   check(competitive.rounds?.every((round, index) => JSON.stringify(round.order) === JSON.stringify(expectedOrder[index])), `${label} native versus Pi benchmark order is not alternating`);
-  check(competitive.rounds?.every((round) => round.libfx_request_count === 103 && round.pi_request_count === 103), `${label} native versus Pi benchmark made unexpected inference requests`);
-  const libfxCompetitive = competitive.libfx?.prompt_to_first_text_ms;
+  check(competitive.rounds?.every((round) => round.libpf_request_count === 103 && round.pi_request_count === 103), `${label} native versus Pi benchmark made unexpected inference requests`);
+  const libpfCompetitive = competitive.libpf?.prompt_to_first_text_ms;
   const piCompetitive = competitive.pi?.prompt_to_first_text_ms;
-  check(libfxCompetitive?.count === 300 && piCompetitive?.count === 300, `${label} native versus Pi benchmark needs 300 samples per harness`);
-  if (libfxCompetitive && piCompetitive) {
-    for (const timings of [libfxCompetitive, piCompetitive]) {
+  check(libpfCompetitive?.count === 300 && piCompetitive?.count === 300, `${label} native versus Pi benchmark needs 300 samples per harness`);
+  if (libpfCompetitive && piCompetitive) {
+    for (const timings of [libpfCompetitive, piCompetitive]) {
       if (![timings.p50, timings.p95, timings.p99].every(validNumber)) throw new Error(`${label} competitor timings are invalid`);
     }
     if (runtime === "node") {
-      console.log(`Node native versus Pi (report only): p50 ${libfxCompetitive.p50.toFixed(3)}ms / ${piCompetitive.p50.toFixed(3)}ms; p95 ${libfxCompetitive.p95.toFixed(3)}ms / ${piCompetitive.p95.toFixed(3)}ms; p99 ${libfxCompetitive.p99.toFixed(3)}ms / ${piCompetitive.p99.toFixed(3)}ms`);
+      console.log(`Node native versus Pi (report only): p50 ${libpfCompetitive.p50.toFixed(3)}ms / ${piCompetitive.p50.toFixed(3)}ms; p95 ${libpfCompetitive.p95.toFixed(3)}ms / ${piCompetitive.p95.toFixed(3)}ms; p99 ${libpfCompetitive.p99.toFixed(3)}ms / ${piCompetitive.p99.toFixed(3)}ms`);
     } else {
-      check(libfxCompetitive.p50 <= piCompetitive.p50, `${label} native versus Pi p50 failed: ${libfxCompetitive.p50.toFixed(3)}ms > ${piCompetitive.p50.toFixed(3)}ms`);
-      check(libfxCompetitive.p95 <= piCompetitive.p95 + 0.25, `${label} native versus Pi p95 failed: ${libfxCompetitive.p95.toFixed(3)}ms > ${(piCompetitive.p95 + 0.25).toFixed(3)}ms`);
+      check(libpfCompetitive.p50 <= piCompetitive.p50, `${label} native versus Pi p50 failed: ${libpfCompetitive.p50.toFixed(3)}ms > ${piCompetitive.p50.toFixed(3)}ms`);
+      check(libpfCompetitive.p95 <= piCompetitive.p95 + 0.25, `${label} native versus Pi p95 failed: ${libpfCompetitive.p95.toFixed(3)}ms > ${(piCompetitive.p95 + 0.25).toFixed(3)}ms`);
     }
-    check(Number.isFinite(libfxCompetitive.p99) && Number.isFinite(piCompetitive.p99), `${label} native versus Pi benchmark omitted p99`);
+    check(Number.isFinite(libpfCompetitive.p99) && Number.isFinite(piCompetitive.p99), `${label} native versus Pi benchmark omitted p99`);
   }
 }
 
 if (failures.length) {
-  for (const failure of failures) process.stderr.write(`libfx benchmark failed: ${failure}\n`);
+  for (const failure of failures) process.stderr.write(`libpf benchmark failed: ${failure}\n`);
   process.exit(1);
 }
-console.log("libfx deterministic performance contracts passed");
+console.log("libpf deterministic performance contracts passed");

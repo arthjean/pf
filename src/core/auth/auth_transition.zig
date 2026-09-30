@@ -45,14 +45,14 @@ pub fn decideLogoutProvider(facts: LogoutFacts) model_provider.ProviderId {
     if (facts.requested) |provider| return provider;
     if (facts.selected == .grok or facts.active_source == .grok_subscription) return .grok;
     if (facts.selected == .codex or facts.active_source == .chatgpt_subscription) return .codex;
-    if (facts.active_source == .fx_login) return .gateway;
+    if (facts.active_source == .pf_login) return .gateway;
 
     const only_grok_login = facts.available_sources.contains(.grok_subscription) and
-        !facts.available_sources.contains(.fx_login) and
+        !facts.available_sources.contains(.pf_login) and
         !facts.available_sources.contains(.chatgpt_subscription);
     if (only_grok_login) return .grok;
     const only_codex_login = facts.available_sources.contains(.chatgpt_subscription) and
-        !facts.available_sources.contains(.fx_login) and
+        !facts.available_sources.contains(.pf_login) and
         !facts.available_sources.contains(.grok_subscription);
     if (only_codex_login) return .codex;
     return .gateway;
@@ -69,7 +69,7 @@ pub fn logoutFallbackProviders(facts: LogoutFacts) [2]?model_provider.ProviderId
         const available = switch (provider) {
             .gateway => facts.available_sources.contains(.vercel_oidc_token) or
                 facts.available_sources.contains(.ai_gateway_api_key) or
-                facts.available_sources.contains(.fx_login) or
+                facts.available_sources.contains(.pf_login) or
                 facts.available_sources.contains(.stored_key),
             .codex => facts.available_sources.contains(.chatgpt_subscription),
             .grok => facts.available_sources.contains(.grok_subscription),
@@ -101,12 +101,12 @@ test "logout fallback prefers Gateway then the remaining subscription" {
     }
 }
 
-test "default logout honors an active fx login before other subscriptions" {
+test "default logout honors an active pf login before other subscriptions" {
     for ([_]model_provider.ProviderId{ .codex, .grok }) |other| {
         var facts: LogoutFacts = .{
             .requested = null,
             .selected = .gateway,
-            .active_source = .fx_login,
+            .active_source = .pf_login,
             .available_sources = .initOne(if (other == .codex) .chatgpt_subscription else .grok_subscription),
         };
         try std.testing.expectEqual(model_provider.ProviderId.gateway, decideLogoutProvider(facts));
@@ -265,7 +265,7 @@ test "sign in completion selects routing or credential activation without effect
 test "credential change distinguishes secret rotation from authority replacement" {
     const stable = CredentialAuthorityFacts{
         .provider = .gateway,
-        .source = .fx_login,
+        .source = .pf_login,
         .account_id = null,
         .team = "team_1",
     };
@@ -281,7 +281,7 @@ test "credential change distinguishes secret rotation from authority replacement
         CredentialChange.authority,
         decideCredentialChange(stable, .{
             .provider = .gateway,
-            .source = .fx_login,
+            .source = .pf_login,
             .account_id = null,
             .team = "team_2",
         }, true),

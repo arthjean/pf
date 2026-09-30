@@ -12,7 +12,7 @@ const sleep_increment_ms: u64 = 50;
 /// Upper bound stop() waits for the upgrade thread once cancellation has
 /// been requested; a stuck network read must not delay process exit.
 const stop_join_budget_ms: i64 = 250;
-const download_dir_prefix = "fx-auto-upgrade-";
+const download_dir_prefix = "pf-auto-upgrade-";
 /// A download directory this old belongs to no live upgrade: its process ended
 /// before the upgrade thread could remove it.
 const stale_download_dir_ns: i128 = std.time.ns_per_hour;
@@ -296,10 +296,10 @@ pub const AutoUpgrade = struct {
 
         std.Io.Dir.createDirAbsolute(io_mod.getIo(), tmp_dir, .default_dir) catch return error.ExtractionFailed;
 
-        const archive_path = std.fmt.allocPrint(alloc, "{s}/fx.tar.gz", .{tmp_dir}) catch return error.AllocFailed;
+        const archive_path = std.fmt.allocPrint(alloc, "{s}/pf.tar.gz", .{tmp_dir}) catch return error.AllocFailed;
         defer alloc.free(archive_path);
 
-        const archive_url = std.fmt.allocPrint(alloc, "{s}/{s}/fx-{s}.tar.gz", .{ cdn_base, target.artifactRef(), helpers.platform }) catch return error.AllocFailed;
+        const archive_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz", .{ cdn_base, target.artifactRef(), helpers.platform }) catch return error.AllocFailed;
         defer alloc.free(archive_url);
 
         helpers.downloadFileStreaming(&client, archive_url, archive_path, self.transferControl()) catch |err| return switch (err) {
@@ -309,7 +309,7 @@ pub const AutoUpgrade = struct {
 
         if (self.should_stop.load(.acquire)) return error.Cancelled;
 
-        const checksum_url = std.fmt.allocPrint(alloc, "{s}/{s}/fx-{s}.tar.gz.sha256", .{ cdn_base, target.artifactRef(), helpers.platform }) catch return error.AllocFailed;
+        const checksum_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz.sha256", .{ cdn_base, target.artifactRef(), helpers.platform }) catch return error.AllocFailed;
         defer alloc.free(checksum_url);
 
         helpers.verifyChecksum(&client, archive_path, checksum_url, self.transferControl()) catch |err| return switch (err) {
@@ -321,7 +321,7 @@ pub const AutoUpgrade = struct {
 
         helpers.extractTarGz(alloc, archive_path, tmp_dir) catch return error.ExtractionFailed;
 
-        const extracted_bin = std.fmt.allocPrint(alloc, "{s}/fx", .{tmp_dir}) catch return error.AllocFailed;
+        const extracted_bin = std.fmt.allocPrint(alloc, "{s}/pf", .{tmp_dir}) catch return error.AllocFailed;
         defer alloc.free(extracted_bin);
 
         var self_exe_buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -426,7 +426,7 @@ test "no install starts after a process-exit stop" {
     // with InstallFailed instead.
     try std.testing.expectError(
         error.Cancelled,
-        au.installUnlessStopped(std.testing.allocator, "/nonexistent/fx-extracted", "/nonexistent/fx"),
+        au.installUnlessStopped(std.testing.allocator, "/nonexistent/pf-extracted", "/nonexistent/pf"),
     );
 }
 
@@ -484,9 +484,9 @@ test "selected release channel is owned by the upgrade runtime" {
 }
 
 test "development build paths disable auto upgrade" {
-    try std.testing.expect(isDevelopmentBuildPath("/repo/zig-out/bin/fx"));
-    try std.testing.expect(isDevelopmentBuildPath("C:\\repo\\zig-out\\bin\\fx.exe"));
-    try std.testing.expect(!isDevelopmentBuildPath("/Users/me/.local/bin/fx"));
+    try std.testing.expect(isDevelopmentBuildPath("/repo/zig-out/bin/pf"));
+    try std.testing.expect(isDevelopmentBuildPath("C:\\repo\\zig-out\\bin\\pf.exe"));
+    try std.testing.expect(!isDevelopmentBuildPath("/Users/me/.local/bin/pf"));
 }
 
 test "statusLabel downloading shows ellipsis" {
@@ -517,7 +517,7 @@ test "setLatestVersion stores normalized version" {
 
 test "relaunch request owns its path and previous revision and is consumed once" {
     var au = AutoUpgrade{};
-    var path = [_]u8{ '/', 't', 'm', 'p', '/', 'f', 'x' };
+    var path = [_]u8{ '/', 't', 'm', 'p', '/', 'p', 'f' };
     var revision = [_]u8{'1'} ** 40;
     au.configure_channel(.dev);
     au.setPreviousRevision(&revision);
@@ -527,7 +527,7 @@ test "relaunch request owns its path and previous revision and is consumed once"
 
     const request = au.takeRelaunchRequest() orelse
         return error.TestExpectedRelaunchRequest;
-    try std.testing.expectEqualStrings("/tmp/fx", request.executablePath());
+    try std.testing.expectEqualStrings("/tmp/pf", request.executablePath());
     try std.testing.expectEqualStrings(
         "1111111111111111111111111111111111111111",
         request.previousRevision().?,

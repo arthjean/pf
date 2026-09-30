@@ -5,11 +5,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import xtermHeadless from "@xterm/headless";
-import { createFxTerminal, supportsJspi, xtermAdapter } from "../node.js";
+import { createPfTerminal, supportsJspi, xtermAdapter } from "../node.js";
 
 const { Terminal } = xtermHeadless;
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/fx-term.wasm"));
+const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/pf-term.wasm"));
 if (!supportsJspi()) process.exit(2);
 
 function instrumentTerminal(terminal, disposals, onWrite = () => {}) {
@@ -72,7 +72,7 @@ const fetch = async (_url, init) => {
     }, { once: true });
   });
 };
-const runtime = await createFxTerminal({
+const runtime = await createPfTerminal({
   backend: "wasm",
   wasm: await readFile(wasmPath),
   terminal: instrumentedTerminalHost,
@@ -91,7 +91,7 @@ async function waitFor(predicate, label) {
   }
 }
 
-await waitFor(() => grid().includes("𝒇x"), "startup");
+await waitFor(() => grid().includes("𝒑f"), "startup");
 terminal.resize(112, 36);
 await waitFor(
   () => events.some((event) => event.type === "terminal.resize" && event.cols === 112 && event.rows === 36) &&
@@ -143,7 +143,7 @@ const exitCode = await Promise.race([
   runtime.exited,
   new Promise((_, reject) => setTimeout(() => reject(new Error("timed out waiting for exit")), 5000)),
 ]);
-if (exitCode !== 0) throw new Error(`fx-term exited with ${exitCode}`);
+if (exitCode !== 0) throw new Error(`pf-term exited with ${exitCode}`);
 await new Promise((resolve) => setTimeout(resolve, 0));
 const exitEvents = events.filter((event) => event.type === "runtime.exit");
 if (exitEvents.length !== 1) throw new Error(`expected one runtime.exit event, got ${exitEvents.length}`);
@@ -153,7 +153,7 @@ if (disposals.data !== 1 || disposals.resize !== 1) {
 
 const abortTerminal = new Terminal({ cols: 80, rows: 24, allowProposedApi: true, scrollback: 1000 });
 const abortDisposals = { data: 0, resize: 0 };
-const abortRuntime = await createFxTerminal({
+const abortRuntime = await createPfTerminal({
   backend: "wasm",
   wasm: await readFile(wasmPath),
   terminal: instrumentTerminal(abortTerminal, abortDisposals),
@@ -163,7 +163,7 @@ const abortRuntime = await createFxTerminal({
 const abortFlush = () => new Promise((resolve) => abortTerminal.write("", resolve));
 const abortGrid = () => terminalGrid(abortTerminal);
 const abortStartupDeadline = performance.now() + 5000;
-while (!abortGrid().includes("𝒇x")) {
+while (!abortGrid().includes("𝒑f")) {
   await abortFlush();
   if (performance.now() >= abortStartupDeadline) throw new Error(`timed out waiting for abort runtime startup:\n${abortGrid()}`);
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -276,7 +276,7 @@ async function runFailureChild(scenario) {
   };
   const options = {
     backend: "wasm", wasm: await readFile(wasmPath), terminal: host,
-    env: { AI_GATEWAY_API_KEY: "term-lifecycle-key", FX_SOUND: "0" },
+    env: { AI_GATEWAY_API_KEY: "term-lifecycle-key", PF_SOUND: "0" },
     onEvent(event) { events.push({ ...event, requestAborted: requestSignal?.aborted }); },
     fetch: async (_url, init) => {
       requestCount += 1;
@@ -298,7 +298,7 @@ async function runFailureChild(scenario) {
   };
 
   if (scenario.startsWith("setup-")) {
-    await assert.rejects(createFxTerminal(options), (error) => error === startupError);
+    await assert.rejects(createPfTerminal(options), (error) => error === startupError);
     await pause();
     const acquired = scenario === "setup-data" ? [] : scenario === "setup-keydata" ? ["data"] : ["data", "keydata"];
     for (const kind of acquired) {
@@ -313,7 +313,7 @@ async function runFailureChild(scenario) {
 
     fault = null;
     recovering = true;
-    const retry = await createFxTerminal(options);
+    const retry = await createPfTerminal(options);
     await retry.interactive;
     for (const kind of Object.keys(listeners)) assert.equal(listeners[kind].size, 1);
     for (const callback of listeners.data) callback("recover\r");
@@ -327,7 +327,7 @@ async function runFailureChild(scenario) {
       assert.equal(disposals[kind], acquired.includes(kind) ? 2 : 1);
     }
   } else {
-    const runtime = await createFxTerminal(options);
+    const runtime = await createPfTerminal(options);
     await runtime.interactive;
     runtime.write("pending request\r");
     await until(() => requestSignal && (scenario !== "write-body" || bodyOpened));
@@ -417,7 +417,7 @@ async function runActiveTransitionChild(scenario, command) {
     }), { status: 200, headers: { "content-type": "text/event-stream" } });
   };
 
-  const childRuntime = await createFxTerminal({
+  const childRuntime = await createPfTerminal({
     backend: "wasm",
     wasm: await readFile(wasmPath),
     terminal: childHost,

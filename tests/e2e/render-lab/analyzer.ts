@@ -68,7 +68,7 @@ export function analyzeRun(manifest: RenderLabManifest) {
       input_rows.push(footers.find((footer) => footer.multiline)!.input);
     }
     const logoRows = findLogoRows(frame.grid);
-    const expectsChrome = expectsFxChrome(frame, manifest, logoRows, input_rows);
+    const expectsChrome = expectsPfChrome(frame, manifest, logoRows, input_rows);
     const viewerFooterPresent = hasTranscriptViewerFooter(frame.grid);
 
     if (frame.evidence && !frame.evidence.stable) {
@@ -85,7 +85,7 @@ export function analyzeRun(manifest: RenderLabManifest) {
     assertTuiObservabilityFrame(failures, frame, manifest);
 
     if (countLogoBlocks(frame.grid, logoRows) > 1) {
-      push(failures, "single-active-logo", frame, "more than one active fx logo block is visible");
+      push(failures, "single-active-logo", frame, "more than one active pf logo block is visible");
     }
 
     if (footers.length > 1) {
@@ -93,7 +93,7 @@ export function analyzeRun(manifest: RenderLabManifest) {
     }
 
     if (expectsChrome && footers.length === 0 && !viewerFooterPresent) {
-      push(failures, "footer-missing", frame, "fx-owned frame has no complete footer block");
+      push(failures, "footer-missing", frame, "pf-owned frame has no complete footer block");
     }
 
     if (input_rows.length > 1) {
@@ -101,7 +101,7 @@ export function analyzeRun(manifest: RenderLabManifest) {
     }
 
     if (expectsChrome && input_rows.length === 0 && !viewerFooterPresent) {
-      push(failures, "input-missing", frame, "fx-owned frame has no footer input row");
+      push(failures, "input-missing", frame, "pf-owned frame has no footer input row");
     }
 
     assertActivitySpacing(failures, frame, footers[0]);
@@ -160,18 +160,18 @@ export function analyzeRun(manifest: RenderLabManifest) {
       }
     }
 
-    const fxBand = findFxBand(frame.grid, logoRows, footers[0]);
-    if (fxBand) {
+    const pfBand = findPfBand(frame.grid, logoRows, footers[0]);
+    if (pfBand) {
       for (const marker of manifest.markers.shell) {
         const badRows = frame.grid
-          .slice(fxBand.start, fxBand.end + 1)
+          .slice(pfBand.start, pfBand.end + 1)
           .filter((row) => row.includes(marker));
         if (badRows.length > 0) {
           push(
             failures,
-            "shell-marker-in-fx-band",
+            "shell-marker-in-pf-band",
             frame,
-            `shell marker ${marker} appears inside the fx-owned viewport band`,
+            `shell marker ${marker} appears inside the pf-owned viewport band`,
           );
         }
       }
@@ -1024,7 +1024,7 @@ function semanticText(line: string): string {
   return line;
 }
 
-function findFxBand(grid: string[], logoRows: number[], footer: Footer | undefined): { start: number; end: number } | null {
+function findPfBand(grid: string[], logoRows: number[], footer: Footer | undefined): { start: number; end: number } | null {
   if (logoRows.length === 0 || !footer) return null;
   const start = Math.min(...logoRows);
   const end = footer.hint;
@@ -1032,7 +1032,7 @@ function findFxBand(grid: string[], logoRows: number[], footer: Footer | undefin
   return { start, end };
 }
 
-function expectsFxChrome(
+function expectsPfChrome(
   frame: RenderLabFrame,
   manifest: RenderLabManifest,
   logoRows: number[],
@@ -1045,7 +1045,7 @@ function expectsFxChrome(
     frame.event.includes("help-visible") ||
     frame.event.includes("slash-menu-expanded") ||
     frame.event.includes("final-third-launch-state") ||
-    frame.event.includes("fx-quit-requested") ||
+    frame.event.includes("pf-quit-requested") ||
     frame.event.includes("post-quit-shell-prompt")
   ) {
     return false;

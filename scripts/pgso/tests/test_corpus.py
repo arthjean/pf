@@ -98,7 +98,7 @@ EXCLUDED_E2E_TESTS = (
 class PgsoCorpusTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory(
-            prefix="fx-pgso-corpus-"
+            prefix="pf-pgso-corpus-"
         )
         self.root = pathlib.Path(self.temporary_directory.name)
         (self.root / "tests" / "e2e").mkdir(parents=True)
@@ -126,7 +126,7 @@ class PgsoCorpusTests(unittest.TestCase):
                 "name": name,
                 "argv": ["{binary}", *arguments],
                 "cwd": ".",
-                "env_set": {"FX_SOUND": "0"},
+                "env_set": {"PF_SOUND": "0"},
                 "env_unset": [],
                 "timeout_seconds": 30,
                 "requires_tmux": False,
@@ -155,7 +155,7 @@ class PgsoCorpusTests(unittest.TestCase):
             "name": f"e2e-{test_file.removesuffix('.test.ts')}",
             "argv": ["bun", "test", "--max-concurrency", "1", f"./{test_file}"],
             "cwd": "tests/e2e",
-            "env_set": {"FX_SOUND": "0"},
+            "env_set": {"PF_SOUND": "0"},
             "env_unset": ["AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN"],
             "timeout_seconds": 60,
             "requires_tmux": True,
@@ -337,8 +337,8 @@ class PgsoCorpusTests(unittest.TestCase):
             "TMUX",
             "TMUX_TMPDIR",
             "AI_GATEWAY_API_KEY",
-            "FX_TRACE_LOG",
-            "FX_TRACE_SCOPES",
+            "PF_TRACE_LOG",
+            "PF_TRACE_SCOPES",
         ):
             with self.subTest(key=key):
                 payload = self.manifest()
@@ -428,7 +428,7 @@ class PgsoCorpusTests(unittest.TestCase):
                 ("tui-command-permissions.test.ts", "contains sound"),
             ),
         )
-        binary = self.root / "candidate-fx"
+        binary = self.root / "candidate-pf"
         binary.write_bytes(b"candidate")
         calls: list[str] = []
 
@@ -483,7 +483,7 @@ class PgsoCorpusTests(unittest.TestCase):
             name=name,
             argv=("{binary}", name),
             cwd=".",
-            env_set=(("FX_SOUND", "0"),),
+            env_set=(("PF_SOUND", "0"),),
             env_unset=("PGSO_UNSET_ME",),
             timeout_seconds=5,
             requires_tmux=requires_tmux,
@@ -515,7 +515,7 @@ class PgsoCorpusTests(unittest.TestCase):
         profile_dir = output / "profiles" / "raw"
         profile_dir.mkdir(parents=True, exist_ok=True)
         merged_profile = output / "profiles" / "merged.profdata"
-        binary = self.root / "instrumented-fx"
+        binary = self.root / "instrumented-pf"
         binary.write_bytes(b"instrumented")
         calls: list[dict[str, object]] = []
         merges: list[tuple[str, ...]] = []
@@ -578,8 +578,8 @@ class PgsoCorpusTests(unittest.TestCase):
                 "PGSO_UNSET_ME": "remove",
                 "TMUX": "/tmp/user-tmux,1,0",
                 "TMUX_PANE": "%1",
-                "FX_TRACE_LOG": "/tmp/user-fx-trace.log",
-                "FX_TRACE_SCOPES": "user-scope",
+                "PF_TRACE_LOG": "/tmp/user-pf-trace.log",
+                "PF_TRACE_SCOPES": "user-scope",
             },
             clear=False,
         ):
@@ -589,16 +589,16 @@ class PgsoCorpusTests(unittest.TestCase):
         self.assertEqual(0, result.skipped)
         self.assertEqual(0, result.failed)
         self.assertEqual(2, result.merged_raw_profiles)
-        self.assertFalse((self.root / "zig-out" / "bin" / "fx").exists())
+        self.assertFalse((self.root / "zig-out" / "bin" / "pf").exists())
         self.assertTrue(merged.is_file())
         self.assertEqual(2, len(calls))
         self.assertNotIn("PGSO_INHERITED", calls[0]["env"])
         self.assertNotIn("PGSO_UNSET_ME", calls[0]["env"])
         self.assertNotIn("TMUX", calls[0]["env"])
         self.assertNotIn("TMUX_PANE", calls[0]["env"])
-        self.assertNotIn("FX_TRACE_LOG", calls[0]["env"])
-        self.assertNotIn("FX_TRACE_SCOPES", calls[0]["env"])
-        self.assertEqual("1", calls[0]["env"]["FX_E2E_DISABLE_DOTENV"])
+        self.assertNotIn("PF_TRACE_LOG", calls[0]["env"])
+        self.assertNotIn("PF_TRACE_SCOPES", calls[0]["env"])
+        self.assertEqual("1", calls[0]["env"]["PF_E2E_DISABLE_DOTENV"])
         self.assertEqual(os.environ["PATH"], calls[0]["env"]["PATH"])
         self.assertEqual(
             str(self.root / "output" / "profiles" / "home" / "first"),
@@ -651,7 +651,7 @@ class PgsoCorpusTests(unittest.TestCase):
         scenarios[-1]["profile_runs"] = 3
         loaded = load_corpus(self.write_manifest(payload), repo_root=self.root)
         corpus = self.make_corpus(loaded.scenarios[-1])
-        binary = self.root / "candidate-fx"
+        binary = self.root / "candidate-pf"
         binary.write_bytes(b"candidate")
         calls: list[tuple[str, ...]] = []
 
@@ -712,7 +712,7 @@ class PgsoCorpusTests(unittest.TestCase):
         output = self.root / "retry-output"
         profile_dir = output / "profiles" / "raw"
         profile_dir.mkdir(parents=True)
-        binary = self.root / "retry-instrumented-fx"
+        binary = self.root / "retry-instrumented-pf"
         binary.write_bytes(b"instrumented")
         calls: list[dict[str, str]] = []
         merged_profiles: list[str] = []
@@ -776,7 +776,7 @@ class PgsoCorpusTests(unittest.TestCase):
             "tui-fails.test.ts",
         )
         corpus = self.make_corpus(scenario)
-        binary = self.root / "failed-candidate-fx"
+        binary = self.root / "failed-candidate-pf"
         binary.write_bytes(b"candidate")
         calls = 0
 
@@ -807,7 +807,7 @@ class PgsoCorpusTests(unittest.TestCase):
             "plain-e2e.test.ts",
         )
         corpus = self.make_corpus(scenario)
-        binary = self.root / "plain-candidate-fx"
+        binary = self.root / "plain-candidate-pf"
         binary.write_bytes(b"candidate")
         calls = 0
 
@@ -871,11 +871,11 @@ class PgsoCorpusTests(unittest.TestCase):
 
     def test_behavior_corpus_restores_the_previous_canonical_binary(self) -> None:
         corpus = self.make_corpus(self.make_scenario("first"))
-        canonical = self.root / "zig-out" / "bin" / "fx"
+        canonical = self.root / "zig-out" / "bin" / "pf"
         canonical.parent.mkdir(parents=True)
         canonical.write_bytes(b"stale")
         stale_inode = canonical.stat().st_ino
-        binary = self.root / "candidate-fx"
+        binary = self.root / "candidate-pf"
         binary.write_bytes(b"candidate")
 
         def command_runner(argv, **kwargs):
@@ -899,10 +899,10 @@ class PgsoCorpusTests(unittest.TestCase):
 
     def test_interruption_cleans_tmux_and_restores_the_canonical_binary(self) -> None:
         corpus = self.make_corpus(self.make_scenario("first", requires_tmux=True))
-        canonical = self.root / "zig-out" / "bin" / "fx"
+        canonical = self.root / "zig-out" / "bin" / "pf"
         canonical.parent.mkdir(parents=True)
         canonical.write_bytes(b"original")
-        binary = self.root / "candidate-fx"
+        binary = self.root / "candidate-pf"
         binary.write_bytes(b"candidate")
 
         def interrupted_runner(*_args, **_kwargs):
@@ -927,7 +927,7 @@ class PgsoCorpusTests(unittest.TestCase):
             self.make_scenario("first"),
             self.make_scenario("second"),
         )
-        binary = self.root / "candidate-fx"
+        binary = self.root / "candidate-pf"
         binary.write_bytes(b"candidate")
         calls: list[tuple[tuple[str, ...], dict[str, str]]] = []
 
@@ -948,13 +948,13 @@ class PgsoCorpusTests(unittest.TestCase):
             command_runner=command_runner,
         )
 
-        canonical = self.root / "zig-out" / "bin" / "fx"
+        canonical = self.root / "zig-out" / "bin" / "pf"
         self.assertEqual(2, result.passed)
         self.assertEqual(0, result.failed)
         self.assertEqual(0, result.merged_raw_profiles)
         self.assertTrue(all(call[0][0] == str(canonical) for call in calls))
         self.assertTrue(all("LLVM_PROFILE_FILE" not in call[1] for call in calls))
-        self.assertTrue(all("FX_TRACE_SCOPES" not in call[1] for call in calls))
+        self.assertTrue(all("PF_TRACE_SCOPES" not in call[1] for call in calls))
         self.assertEqual(
             {
                 str(
@@ -970,7 +970,7 @@ class PgsoCorpusTests(unittest.TestCase):
                     / "second.log"
                 ),
             },
-            {call[1]["FX_TRACE_LOG"] for call in calls},
+            {call[1]["PF_TRACE_LOG"] for call in calls},
         )
         self.assertTrue(
             all(

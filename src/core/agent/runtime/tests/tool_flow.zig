@@ -730,8 +730,8 @@ test "parallel skill admission binds identities preserves denies and isolates fa
     const denied_args = try std.json.Stringify.valueAlloc(alloc, .{ .location = denied_path }, .{});
     defer alloc.free(denied_args);
     const catalog = [_]contracts.Skill{
-        .{ .name = "allowed-name", .description = "", .path = allowed_path, .source = .global_fx },
-        .{ .name = "denied-name", .description = "", .path = denied_path, .source = .global_fx },
+        .{ .name = "allowed-name", .description = "", .path = allowed_path, .source = .global_pf },
+        .{ .name = "denied-name", .description = "", .path = denied_path, .source = .global_pf },
     };
     var rules = [_]types.PermissionRule{
         .{ .permission = @constCast("skill"), .pattern = @constCast("*"), .action = .allow },
@@ -785,7 +785,7 @@ test "skill preparation failures publish discovery notices in sequential and par
                 .skills = &.{},
                 .diagnostics = &.{.{
                     .path = "/skills/malformed",
-                    .source = .global_fx,
+                    .source = .global_pf,
                     .scope = .candidate,
                     .cause = .{ .invalid_metadata = .missing_name },
                 }},
@@ -895,8 +895,8 @@ test "explicit skill preload cancellation finalizes as interrupted before model 
     deps.agent_stream_provider = gateway.provider();
     var config = fixture.config();
     config.skill_catalog = .{
-        .skills = &.{.{ .name = "workflow", .description = "", .path = "/skills/workflow", .source = .global_fx }},
-        .diagnostics = &.{.{ .path = "/skills/malformed", .source = .global_fx, .scope = .candidate, .cause = .{ .invalid_metadata = .missing_name } }},
+        .skills = &.{.{ .name = "workflow", .description = "", .path = "/skills/workflow", .source = .global_pf }},
+        .diagnostics = &.{.{ .path = "/skills/malformed", .source = .global_pf, .scope = .candidate, .cause = .{ .invalid_metadata = .missing_name } }},
     };
     var job = fixture.job();
     job.prompt = @constCast("$workflow");

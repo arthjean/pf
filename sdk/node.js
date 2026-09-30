@@ -8,18 +8,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { CoreOutput } from "./core-output.js";
 import { loadModule, withModuleFailure } from "./wasm-module.js";
 import {
-  createFxAgent as createWasmAgent,
-  createFxTerminal as createWasmTerminal,
+  createPfAgent as createWasmAgent,
+  createPfTerminal as createWasmTerminal,
   encodeXtermKeyEvent,
-  fxSdkApiVersion,
+  pfSdkApiVersion,
   listModels,
   normalizeAgentOptions,
   supportsJspi,
   xtermAdapter,
-} from "./fx-sdk.js";
+} from "./pf-sdk.js";
 
-export { encodeXtermKeyEvent, fxSdkApiVersion, listModels, supportsJspi, xtermAdapter };
-export const libfxApiVersion = 2;
+export { encodeXtermKeyEvent, pfSdkApiVersion, listModels, supportsJspi, xtermAdapter };
+export const libpfApiVersion = 2;
 const nativeCoreApiVersion = 3;
 
 const fetchOperationStale = 0;
@@ -27,20 +27,20 @@ const fetchOperationApplied = 1;
 const fetchOperationBackpressure = 2;
 
 const nodeRequire = createRequire(import.meta.url);
-const defaultCoreWasm = new URL("./fx-core.wasm", import.meta.url);
-const defaultTermWasm = new URL("./fx-term.wasm", import.meta.url);
+const defaultCoreWasm = new URL("./pf-core.wasm", import.meta.url);
+const defaultTermWasm = new URL("./pf-term.wasm", import.meta.url);
 let nativeBackendPromise;
 const wasmFilePromises = new Map();
 
 const backendReasonCodes = {
-  unsupportedPlatform: "LIBFX_UNSUPPORTED_PLATFORM",
-  missingArtifact: "LIBFX_NATIVE_ARTIFACT_MISSING",
-  nativeLoad: "LIBFX_NATIVE_LOAD_FAILED",
-  nativeApi: "LIBFX_NATIVE_API_MISMATCH",
-  missingSurface: "LIBFX_NATIVE_SURFACE_MISSING",
-  disabledNative: "LIBFX_NATIVE_DISABLED",
-  jspiUnavailable: "LIBFX_JSPI_UNAVAILABLE",
-  wasmLoad: "LIBFX_WASM_LOAD_FAILED",
+  unsupportedPlatform: "LIBPF_UNSUPPORTED_PLATFORM",
+  missingArtifact: "LIBPF_NATIVE_ARTIFACT_MISSING",
+  nativeLoad: "LIBPF_NATIVE_LOAD_FAILED",
+  nativeApi: "LIBPF_NATIVE_API_MISMATCH",
+  missingSurface: "LIBPF_NATIVE_SURFACE_MISSING",
+  disabledNative: "LIBPF_NATIVE_DISABLED",
+  jspiUnavailable: "LIBPF_JSPI_UNAVAILABLE",
+  wasmLoad: "LIBPF_WASM_LOAD_FAILED",
 };
 
 function bundledAssetUrl(asset) {
@@ -56,11 +56,11 @@ function bundledAssetUrl(asset) {
 function jspiFallbackError(surface, nativeError) {
   const nativeDetail = nativeError ? ` Native loading failed: ${nativeError.message}.` : " No compatible native addon was found.";
   const error = new Error(
-    `libfx could not start the ${surface} backend.${nativeDetail} ` +
+    `libpf could not start the ${surface} backend.${nativeDetail} ` +
     "The WebAssembly fallback requires JavaScript Promise Integration (JSPI). " +
-    "Run Node with --experimental-wasm-jspi or install a libfx package containing a compatible native addon.",
+    "Run Node with --experimental-wasm-jspi or install a libpf package containing a compatible native addon.",
   );
-  error.code = "LIBFX_JSPI_REQUIRED";
+  error.code = "LIBPF_JSPI_REQUIRED";
   error.cause = nativeError;
   return error;
 }
@@ -90,25 +90,25 @@ async function loadNativeCandidate(candidate) {
 function defaultNativeCandidate() {
   // Local path bindings let deployment tracers retain these assets in the generated CommonJS entry.
   if (process.platform === "linux" && process.arch === "x64") {
-    const asset = new URL("./libfx.linux-x64.node", import.meta.url);
+    const asset = new URL("./libpf.linux-x64.node", import.meta.url);
     if (asset.protocol === "") return fileURLToPath(bundledAssetUrl(asset));
     const path = fileURLToPath(asset);
     return path;
   }
   if (process.platform === "linux" && process.arch === "arm64") {
-    const asset = new URL("./libfx.linux-arm64.node", import.meta.url);
+    const asset = new URL("./libpf.linux-arm64.node", import.meta.url);
     if (asset.protocol === "") return fileURLToPath(bundledAssetUrl(asset));
     const path = fileURLToPath(asset);
     return path;
   }
   if (process.platform === "darwin" && process.arch === "x64") {
-    const asset = new URL("./libfx.darwin-x64.node", import.meta.url);
+    const asset = new URL("./libpf.darwin-x64.node", import.meta.url);
     if (asset.protocol === "") return fileURLToPath(bundledAssetUrl(asset));
     const path = fileURLToPath(asset);
     return path;
   }
   if (process.platform === "darwin" && process.arch === "arm64") {
-    const asset = new URL("./libfx.darwin-arm64.node", import.meta.url);
+    const asset = new URL("./libpf.darwin-arm64.node", import.meta.url);
     if (asset.protocol === "") return fileURLToPath(bundledAssetUrl(asset));
     const path = fileURLToPath(asset);
     return path;
@@ -119,13 +119,13 @@ function defaultNativeCandidate() {
 function validateNativeBackend(backend) {
   if (!backend) return null;
   const hasLowLevelCore = typeof backend.createCore === "function";
-  const expectedVersion = hasLowLevelCore ? nativeCoreApiVersion : libfxApiVersion;
-  if ((hasLowLevelCore || backend.libfxApiVersion !== undefined) && backend.libfxApiVersion !== expectedVersion) {
-    const actualVersion = backend.libfxApiVersion ?? "missing";
+  const expectedVersion = hasLowLevelCore ? nativeCoreApiVersion : libpfApiVersion;
+  if ((hasLowLevelCore || backend.libpfApiVersion !== undefined) && backend.libpfApiVersion !== expectedVersion) {
+    const actualVersion = backend.libpfApiVersion ?? "missing";
     throw new Error(`native addon API version ${actualVersion} is incompatible with expected API version ${expectedVersion}`);
   }
-  if (typeof backend.createCore !== "function" && typeof backend.createFxTerminal !== "function") {
-    throw new Error("native addon must export createCore() or createFxTerminal()");
+  if (typeof backend.createCore !== "function" && typeof backend.createPfTerminal !== "function") {
+    throw new Error("native addon must export createCore() or createPfTerminal()");
   }
   return backend;
 }
@@ -302,7 +302,7 @@ export async function getBackendInfo(value = {}) {
   const attempts = [];
   if (backend !== "wasm") {
     const native = await resolveNativeBackend(nativeAddon);
-    const nativeMethod = surface === "agent" ? "createCore" : "createFxTerminal";
+    const nativeMethod = surface === "agent" ? "createCore" : "createPfTerminal";
     if (typeof native.backend?.[nativeMethod] === "function") {
       attempts.push({ backend: "native", available: true, reason: null });
       return { surface, backend: "native", attempts };
@@ -532,13 +532,13 @@ async function createWithFallback(surface, nativeMethod, wasmFactory, defaultWas
         return await native.backend[nativeMethod](runtimeOptions);
       } catch (error) {
         nativeError = error;
-        if (backend === "native" || error?.code === "LIBFX_MODEL_UNSUPPORTED_FAST" ||
-          error?.code === "LIBFX_MODEL_UNSUPPORTED_EFFORT") throw error;
+        if (backend === "native" || error?.code === "LIBPF_MODEL_UNSUPPORTED_FAST" ||
+          error?.code === "LIBPF_MODEL_UNSUPPORTED_EFFORT") throw error;
       }
     }
     if (backend === "native") {
       const error = nativeError ?? new Error(`native addon does not provide ${nativeMethod}()`);
-      error.code ??= "LIBFX_NATIVE_UNAVAILABLE";
+      error.code ??= "LIBPF_NATIVE_UNAVAILABLE";
       throw error;
     }
   }
@@ -551,7 +551,7 @@ async function createWithFallback(surface, nativeMethod, wasmFactory, defaultWas
   return wasmFactory({ ...runtimeOptions, wasm: await wasmInput(wasmSource) });
 }
 
-export async function createFxAgent(options = {}) {
+export async function createPfAgent(options = {}) {
   return createWithFallback(
     "agent",
     "createCore",
@@ -561,6 +561,6 @@ export async function createFxAgent(options = {}) {
   );
 }
 
-export function createFxTerminal(options = {}) {
-  return createWithFallback("terminal", "createFxTerminal", createWasmTerminal, defaultTermWasm, options);
+export function createPfTerminal(options = {}) {
+  return createWithFallback("terminal", "createPfTerminal", createWasmTerminal, defaultTermWasm, options);
 }

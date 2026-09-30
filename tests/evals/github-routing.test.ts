@@ -62,9 +62,9 @@ function seedV0ChangelogRepo(dir: string): void {
   execSync("git add . && git commit -m initial", { cwd: dir, stdio: "pipe" });
 }
 
-function seedFxHistoryRepo(dir: string): void {
+function seedPfHistoryRepo(dir: string): void {
   seedGitRepo(dir, "https://github.com/vercel-labs/fx.git");
-  writeFileSync(join(dir, "README.md"), "# fx\n");
+  writeFileSync(join(dir, "README.md"), "# pf\n");
   execSync("git add . && git commit -m initial", { cwd: dir, stdio: "pipe" });
 }
 
@@ -108,10 +108,10 @@ describe("eval: GitHub and repo routing", () => {
     "uses local git for current checkout history questions",
     async () => {
       workDir = createWorkDir();
-      seedFxHistoryRepo(workDir);
+      seedPfHistoryRepo(workDir);
 
       const result = await runEval(
-        "look for changes/last commits in the fx",
+        "look for changes/last commits in the pf",
         {
           cwd: workDir,
           timeoutSec: 180,

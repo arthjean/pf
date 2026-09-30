@@ -131,7 +131,7 @@ async function waitFor(expression, sessionId, timeoutMs = 10000) {
   let diagnostic;
   try {
     diagnostic = await command("Runtime.evaluate", {
-      expression: "window.__fxCoreTest || window.__fxBrowserTerminalTest || null",
+      expression: "window.__pfCoreTest || window.__pfBrowserTerminalTest || null",
       returnByValue: true,
     }, sessionId);
   } catch {}
@@ -151,7 +151,7 @@ async function runCase(name, query, verify) {
   events.set("Runtime.exceptionThrown", list);
   try {
     await command("Page.navigate", { url: `http://127.0.0.1:${port}/sdk/index.html?${query}` }, sessionId);
-    const result = await waitFor("window.__fxCoreTest && ['completed', 'failed', 'unsupported'].includes(window.__fxCoreTest.state) && window.__fxCoreTest", sessionId);
+    const result = await waitFor("window.__pfCoreTest && ['completed', 'failed', 'unsupported'].includes(window.__pfCoreTest.state) && window.__pfCoreTest", sessionId);
     if (exceptions.length) throw new Error(exceptions.join("; "));
     verify(result);
     console.log(`browser core ${name} passed`);
@@ -218,7 +218,7 @@ try {
     await command("Page.enable", {}, sessionId);
     await command("Page.navigate", { url: `http://127.0.0.1:${port}/sdk/browser-test-terminal.html` }, sessionId);
     const result = await withTimeout(
-      waitFor("window.__fxBrowserTerminalTest && ['completed', 'failed'].includes(window.__fxBrowserTerminalTest.state) && window.__fxBrowserTerminalTest", sessionId),
+      waitFor("window.__pfBrowserTerminalTest && ['completed', 'failed'].includes(window.__pfBrowserTerminalTest.state) && window.__pfBrowserTerminalTest", sessionId),
       "browser terminal case timed out",
       15000,
     );

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { createFxAgent, getBackendInfo } from "libfx";
-import { createMcpAdapter } from "libfx/mcp";
+import { createPfAgent, getBackendInfo } from "libpf";
+import { createMcpAdapter } from "libpf/mcp";
 
 export const runtime = "nodejs";
 
@@ -10,8 +10,8 @@ function stream(events) {
 }
 
 export async function GET(request) {
-  const token = process.env.LIBFX_SMOKE_TOKEN;
-  const live = process.env.LIBFX_LIVE === "1";
+  const token = process.env.LIBPF_SMOKE_TOKEN;
+  const live = process.env.LIBPF_LIVE === "1";
   if ((token && request.headers.get("authorization") !== `Bearer ${token}`) || (live && !token)) {
     return new Response(null, { status: 401 });
   }
@@ -80,7 +80,7 @@ export async function GET(request) {
     const options = {
       backend,
       apiKey: live ? process.env.AI_GATEWAY_API_KEY : "fixture-unused-key",
-      model: live ? process.env.LIBFX_TEST_MODEL : "fixture/model",
+      model: live ? process.env.LIBPF_TEST_MODEL : "fixture/model",
       tools,
       instructions: "Call lookup exactly once with key alpha, then repeat its returned value. If it fails, say tool failed.",
       ...(!live ? { fetch: async (_url, init) => {
@@ -102,7 +102,7 @@ export async function GET(request) {
         ]);
       } } : {}),
     };
-    agent = await createFxAgent(options);
+    agent = await createPfAgent(options);
     if (scenario === "startup") {
       return Response.json({ ok: true, probe, checkpointBytes: (await agent.checkpoint()).length });
     }
@@ -125,7 +125,7 @@ export async function GET(request) {
     await agent.close();
     agent = null;
     if (scenario === "resume") {
-      agent = await createFxAgent({ ...options, checkpoint });
+      agent = await createPfAgent({ ...options, checkpoint });
       const resumed = agent.prompt("Repeat the value you looked up without calling another tool.", { signal: controller.signal });
       let resumedText = "";
       for await (const event of resumed) if (event.type === "text_delta") resumedText += event.delta;

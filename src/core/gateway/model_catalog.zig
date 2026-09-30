@@ -777,7 +777,7 @@ test "catalog authentication fallback is anonymous and bounded" {
 
 test "strict authenticated catalog requests never retry anonymously" {
     const access = credentials.catalogAccessForCredential(
-        .fx_login,
+        .pf_login,
         "test-token",
         "team_123",
     ).withExplicitAuthority();

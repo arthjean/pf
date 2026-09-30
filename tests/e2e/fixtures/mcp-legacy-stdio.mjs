@@ -1,18 +1,18 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
-const wireLogPath = process.env.FX_MCP_WIRE_LOG;
-const pidPath = process.env.FX_MCP_PID_PATH;
-const resultText = process.env.FX_MCP_RESULT_TEXT ?? "LEGACY_MCP_TOOL_RESULT";
-const mode = process.env.FX_MCP_MODE ?? "normal";
-const invalidationReleasePath = process.env.FX_MCP_INVALIDATION_RELEASE_PATH;
-const legacyVersion = process.env.FX_MCP_LEGACY_VERSION ?? "2024-11-05";
-const discoveryVersions = process.env.FX_MCP_LEGACY_DISCOVERY_VERSIONS?.split(",");
-const discoveryMethodNotFound = process.env.FX_MCP_LEGACY_DISCOVERY_METHOD_NOT_FOUND === "1";
-const discoveryInvalidParams = process.env.FX_MCP_LEGACY_DISCOVERY_INVALID_PARAMS === "1";
-const rejectNewerInitialize = process.env.FX_MCP_LEGACY_REJECT_NEWER_INITIALIZE === "1";
-const draft7Pattern = process.env.FX_MCP_DRAFT7_PATTERN;
-const elicitationUrl = process.env.FX_MCP_ELICITATION_URL ?? "https://example.test/authorize";
-const urlRequiredOperation = process.env.FX_MCP_URL_REQUIRED_OPERATION ?? "tools";
+const wireLogPath = process.env.PF_MCP_WIRE_LOG;
+const pidPath = process.env.PF_MCP_PID_PATH;
+const resultText = process.env.PF_MCP_RESULT_TEXT ?? "LEGACY_MCP_TOOL_RESULT";
+const mode = process.env.PF_MCP_MODE ?? "normal";
+const invalidationReleasePath = process.env.PF_MCP_INVALIDATION_RELEASE_PATH;
+const legacyVersion = process.env.PF_MCP_LEGACY_VERSION ?? "2024-11-05";
+const discoveryVersions = process.env.PF_MCP_LEGACY_DISCOVERY_VERSIONS?.split(",");
+const discoveryMethodNotFound = process.env.PF_MCP_LEGACY_DISCOVERY_METHOD_NOT_FOUND === "1";
+const discoveryInvalidParams = process.env.PF_MCP_LEGACY_DISCOVERY_INVALID_PARAMS === "1";
+const rejectNewerInitialize = process.env.PF_MCP_LEGACY_REJECT_NEWER_INITIALIZE === "1";
+const draft7Pattern = process.env.PF_MCP_DRAFT7_PATTERN;
+const elicitationUrl = process.env.PF_MCP_ELICITATION_URL ?? "https://example.test/authorize";
+const urlRequiredOperation = process.env.PF_MCP_URL_REQUIRED_OPERATION ?? "tools";
 let buffer = Buffer.alloc(0);
 let messageCount = 0;
 let toolsListCalls = 0;
@@ -192,7 +192,7 @@ function handle(message) {
   }
 
   if (message.method === "server/discover") {
-    if (process.env.FX_MCP_IGNORE_DISCOVERY === "1") return;
+    if (process.env.PF_MCP_IGNORE_DISCOVERY === "1") return;
     if (discoveryInvalidParams) {
       send({
         jsonrpc: "2.0",
@@ -234,7 +234,7 @@ function handle(message) {
   }
   if (message.method === "initialize") {
     if (startupFailure) return;
-    // Answer with output fx must reject; the process itself stays up.
+    // Answer with output pf must reject; the process itself stays up.
     if (mode === "startup_garbage") {
       process.stdout.write("not json\n");
       return;

@@ -249,7 +249,7 @@ pub fn createTempSnapshotDir(alloc: std.mem.Allocator) ![]u8 {
         io_mod.getIo().random(std.mem.asBytes(&suffix));
         const path = try std.fmt.allocPrint(
             alloc,
-            "{s}/fx-image-snapshots-{x}",
+            "{s}/pf-image-snapshots-{x}",
             .{ temp_root, suffix },
         );
         errdefer alloc.free(path);
@@ -625,7 +625,7 @@ pub fn captureInlineImageBytes(
 }
 
 /// Captures caller-supplied image bytes for sessions without a filesystem
-/// snapshot backend (libfx kernel sessions on native and wasm). Applies the
+/// snapshot backend (libpf kernel sessions on native and wasm). Applies the
 /// same size, media-type, and digest validation as the filesystem capture,
 /// but retains the decoded bytes on the attachment itself so request building
 /// and checkpoint serialization never touch a filesystem.
@@ -1073,7 +1073,7 @@ pub const AttachmentProjection = struct {
 
 /// Leaves attachments over the model pixel limit out of a request and tells
 /// the model where each one is saved, so it can shrink the file and read the
-/// smaller copy. These are formats fx cannot downscale on this platform and
+/// smaller copy. These are formats pf cannot downscale on this platform and
 /// images saved before downscaling existed. History is not modified; input
 /// without such attachments is returned unchanged. `cache` and its keys use
 /// `cache_alloc` and should outlive the requests of one turn.
@@ -2915,7 +2915,7 @@ test "extractInlineImageAttachments replaces supported paths with matching place
 
 test "extractInlineImageAttachments preserves missing and unsupported tokens" {
     const alloc = std.testing.allocator;
-    const input = "look /tmp/fx-definitely-missing-image.png and notes.txt";
+    const input = "look /tmp/pf-definitely-missing-image.png and notes.txt";
     const result = try extractInlineImageAttachments(alloc, "/", input, 1);
     defer result.deinit(alloc);
 

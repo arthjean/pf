@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 if (!supportsJspi()) {
   console.error("Node JSPI is disabled. Run with --experimental-wasm-jspi");
@@ -13,8 +13,8 @@ if (!supportsJspi()) {
 }
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/fx-core.wasm"));
-const temp = await mkdtemp(join(tmpdir(), "libfx-wasm-cache-"));
+const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/pf-core.wasm"));
+const temp = await mkdtemp(join(tmpdir(), "libpf-wasm-cache-"));
 const secondPath = join(temp, "second.wasm");
 const retryPath = join(temp, "retry.wasm");
 const missingPath = join(temp, "missing.wasm");
@@ -83,7 +83,7 @@ const options = (wasm = wasmPath) => ({
 });
 
 async function create(wasm = wasmPath) {
-  const agent = await createFxAgent(options(wasm));
+  const agent = await createPfAgent(options(wasm));
   agents.push(agent);
   return agent;
 }
@@ -118,12 +118,12 @@ try {
   assert.equal(compileCalls, 2, "a distinct canonical source must compile independently");
 
   failNextCompile = true;
-  await assert.rejects(createFxAgent(options(retryPath)), /injected Wasm compilation failure/);
+  await assert.rejects(createPfAgent(options(retryPath)), /injected Wasm compilation failure/);
   const retried = await create(retryPath);
   await retried.close();
   assert.equal(compileCalls, 4, "a rejected compilation must be removed so the next attempt retries");
 
-  await assert.rejects(createFxAgent(options(missingPath)), /ENOENT|no such file/i);
+  await assert.rejects(createPfAgent(options(missingPath)), /ENOENT|no such file/i);
   await writeFile(missingPath, wasmBytes);
   const recoveredRead = await create(missingPath);
   await recoveredRead.close();

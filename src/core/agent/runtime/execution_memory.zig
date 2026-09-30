@@ -128,7 +128,7 @@ test "empty restored steering keeps its checkpoint boundary" {
     try std.testing.expectEqual(@as(usize, 1), try retainedMessageOffset(messages.items, .{ .steering = 1 }));
 }
 
-pub fn persistedStatusForCurrentFxLocalResult(
+pub fn persistedStatusForCurrentPfLocalResult(
     status: ToolExecutionStatus,
     output: []const u8,
 ) types.PersistedToolStatus {
@@ -278,7 +278,7 @@ test "retained standalone cut rebuilds exactly the selected execution suffix" {
                     .parts_json = "[{\"type\":\"reasoning\",\"text\":\"private\"}]",
                 } else null,
             },
-            .{ .role = .user, .content = "Continue the turn. fx hook context:\nverify" },
+            .{ .role = .user, .content = "Continue the turn. pf hook context:\nverify" },
             .{ .role = .assistant, .tool_calls = &.{call} },
             .{ .role = .tool, .content = "result", .tool_call_id = call.id, .tool_name = call.name, .tool_result_status = .success },
         };
@@ -734,7 +734,7 @@ fn fitToolImagesToModelLimit(arena: Allocator, scratch: Allocator, images: []con
         const smaller = try downscaleToolImage(arena, scratch, image) orelse {
             fitted.withheld += 1;
             try notice.writer.print(
-                "[Image not sent: {s} is {d}x{d} pixels, over the {d}-pixel limit per side, and fx could not downscale it, so it is not visible in this conversation. Load a copy at most {d} pixels per side instead, without changing the original.]\n",
+                "[Image not sent: {s} is {d}x{d} pixels, over the {d}-pixel limit per side, and pf could not downscale it, so it is not visible in this conversation. Load a copy at most {d} pixels per side instead, without changing the original.]\n",
                 .{ image.mime_type, original.width, original.height, image_data.max_image_dimension, image_data.max_image_dimension },
             );
             continue;
@@ -903,7 +903,7 @@ test "oversized tool images are downscaled or withheld before the result enters 
     try std.testing.expectEqualStrings(images[2].data, prepared.memory.tool_images[1].data);
     try std.testing.expectEqualStrings(
         "[Image downscaled from 2400x2 to 2000x2 pixels to fit the 2000-pixel limit per side. Multiply coordinates in this image by 1.20 to get original pixels.]\n" ++
-            "[Image not sent: image/jpeg is 3420x2224 pixels, over the 2000-pixel limit per side, and fx could not downscale it, so it is not visible in this conversation. Load a copy at most 2000 pixels per side instead, without changing the original.]\n" ++
+            "[Image not sent: image/jpeg is 3420x2224 pixels, over the 2000-pixel limit per side, and pf could not downscale it, so it is not visible in this conversation. Load a copy at most 2000 pixels per side instead, without changing the original.]\n" ++
             "captured three frames",
         prepared.model_output,
     );

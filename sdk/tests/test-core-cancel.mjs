@@ -3,10 +3,10 @@ import { readFile } from "node:fs/promises";
 import { strict as assert } from "node:assert";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const defaultWasm = resolve(scriptDir, "../../zig-out/bin/fx-core.wasm");
+const defaultWasm = resolve(scriptDir, "../../zig-out/bin/pf-core.wasm");
 const wasmPath = resolve(process.argv[2] || defaultWasm);
 
 if (!supportsJspi()) {
@@ -36,13 +36,13 @@ const timeout = (label, ms = 5000) => new Promise((_, reject) => {
 });
 
 const agent = await Promise.race([
-  createFxAgent({
+  createPfAgent({
   backend: "wasm",
     wasm: await readFile(wasmPath),
     fetch: stalledFetch,
     apiKey: "sdk-test-key",
   }),
-  timeout("fx-core initialize"),
+  timeout("pf-core initialize"),
 ]);
 
 const controller = new AbortController();
@@ -79,7 +79,7 @@ for (const stage of ["headers", "body", "late-body", "close"]) {
   let followingUp = false;
   const model = `sdk/catalog-cancel-${stage}`;
   const catalog = () => Response.json({ object: "list", data: [{ id: model, type: "language", tags: ["tool-use"] }] });
-  const catalogAgent = await createFxAgent({
+  const catalogAgent = await createPfAgent({
     backend: "wasm",
     wasm: await readFile(wasmPath),
     apiKey: "sdk-test-key",

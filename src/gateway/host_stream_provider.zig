@@ -134,8 +134,8 @@ fn stream(raw: ?*anyopaque, alloc: Allocator, request: stream_provider.ModelRequ
     defer headers.deinit(alloc);
     try headers.appendSlice(alloc, &.{
         .{ .name = "content-type", .value = "application/json" },
-        .{ .name = "HTTP-Referer", .value = "https://github.com/vercel-labs/fx" },
-        .{ .name = "X-Title", .value = "fx" },
+        .{ .name = "HTTP-Referer", .value = "https://paneflow.dev/agent" },
+        .{ .name = "X-Title", .value = "pf" },
         .{ .name = "ai-gateway-protocol-version", .value = "0.0.1" },
         .{ .name = "ai-language-model-specification-version", .value = "4" },
         .{ .name = "ai-language-model-id", .value = request.model },

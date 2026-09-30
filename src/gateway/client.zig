@@ -227,16 +227,16 @@ const generation_response_max_bytes: usize = 128 * 1024;
 const generation_lookup_timeout_ms: i64 = 30_000;
 // Covers a 4 MiB string at worst-case JSON escaping plus SSE framing.
 const max_sse_event_line_bytes: usize = 32 * 1024 * 1024;
-const e2e_gateway_chat_url_env = "FX_E2E_GATEWAY_CHAT_URL";
-const e2e_gateway_models_url_env = "FX_E2E_GATEWAY_MODELS_URL";
-const e2e_gateway_credits_url_env = "FX_E2E_GATEWAY_CREDITS_URL";
+const e2e_gateway_chat_url_env = "PF_E2E_GATEWAY_CHAT_URL";
+const e2e_gateway_models_url_env = "PF_E2E_GATEWAY_MODELS_URL";
+const e2e_gateway_credits_url_env = "PF_E2E_GATEWAY_CREDITS_URL";
 const default_gateway_base_url = "https://ai-gateway.vercel.sh";
 pub const vercel_ai_gateway_team_header = "x-vercel-ai-gateway-team";
 pub const vercel_gateway_extended_time_header = "x-vercel-gateway-extended-time";
 pub const vercel_gateway_extended_time_value = "true";
-/// Identifies fx on every AI Gateway request; the zig std.http default
+/// Identifies pf on every AI Gateway request; the zig std.http default
 /// (`zig/<version> (std.http)`) is never sent to the gateway.
-pub const user_agent = "fx/" ++ build_options.app_version;
+pub const user_agent = "pf/" ++ build_options.app_version;
 var resolved_model_trace_emitted = std.atomic.Value(bool).init(false);
 var test_cancel_watcher_spawn_error: ?anyerror = null;
 
@@ -620,11 +620,11 @@ test "gateway JSON transport preserves non-success HTTP status" {
 }
 
 fn gatewayBaseUrl() []const u8 {
-    const override = io_mod.getenv("FX_GATEWAY_BASE_URL") orelse return default_gateway_base_url;
+    const override = io_mod.getenv("PF_GATEWAY_BASE_URL") orelse return default_gateway_base_url;
     // The base URL carries the bearer token; only a loopback HTTP override is
     // trusted for local testing.
     if (!isLoopbackHttpUrl(override)) {
-        debug_trace.logf("stream", "ignoring FX_GATEWAY_BASE_URL: not loopback http", .{});
+        debug_trace.logf("stream", "ignoring PF_GATEWAY_BASE_URL: not loopback http", .{});
         return default_gateway_base_url;
     }
     return override;
@@ -658,8 +658,8 @@ pub fn postGatewayCompletion(
         defer secret.zeroAndFree(alloc, auth_header);
 
         const extra_headers = [_]std.http.Header{
-            .{ .name = "HTTP-Referer", .value = "https://github.com/vercel-labs/fx" },
-            .{ .name = "X-Title", .value = "fx" },
+            .{ .name = "HTTP-Referer", .value = "https://paneflow.dev/agent" },
+            .{ .name = "X-Title", .value = "pf" },
             .{ .name = "Accept", .value = "application/json" },
             .{ .name = vercel_gateway_extended_time_header, .value = vercel_gateway_extended_time_value },
             .{ .name = "ai-gateway-protocol-version", .value = "0.0.1" },
@@ -1870,9 +1870,9 @@ fn gatewayExtraHeaders(
 ) []const std.http.Header {
     std.debug.assert(buf.len >= 10);
     var len: usize = 0;
-    buf[len] = .{ .name = "HTTP-Referer", .value = "https://github.com/vercel-labs/fx" };
+    buf[len] = .{ .name = "HTTP-Referer", .value = "https://paneflow.dev/agent" };
     len += 1;
-    buf[len] = .{ .name = "X-Title", .value = "fx" };
+    buf[len] = .{ .name = "X-Title", .value = "pf" };
     len += 1;
     buf[len] = .{ .name = vercel_gateway_extended_time_header, .value = vercel_gateway_extended_time_value };
     len += 1;
@@ -2755,7 +2755,7 @@ const SseToolCallAccumulator = struct {
     provider_result: ?[]u8 = null,
     provider_result_state: ProviderResultState = .none,
     final_identity: types.FinalToolIdentity = .valid,
-    provenance: types.ToolExecutionProvenance = .fx_local,
+    provenance: types.ToolExecutionProvenance = .pf_local,
 
     fn deinit(self: *SseToolCallAccumulator, alloc: std.mem.Allocator) void {
         self.id.deinit(alloc);
@@ -4795,11 +4795,11 @@ test "consumeSseStream traces every SSE event with keyless metadata" {
     const payload =
         "data: {\"type\":\"reasoning-start\",\"id\":\"r1\"}\n" ++
         "\n" ++
-        "data: {\"type\":\"reasoning-delta\",\"id\":\"r1\",\"delta\":\"FX_REASONING_SENTINEL\",\"providerMetadata\":{\"anthropic\":{\"signature\":\"FX_PROVIDER_SIGNATURE\"}}}\n" ++
+        "data: {\"type\":\"reasoning-delta\",\"id\":\"r1\",\"delta\":\"PF_REASONING_SENTINEL\",\"providerMetadata\":{\"anthropic\":{\"signature\":\"PF_PROVIDER_SIGNATURE\"}}}\n" ++
         "\n" ++
         "data: {\"type\":\"reasoning-end\",\"id\":\"r1\"}\n" ++
         "\n" ++
-        "data: {\"type\":\"reasoning-future\",\"FX_DYNAMIC_KEY_SENTINEL\":\"FX_UNKNOWN_REASONING_SENTINEL\"}\n" ++
+        "data: {\"type\":\"reasoning-future\",\"PF_DYNAMIC_KEY_SENTINEL\":\"PF_UNKNOWN_REASONING_SENTINEL\"}\n" ++
         "\n" ++
         "data: {\"type\":\"text-start\",\"id\":\"t1\"}\n" ++
         "\n" ++
@@ -4860,10 +4860,10 @@ test "consumeSseStream traces every SSE event with keyless metadata" {
     try std.testing.expect(std.mem.find(u8, trace, "event type=text-delta bytes=") != null);
     try std.testing.expect(std.mem.find(u8, trace, "preview=<object_fields=") != null);
     try std.testing.expect(std.mem.find(u8, trace, "reasoning-future") == null);
-    try std.testing.expect(std.mem.find(u8, trace, "FX_DYNAMIC_KEY_SENTINEL") == null);
-    try std.testing.expect(std.mem.find(u8, trace, "FX_REASONING_SENTINEL") == null);
-    try std.testing.expect(std.mem.find(u8, trace, "FX_UNKNOWN_REASONING_SENTINEL") == null);
-    try std.testing.expect(std.mem.find(u8, trace, "FX_PROVIDER_SIGNATURE") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_DYNAMIC_KEY_SENTINEL") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_REASONING_SENTINEL") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_UNKNOWN_REASONING_SENTINEL") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_PROVIDER_SIGNATURE") == null);
     try std.testing.expect(std.mem.find(u8, trace, "/tmp/input") == null);
     try std.testing.expect(std.mem.find(u8, trace, "answer") == null);
 }
@@ -4883,14 +4883,14 @@ test "consumeSseStream keyless tracing handles oversized CRLF payloads" {
 
     var payload: std.ArrayList(u8) = .empty;
     defer payload.deinit(alloc);
-    try payload.appendSlice(alloc, "data: {\"type\":\"reasoning-start\",\"id\":\"r1\"}\r\n\r\ndata: {\"type\":\"reasoning-delta\",\"id\":\"r1\",\"delta\":\"FX_OVERSIZED_REASONING_HEAD_");
+    try payload.appendSlice(alloc, "data: {\"type\":\"reasoning-start\",\"id\":\"r1\"}\r\n\r\ndata: {\"type\":\"reasoning-delta\",\"id\":\"r1\",\"delta\":\"PF_OVERSIZED_REASONING_HEAD_");
     const reasoning_bytes = try alloc.alloc(u8, 256 * 1024);
     defer alloc.free(reasoning_bytes);
     @memset(reasoning_bytes, 'r');
     try payload.appendSlice(alloc, reasoning_bytes);
     try payload.appendSlice(
         alloc,
-        "FX_OVERSIZED_REASONING_TAIL\",\"providerMetadata\":{\"anthropic\":{\"signature\":\"FX_OVERSIZED_SIGNATURE\"}}}\r\n\r\n" ++
+        "PF_OVERSIZED_REASONING_TAIL\",\"providerMetadata\":{\"anthropic\":{\"signature\":\"PF_OVERSIZED_SIGNATURE\"}}}\r\n\r\n" ++
             "data: {\"type\":\"reasoning-end\",\"id\":\"r1\"}\r\n\r\n" ++
             "data: {\"type\":\"text-delta\",\"id\":\"t1\",\"delta\":\"answer\"}\r\n\r\n" ++
             "data: {\"type\":\"finish\",\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1},\"outputTokens\":{\"total\":2}}}\r\n\r\n" ++
@@ -4916,9 +4916,9 @@ test "consumeSseStream keyless tracing handles oversized CRLF payloads" {
     defer alloc.free(trace);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, trace, "event type=reasoning-delta"));
     try std.testing.expect(std.mem.find(u8, trace, "preview=<object_fields=") != null);
-    try std.testing.expect(std.mem.find(u8, trace, "FX_OVERSIZED_REASONING_HEAD") == null);
-    try std.testing.expect(std.mem.find(u8, trace, "FX_OVERSIZED_REASONING_TAIL") == null);
-    try std.testing.expect(std.mem.find(u8, trace, "FX_OVERSIZED_SIGNATURE") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_OVERSIZED_REASONING_HEAD") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_OVERSIZED_REASONING_TAIL") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_OVERSIZED_SIGNATURE") == null);
     try std.testing.expect(std.mem.find(u8, trace, "answer") == null);
 }
 
@@ -5168,10 +5168,10 @@ test "consumeSseStream replaces malformed trailing or duplicate-key serialized f
         failure: types.ToolArgumentDiagnostic.Failure,
     };
     const cases = [_]Case{
-        .{ .input = "{]FX_FINAL_MALFORMED_SENTINEL", .failure = .syntax_error },
-        .{ .input = "{} FX_FINAL_TRAILING_SENTINEL", .failure = .syntax_error },
+        .{ .input = "{]PF_FINAL_MALFORMED_SENTINEL", .failure = .syntax_error },
+        .{ .input = "{} PF_FINAL_TRAILING_SENTINEL", .failure = .syntax_error },
         .{ .input = "{\"depth\":1,\"depth\":2}", .failure = .rejected_value },
-        .{ .input = "{\"request\":{\"task\":\"FX_FINAL_TRUNCATED_SENTINEL", .failure = .truncated },
+        .{ .input = "{\"request\":{\"task\":\"PF_FINAL_TRUNCATED_SENTINEL", .failure = .truncated },
     };
 
     for (cases) |case| {
@@ -5348,7 +5348,7 @@ test "consumeSseStream rejects absent outer input without exact ended fallback" 
 test "consumeSseStream replaces malformed exact-id ended fallback with safe JSON" {
     const payload =
         "data: {\"type\":\"tool-input-start\",\"id\":\"c1\",\"toolName\":\"ask_user_question\"}\n\n" ++
-        "data: {\"type\":\"tool-input-delta\",\"id\":\"c1\",\"delta\":\"{]FX_FALLBACK_MALFORMED_SENTINEL\"}\n\n" ++
+        "data: {\"type\":\"tool-input-delta\",\"id\":\"c1\",\"delta\":\"{]PF_FALLBACK_MALFORMED_SENTINEL\"}\n\n" ++
         "data: {\"type\":\"tool-input-end\",\"id\":\"c1\"}\n\n" ++
         "data: {\"type\":\"tool-call\",\"toolCallId\":\"c1\"}\n\n" ++
         "data: {\"type\":\"finish\",\"finishReason\":{\"unified\":\"tool-calls\"}}\n\n";
@@ -5370,10 +5370,10 @@ test "consumeSseStream replaces malformed exact-id ended fallback with safe JSON
 }
 
 test "consumeSseStream does not publish labels from malformed streamed arguments" {
-    const sentinel = "FX_MALFORMED_LABEL_SENTINEL";
+    const sentinel = "PF_MALFORMED_LABEL_SENTINEL";
     const payload =
         "data: {\"type\":\"tool-input-start\",\"id\":\"c1\",\"toolName\":\"read_file\"}\n\n" ++
-        "data: {\"type\":\"tool-input-delta\",\"id\":\"c1\",\"delta\":\"{\\\"path\\\":\\\"FX_MALFORMED_LABEL_SENTINEL\\\",\"}\n\n" ++
+        "data: {\"type\":\"tool-input-delta\",\"id\":\"c1\",\"delta\":\"{\\\"path\\\":\\\"PF_MALFORMED_LABEL_SENTINEL\\\",\"}\n\n" ++
         "data: {\"type\":\"tool-input-end\",\"id\":\"c1\"}\n\n" ++
         "data: {\"type\":\"tool-call\",\"toolCallId\":\"c1\"}\n\n" ++
         "data: {\"type\":\"finish\",\"finishReason\":{\"unified\":\"tool-calls\"}}\n\n";
@@ -5424,7 +5424,7 @@ test "consumeSseStream traces malformed argument metadata without source bytes" 
     defer debug_trace.resetForTest();
     try debug_trace.configureForTestWithScopes(alloc, trace_path, "sse");
 
-    const sentinel = "{]FX_ARGUMENT_PRIVACY_SENTINEL";
+    const sentinel = "{]PF_ARGUMENT_PRIVACY_SENTINEL";
     var event: std.Io.Writer.Allocating = .init(alloc);
     defer event.deinit();
     try event.writer.writeAll("{\"type\":\"tool-call\",\"toolCallId\":\"c1\",\"toolName\":\"ask_user_question\",\"input\":");
@@ -6098,7 +6098,7 @@ test "consumeSseStream rejects malformed final-call provider execution flags" {
     var completion = try consumeSseStream(std.testing.allocator, &reader, undefined, Noop.chunk, null, &cancel_flag);
     defer deinitGatewayCompletion(std.testing.allocator, &completion);
 
-    try std.testing.expectEqual(.fx_local, completion.tool_calls[0].provenance);
+    try std.testing.expectEqual(.pf_local, completion.tool_calls[0].provenance);
     try std.testing.expectEqual(
         types.AuthoritativeToolAdmission{ .reject_malformed_provider_result = .malformed_provider_executed },
         types.authoritativeToolAdmission(completion),
@@ -6451,7 +6451,7 @@ test "consumeSseStream preview failure is metadata-only and non-fatal" {
     defer test_force_sse_preview_failure = false;
 
     const payload =
-        "data: {\"type\":\"text-delta\",\"id\":\"text\",\"delta\":\"FX_PREVIEW_VALUE_SENTINEL\"}\n\n" ++
+        "data: {\"type\":\"text-delta\",\"id\":\"text\",\"delta\":\"PF_PREVIEW_VALUE_SENTINEL\"}\n\n" ++
         "data: {\"type\":\"finish\",\"finishReason\":{\"unified\":\"stop\"}}\n\n";
     const Noop = struct {
         fn chunk(_: *anyopaque, _: []const u8) void {}
@@ -6462,11 +6462,11 @@ test "consumeSseStream preview failure is metadata-only and non-fatal" {
     defer deinitGatewayCompletion(alloc, &completion);
     debug_trace.shutdown();
 
-    try std.testing.expectEqualStrings("FX_PREVIEW_VALUE_SENTINEL", completion.content.?);
+    try std.testing.expectEqualStrings("PF_PREVIEW_VALUE_SENTINEL", completion.content.?);
     const trace = try readTraceFileForTest(alloc, trace_path);
     defer alloc.free(trace);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, trace, "preview=<preview-error>"));
-    try std.testing.expect(std.mem.find(u8, trace, "FX_PREVIEW_VALUE_SENTINEL") == null);
+    try std.testing.expect(std.mem.find(u8, trace, "PF_PREVIEW_VALUE_SENTINEL") == null);
 }
 
 test "consumeSseStream unfiltered trace excludes all payload keys and values" {
@@ -6483,15 +6483,15 @@ test "consumeSseStream unfiltered trace excludes all payload keys and values" {
     try debug_trace.configureForTest(alloc, trace_path);
 
     const payload =
-        "data: {\"type\":\"FX_UNKNOWN_TYPE_SENTINEL\",\"FX_DYNAMIC_KEY_SENTINEL\":\"FX_UNKNOWN_VALUE_SENTINEL\"}\n\n" ++
-        "data: {\"type\":\"text-delta\",\"id\":\"text\",\"delta\":\"FX_MODEL_TEXT_SENTINEL\"}\n\n" ++
+        "data: {\"type\":\"PF_UNKNOWN_TYPE_SENTINEL\",\"PF_DYNAMIC_KEY_SENTINEL\":\"PF_UNKNOWN_VALUE_SENTINEL\"}\n\n" ++
+        "data: {\"type\":\"text-delta\",\"id\":\"text\",\"delta\":\"PF_MODEL_TEXT_SENTINEL\"}\n\n" ++
         "data: {\"type\":\"tool-input-start\",\"id\":\"safe_call\",\"toolName\":\"read_file\"}\n\n" ++
         "data: {\"type\":\"tool-input-start\",\"id\":\"safe_call\",\"toolName\":\"grep_files\"}\n\n" ++
-        "data: {\"type\":\"tool-input-delta\",\"id\":\"safe_call\",\"delta\":\"{\\\"FX_ARGUMENT_KEY_SENTINEL\\\":\\\"FX_PATH_VALUE_SENTINEL\\\"}\"}\n\n" ++
+        "data: {\"type\":\"tool-input-delta\",\"id\":\"safe_call\",\"delta\":\"{\\\"PF_ARGUMENT_KEY_SENTINEL\\\":\\\"PF_PATH_VALUE_SENTINEL\\\"}\"}\n\n" ++
         "data: {\"type\":\"tool-input-end\",\"id\":\"safe_call\"}\n\n" ++
-        "data: {\"type\":\"tool-input-delta\",\"id\":\"safe_call\",\"delta\":\"FX_LATE_PREFIX_SENTINEL\"}\n\n" ++
-        "data: {\"type\":\"tool-call\",\"toolCallId\":\"safe_call\",\"toolName\":\"read_file\",\"input\":{\"FX_FINAL_KEY_SENTINEL\":\"FX_FINAL_VALUE_SENTINEL\"},\"providerExecuted\":true}\n\n" ++
-        "data: {\"type\":\"tool-result\",\"toolCallId\":\"safe_call\",\"result\":{\"FX_RESULT_KEY_SENTINEL\":\"FX_RESULT_VALUE_SENTINEL\"}}\n\n" ++
+        "data: {\"type\":\"tool-input-delta\",\"id\":\"safe_call\",\"delta\":\"PF_LATE_PREFIX_SENTINEL\"}\n\n" ++
+        "data: {\"type\":\"tool-call\",\"toolCallId\":\"safe_call\",\"toolName\":\"read_file\",\"input\":{\"PF_FINAL_KEY_SENTINEL\":\"PF_FINAL_VALUE_SENTINEL\"},\"providerExecuted\":true}\n\n" ++
+        "data: {\"type\":\"tool-result\",\"toolCallId\":\"safe_call\",\"result\":{\"PF_RESULT_KEY_SENTINEL\":\"PF_RESULT_VALUE_SENTINEL\"}}\n\n" ++
         "data: {\"type\":\"finish\",\"finishReason\":{\"unified\":\"tool-calls\"}}\n\n";
 
     const Noop = struct {
@@ -6503,7 +6503,7 @@ test "consumeSseStream unfiltered trace excludes all payload keys and values" {
     defer deinitGatewayCompletion(alloc, &completion);
     debug_trace.shutdown();
 
-    try std.testing.expectEqualStrings("FX_MODEL_TEXT_SENTINEL", completion.content.?);
+    try std.testing.expectEqualStrings("PF_MODEL_TEXT_SENTINEL", completion.content.?);
     try std.testing.expectEqual(
         types.AuthoritativeToolAdmission.admitted,
         types.authoritativeToolAdmission(completion),
@@ -6526,17 +6526,17 @@ test "consumeSseStream unfiltered trace excludes all payload keys and values" {
         try std.testing.expect(std.mem.find(u8, trace, metadata) != null);
     }
     inline for (.{
-        "FX_UNKNOWN_TYPE_SENTINEL",
-        "FX_DYNAMIC_KEY_SENTINEL",
-        "FX_UNKNOWN_VALUE_SENTINEL",
-        "FX_MODEL_TEXT_SENTINEL",
-        "FX_ARGUMENT_KEY_SENTINEL",
-        "FX_PATH_VALUE_SENTINEL",
-        "FX_LATE_PREFIX_SENTINEL",
-        "FX_FINAL_KEY_SENTINEL",
-        "FX_FINAL_VALUE_SENTINEL",
-        "FX_RESULT_KEY_SENTINEL",
-        "FX_RESULT_VALUE_SENTINEL",
+        "PF_UNKNOWN_TYPE_SENTINEL",
+        "PF_DYNAMIC_KEY_SENTINEL",
+        "PF_UNKNOWN_VALUE_SENTINEL",
+        "PF_MODEL_TEXT_SENTINEL",
+        "PF_ARGUMENT_KEY_SENTINEL",
+        "PF_PATH_VALUE_SENTINEL",
+        "PF_LATE_PREFIX_SENTINEL",
+        "PF_FINAL_KEY_SENTINEL",
+        "PF_FINAL_VALUE_SENTINEL",
+        "PF_RESULT_KEY_SENTINEL",
+        "PF_RESULT_VALUE_SENTINEL",
     }) |sentinel| {
         try std.testing.expect(std.mem.find(u8, trace, sentinel) == null);
     }
@@ -9079,8 +9079,8 @@ test "gateway chat request sends extended time and attribution headers" {
 
     if (fixture.failure) |err| return err;
     try std.testing.expectEqualStrings(user_agent, fixture.capturedHeaderValue("user-agent").?);
-    try std.testing.expectEqualStrings("https://github.com/vercel-labs/fx", fixture.capturedHeaderValue("http-referer").?);
-    try std.testing.expectEqualStrings("fx", fixture.capturedHeaderValue("x-title").?);
+    try std.testing.expectEqualStrings("https://paneflow.dev/agent", fixture.capturedHeaderValue("http-referer").?);
+    try std.testing.expectEqualStrings("pf", fixture.capturedHeaderValue("x-title").?);
     try std.testing.expectEqualStrings(
         vercel_gateway_extended_time_value,
         fixture.capturedHeaderValue(vercel_gateway_extended_time_header).?,

@@ -16,14 +16,14 @@ const tarball = resolve(process.argv[2]);
 const next15 = process.argv.includes("--next15");
 const webpack = next15 || process.argv.includes("--webpack");
 const bundlerArgs = webpack && !next15 ? ["--webpack"] : [];
-const artifactRoot = process.env.LIBFX_TEST_ARTIFACT_ROOT || tmpdir();
+const artifactRoot = process.env.LIBPF_TEST_ARTIFACT_ROOT || tmpdir();
 await mkdir(artifactRoot, { recursive: true });
-const root = await mkdtemp(resolve(artifactRoot, "libfx-next-"));
+const root = await mkdtemp(resolve(artifactRoot, "libpf-next-"));
 const app = resolve(root, "app");
 const fixture = fileURLToPath(new URL("./next/", import.meta.url));
 const token = randomUUID();
 const env = { ...process.env, NODE_OPTIONS: "", NODE_PATH: "", NEXT_TELEMETRY_DISABLED: "1", AI_GATEWAY_API_KEY: "",
-  LIBFX_LIVE: "0", LIBFX_SMOKE_TOKEN: token, LIBFX_TEST_MODEL: "" };
+  LIBPF_LIVE: "0", LIBPF_SMOKE_TOKEN: token, LIBPF_TEST_MODEL: "" };
 const servers = new Set();
 const results = [];
 let failure;
@@ -76,11 +76,11 @@ async function stop(server) {
 }
 
 async function exercise(server, stage) {
-  const unauthorized = await fetch(`${server.url}/api/fx`);
+  const unauthorized = await fetch(`${server.url}/api/pf`);
   assert.equal(unauthorized.status, 401);
   for (const backend of ["native", "auto"]) {
     for (const scenario of ["host", "mcp", "error", "cancel", "resume"]) {
-      const response = await fetch(`${server.url}/api/fx?backend=${backend}&scenario=${scenario}`, {
+      const response = await fetch(`${server.url}/api/pf?backend=${backend}&scenario=${scenario}`, {
         headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(60_000),
       });
       const result = await response.json();
@@ -96,7 +96,7 @@ async function exercise(server, stage) {
   }
   // Next's standalone tracer excludes .wasm assets; native selection above must not rely on that fallback.
   if (stage === "start" || (stage === "dev" && next15)) {
-    const response = await fetch(`${server.url}/api/fx?backend=wasm&scenario=startup`, {
+    const response = await fetch(`${server.url}/api/pf?backend=wasm&scenario=startup`, {
       headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(60_000),
     });
     const result = await response.json();
@@ -108,7 +108,7 @@ async function exercise(server, stage) {
     console.log(`${stage}/wasm/default asset startup passed`);
   }
   const concurrent = await Promise.all(Array.from({ length: 8 }, async () => {
-    const response = await fetch(`${server.url}/api/fx?backend=native`, {
+    const response = await fetch(`${server.url}/api/pf?backend=native`, {
       headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(60_000),
     });
     const result = await response.json();
@@ -121,20 +121,20 @@ async function exercise(server, stage) {
 
 async function assertBundledNativeAssets(buildDir) {
   if (!webpack) return;
-  const routeDir = resolve(buildDir, "server/app/api/fx");
+  const routeDir = resolve(buildDir, "server/app/api/pf");
   const trace = JSON.parse(await readFile(resolve(routeDir, "route.js.nft.json"), "utf8"));
   for (const platform of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]) {
-    const file = trace.files.find((path) => path.includes(`/static/media/libfx.${platform}.`) && path.endsWith(".node"));
-    assert.ok(file, `webpack must trace the emitted ${platform} addon, not externalize libfx`);
+    const file = trace.files.find((path) => path.includes(`/static/media/libpf.${platform}.`) && path.endsWith(".node"));
+    assert.ok(file, `webpack must trace the emitted ${platform} addon, not externalize libpf`);
     await access(resolve(routeDir, file));
   }
 }
 
 try {
   await cp(fixture, app, { recursive: true, filter: (path) => !["node_modules", ".next"].includes(path.split("/").at(-1)) });
-  await cp(tarball, resolve(app, "libfx.tgz"));
+  await cp(tarball, resolve(app, "libpf.tgz"));
   const manifest = JSON.parse(await readFile(resolve(app, "package.json"), "utf8"));
-  manifest.dependencies.libfx = "file:./libfx.tgz";
+  manifest.dependencies.libpf = "file:./libpf.tgz";
   if (next15) manifest.dependencies.next = "15.5.25";
   await writeFile(resolve(app, "package.json"), JSON.stringify(manifest, null, 2));
   await run(process.env.PNPM_BIN || "pnpm", ["install", "--no-frozen-lockfile", "--ignore-scripts"], app, "install");
@@ -142,7 +142,7 @@ try {
   if (!next15) {
     await run(process.execPath, [
       fileURLToPath(new URL("./test-node-tracing.mjs", import.meta.url)),
-      dirname(require.resolve("libfx")),
+      dirname(require.resolve("libpf")),
       require.resolve("next/dist/compiled/@vercel/nft"),
     ], app, "node-tracing");
   }

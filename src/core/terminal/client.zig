@@ -542,9 +542,9 @@ const RequestWorker = struct {
 
 fn maybeDelayRequestForTest(worker: *RequestWorker) void {
     const variable = switch (worker.intent.request.value) {
-        .start => "FX_TERMINAL_TEST_CLIENT_REQUEST_DELAY_MS",
+        .start => "PF_TERMINAL_TEST_CLIENT_REQUEST_DELAY_MS",
         .write => |request| if (request.lease == .acquire)
-            "FX_TERMINAL_TEST_TAKEOVER_ACQUIRE_DELAY_MS"
+            "PF_TERMINAL_TEST_TAKEOVER_ACQUIRE_DELAY_MS"
         else
             return,
         else => return,
@@ -565,7 +565,7 @@ fn maybeDelayRequestForTest(worker: *RequestWorker) void {
 }
 
 fn takeoverWorkerStartFailureRequested(worker: *const RequestWorker) bool {
-    const requested = io_mod.getenv("FX_TERMINAL_TEST_TAKEOVER_FAILURE") orelse
+    const requested = io_mod.getenv("PF_TERMINAL_TEST_TAKEOVER_FAILURE") orelse
         return false;
     if (!std.mem.eql(u8, requested, "worker_start")) return false;
     return switch (worker.intent.request.value) {

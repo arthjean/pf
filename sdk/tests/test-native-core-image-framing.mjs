@@ -4,17 +4,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const addon = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libfx.node"));
-const home = await mkdtemp(join(tmpdir(), "fx-native-image-framing-"));
+const addon = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libpf.node"));
+const home = await mkdtemp(join(tmpdir(), "pf-native-image-framing-"));
 const signature = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP0cAAAAASUVORK5CYII=", "base64");
 const image = Buffer.alloc(3.5 * 1024 * 1024 * 3 / 4);
 signature.copy(image);
 const data = image.toString("base64");
 const images = [1, 2].map(() => ({ type: "image", mimeType: "image/png", data }));
-const result = { type: "libfx.tool-result", text: "two screenshots", images };
+const result = { type: "libpf.tool-result", text: "two screenshots", images };
 assert.equal(Buffer.byteLength(JSON.stringify({ text: result.text, images })), 7_340_169);
 let requests = 0;
 let toolCalls = 0;
@@ -26,7 +26,7 @@ const sse = (...events) => new Response(
 );
 
 try {
-  agent = await createFxAgent({
+  agent = await createPfAgent({
     backend: "native",
     nativeAddon: addon,
     home,

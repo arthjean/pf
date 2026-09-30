@@ -82,20 +82,20 @@ jobs:
 
       - name: Package
         run: |
-          python3 -c 'import pathlib; n = pathlib.Path("zig-out/bin/fx").stat().st_size; print(f"linux executable: {n:,} bytes ({n / 1048576:.6f} MiB)")' >> "$GITHUB_STEP_SUMMARY"
-          package_dir="$RUNNER_TEMP/fx-package-${{ matrix.name }}"
+          python3 -c 'import pathlib; n = pathlib.Path("zig-out/bin/pf").stat().st_size; print(f"linux executable: {n:,} bytes ({n / 1048576:.6f} MiB)")' >> "$GITHUB_STEP_SUMMARY"
+          package_dir="$RUNNER_TEMP/pf-package-${{ matrix.name }}"
           mkdir -p "$package_dir"
-          cp zig-out/bin/fx LICENSE THIRD_PARTY_NOTICES.md "$package_dir/"
-          tar -czf fx-${{ matrix.name }}.tar.gz -C "$package_dir" fx LICENSE THIRD_PARTY_NOTICES.md
-          sha256sum fx-${{ matrix.name }}.tar.gz > fx-${{ matrix.name }}.tar.gz.sha256
+          cp zig-out/bin/pf LICENSE THIRD_PARTY_NOTICES.md "$package_dir/"
+          tar -czf pf-${{ matrix.name }}.tar.gz -C "$package_dir" pf LICENSE THIRD_PARTY_NOTICES.md
+          sha256sum pf-${{ matrix.name }}.tar.gz > pf-${{ matrix.name }}.tar.gz.sha256
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: fx-${{ matrix.name }}
+          name: pf-${{ matrix.name }}
           path: |
-            fx-${{ matrix.name }}.tar.gz
-            fx-${{ matrix.name }}.tar.gz.sha256
+            pf-${{ matrix.name }}.tar.gz
+            pf-${{ matrix.name }}.tar.gz.sha256
 
   build-macos-x86_64:
     needs: check-version
@@ -121,31 +121,31 @@ jobs:
           APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-        run: scripts/sign-and-notarize-macos.sh zig-out/bin/fx
+        run: scripts/sign-and-notarize-macos.sh zig-out/bin/pf
 
       - name: Verify notarized Intel binary
         if: github.event_name == 'workflow_dispatch' && inputs.validate_only
         run: |
-          codesign --verify --strict --check-notarization -R=notarized ./zig-out/bin/fx
-          ./zig-out/bin/fx --version
-          ./zig-out/bin/fx help
+          codesign --verify --strict --check-notarization -R=notarized ./zig-out/bin/pf
+          ./zig-out/bin/pf --version
+          ./zig-out/bin/pf help
 
       - name: Package
         run: |
-          python3 -c 'import pathlib; n = pathlib.Path("zig-out/bin/fx").stat().st_size; print(f"macOS Intel signed executable: {n:,} bytes ({n / 1048576:.6f} MiB)")' >> "$GITHUB_STEP_SUMMARY"
-          package_dir="$RUNNER_TEMP/fx-package-macos-x86_64"
+          python3 -c 'import pathlib; n = pathlib.Path("zig-out/bin/pf").stat().st_size; print(f"macOS Intel signed executable: {n:,} bytes ({n / 1048576:.6f} MiB)")' >> "$GITHUB_STEP_SUMMARY"
+          package_dir="$RUNNER_TEMP/pf-package-macos-x86_64"
           mkdir -p "$package_dir"
-          cp zig-out/bin/fx LICENSE THIRD_PARTY_NOTICES.md "$package_dir/"
-          tar -czf fx-macos-x86_64.tar.gz -C "$package_dir" fx LICENSE THIRD_PARTY_NOTICES.md
-          shasum -a 256 fx-macos-x86_64.tar.gz > fx-macos-x86_64.tar.gz.sha256
+          cp zig-out/bin/pf LICENSE THIRD_PARTY_NOTICES.md "$package_dir/"
+          tar -czf pf-macos-x86_64.tar.gz -C "$package_dir" pf LICENSE THIRD_PARTY_NOTICES.md
+          shasum -a 256 pf-macos-x86_64.tar.gz > pf-macos-x86_64.tar.gz.sha256
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: fx-macos-x86_64
+          name: pf-macos-x86_64
           path: |
-            fx-macos-x86_64.tar.gz
-            fx-macos-x86_64.tar.gz.sha256
+            pf-macos-x86_64.tar.gz
+            pf-macos-x86_64.tar.gz.sha256
 
   build-macos-arm64:
     needs: check-version
@@ -176,13 +176,13 @@ jobs:
         with:
           artifact-ids: ${{ needs.build-macos-arm64.outputs.artifact-id }}
           merge-multiple: true
-          path: ${{ runner.temp }}/fx-pgso-aggregate
+          path: ${{ runner.temp }}/pf-pgso-aggregate
 
       - name: Restore executable mode
-        run: chmod +x "$RUNNER_TEMP/fx-pgso-aggregate/candidate/fx"
+        run: chmod +x "$RUNNER_TEMP/pf-pgso-aggregate/candidate/pf"
 
       - name: Confirm release eligibility
-        run: python3 -m scripts.pgso report --output-dir "$RUNNER_TEMP/fx-pgso-aggregate" >/dev/null
+        run: python3 -m scripts.pgso report --output-dir "$RUNNER_TEMP/pf-pgso-aggregate" >/dev/null
 
       - name: Sign and notarize stable release candidate
         env:
@@ -194,52 +194,52 @@ jobs:
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: |
           if [[ "$VALIDATE_ONLY" == true ]]; then
-            control_dir="$RUNNER_TEMP/fx-signing-control"
+            control_dir="$RUNNER_TEMP/pf-signing-control"
             mkdir -p "$control_dir"
-            cp "$RUNNER_TEMP/fx-pgso-aggregate/candidate/fx" "$control_dir/fx"
-            scripts/sign-and-notarize-macos.sh "$control_dir/fx" 4096
-            scripts/sign-and-notarize-macos.sh "$RUNNER_TEMP/fx-pgso-aggregate/candidate/fx" 16384
+            cp "$RUNNER_TEMP/pf-pgso-aggregate/candidate/pf" "$control_dir/pf"
+            scripts/sign-and-notarize-macos.sh "$control_dir/pf" 4096
+            scripts/sign-and-notarize-macos.sh "$RUNNER_TEMP/pf-pgso-aggregate/candidate/pf" 16384
           else
-            scripts/sign-and-notarize-macos.sh "$RUNNER_TEMP/fx-pgso-aggregate/candidate/fx"
+            scripts/sign-and-notarize-macos.sh "$RUNNER_TEMP/pf-pgso-aggregate/candidate/pf"
           fi
 
       - name: Verify notarized arm64 binaries
         if: github.event_name == 'workflow_dispatch' && inputs.validate_only
         run: |
-          for binary in "$RUNNER_TEMP/fx-signing-control/fx" "$RUNNER_TEMP/fx-pgso-aggregate/candidate/fx"; do
+          for binary in "$RUNNER_TEMP/pf-signing-control/pf" "$RUNNER_TEMP/pf-pgso-aggregate/candidate/pf"; do
             codesign --verify --strict --check-notarization -R=notarized "$binary"
             "$binary" --version
             "$binary" help
             python3 -c 'import pathlib, sys; n = pathlib.Path(sys.argv[1]).stat().st_size; print(f"{sys.argv[1]}: {n:,} bytes ({n / 1048576:.6f} MiB)")' "$binary" >> "$GITHUB_STEP_SUMMARY"
             shasum -a 256 "$binary" >> "$GITHUB_STEP_SUMMARY"
           done
-          tar -czf "$RUNNER_TEMP/fx-signing-control.tar.gz" -C "$RUNNER_TEMP/fx-signing-control" fx
+          tar -czf "$RUNNER_TEMP/pf-signing-control.tar.gz" -C "$RUNNER_TEMP/pf-signing-control" pf
 
       - name: Upload arm64 signing control
         if: github.event_name == 'workflow_dispatch' && inputs.validate_only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signing-control-macos-arm64
-          path: ${{ runner.temp }}/fx-signing-control.tar.gz
+          path: ${{ runner.temp }}/pf-signing-control.tar.gz
           if-no-files-found: error
 
       - name: Package stable release candidate
         run: |
-          archive="$RUNNER_TEMP/fx-macos-aarch64.tar.gz"
-          package_dir="$RUNNER_TEMP/fx-release-package"
+          archive="$RUNNER_TEMP/pf-macos-aarch64.tar.gz"
+          package_dir="$RUNNER_TEMP/pf-release-package"
           mkdir -p "$package_dir"
-          cp "$RUNNER_TEMP/fx-pgso-aggregate/candidate/fx" LICENSE THIRD_PARTY_NOTICES.md "$package_dir/"
-          tar -czf "$archive" -C "$package_dir" fx LICENSE THIRD_PARTY_NOTICES.md
+          cp "$RUNNER_TEMP/pf-pgso-aggregate/candidate/pf" LICENSE THIRD_PARTY_NOTICES.md "$package_dir/"
+          tar -czf "$archive" -C "$package_dir" pf LICENSE THIRD_PARTY_NOTICES.md
           cd "$RUNNER_TEMP"
-          shasum -a 256 fx-macos-aarch64.tar.gz > fx-macos-aarch64.tar.gz.sha256
+          shasum -a 256 pf-macos-aarch64.tar.gz > pf-macos-aarch64.tar.gz.sha256
 
       - name: Upload stable release artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: fx-macos-aarch64
+          name: pf-macos-aarch64
           path: |
-            ${{ runner.temp }}/fx-macos-aarch64.tar.gz
-            ${{ runner.temp }}/fx-macos-aarch64.tar.gz.sha256
+            ${{ runner.temp }}/pf-macos-aarch64.tar.gz
+            ${{ runner.temp }}/pf-macos-aarch64.tar.gz.sha256
           if-no-files-found: error
 
   release:
@@ -255,7 +255,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: fx-*
+          pattern: pf-*
           merge-multiple: true
 
       - name: Create git tag
@@ -283,8 +283,8 @@ jobs:
           tag_name: ${{ needs.check-version.outputs.version }}
           body_path: /tmp/release-notes.md
           files: |
-            fx-*.tar.gz
-            fx-*.tar.gz.sha256
+            pf-*.tar.gz
+            pf-*.tar.gz.sha256
 
       - name: Publish to CDN
         env:
@@ -295,7 +295,7 @@ jobs:
           [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           CDN_BASE="cli"
 
-          for FILE in fx-*.tar.gz fx-*.tar.gz.sha256; do
+          for FILE in pf-*.tar.gz pf-*.tar.gz.sha256; do
             [ -f "$FILE" ] || continue
             CONTENT_TYPE="application/octet-stream"
             [[ "$FILE" == *.sha256 ]] && CONTENT_TYPE="text/plain"

@@ -19,9 +19,9 @@ const osc8_prefix = "\x1b]8;;";
 const osc8_terminator = "\x1b\\";
 const osc8_close = osc8_prefix ++ osc8_terminator;
 
-var accent_style: []const u8 = shared_theme.fx_dark.user_card_accent_style;
+var accent_style: []const u8 = shared_theme.pf_dark.user_card_accent_style;
 
-var marker_style: []const u8 = shared_theme.fx_dark.user_card_marker_style;
+var marker_style: []const u8 = shared_theme.pf_dark.user_card_marker_style;
 
 pub fn setStyle(light: bool, terminal_bg: ?Rgb) void {
     applyTheme(shared_theme.builtin(light), terminal_bg);

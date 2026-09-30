@@ -142,11 +142,11 @@ test "grid cell comparison resolves hyperlink URI instead of numeric id" {
 test "grid cell comparison distinguishes OSC 8 identities on the same URI" {
     var first = try vt_emulator.Grid.init(std.testing.allocator, 8, 1);
     defer first.deinit();
-    try first.feed("\x1b]8;id=fx-1;https://example.com\x1b\\X\x1b]8;;\x1b\\");
+    try first.feed("\x1b]8;id=pf-1;https://example.com\x1b\\X\x1b]8;;\x1b\\");
 
     var second = try vt_emulator.Grid.init(std.testing.allocator, 8, 1);
     defer second.deinit();
-    try second.feed("\x1b]8;id=fx-2;https://example.com\x1b\\X\x1b]8;;\x1b\\");
+    try second.feed("\x1b]8;id=pf-2;https://example.com\x1b\\X\x1b]8;;\x1b\\");
 
     try std.testing.expect(!gridCellsEqual(first, first.cellAt(1, 1).?, second, second.cellAt(1, 1).?));
 }

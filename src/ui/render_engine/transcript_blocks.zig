@@ -3077,7 +3077,7 @@ test "semantic notice glyph grid regression locks tone markers and lowercase top
     }{
         .{ .tone = .neutral, .topic = "session", .body = "renamed to \"custom models\"", .row_text = "* session: renamed to \"custom models\"", .label_fg = 7 },
         .{ .tone = .information, .topic = "background", .body = "command #7 started", .row_text = "i background: command #7 started", .label_fg = 6 },
-        .{ .tone = .success, .topic = "upgrade", .body = "fx has been updated to v9.9.9", .row_text = "✓ upgrade: fx has been updated to v9.9.9", .label_fg = 2 },
+        .{ .tone = .success, .topic = "upgrade", .body = "pf has been updated to v9.9.9", .row_text = "✓ upgrade: pf has been updated to v9.9.9", .label_fg = 2 },
         .{ .tone = .warning, .topic = "skills", .body = "1 discovery issue", .row_text = "! skills: 1 discovery issue", .label_fg = 3 },
         .{ .tone = .@"error", .topic = "session", .body = "usage: /rename <title>", .row_text = "✗ session: usage: /rename <title>", .label_fg = 1 },
         .{ .tone = .cancelled, .topic = "system", .body = "cancelled", .row_text = "⊘ system: cancelled", .label_fg = 8 },
@@ -3134,7 +3134,7 @@ test "semantic notice topics never render the tool-activity bullet or forced cap
 
 test "semantic notice keeps an OSC 8 target hidden and clickable" {
     const alloc = std.testing.allocator;
-    const url = "https://fx.sh/feedback";
+    const url = "https://paneflow.dev/agent/feedback";
     const body = try std.fmt.allocPrint(
         alloc,
         "\x1b]8;;{s}\x1b\\Open feedback form\x1b]8;;\x1b\\.",
@@ -4204,13 +4204,13 @@ test "renderEntriesToBytes keeps the assistant gutter outside an OSC 8 link" {
         &entries,
         alloc,
         1,
-        "\x1b]8;id=fx-1;https://example.com\x1b\\\x1b[4mabcdef\x1b[24m\x1b]8;;\x1b\\",
+        "\x1b]8;id=pf-1;https://example.com\x1b\\\x1b[4mabcdef\x1b[24m\x1b]8;;\x1b\\",
     );
 
     const out = try renderEntriesToBytes(alloc, entries.items, 5, .{});
     defer alloc.free(out);
-    try std.testing.expect(std.mem.startsWith(u8, out, "  \x1b[4m\x1b]8;id=fx-1;https://example.com\x1b\\abc"));
-    try std.testing.expect(std.mem.find(u8, out, "\x1b[0m\x1b]8;;\x1b\\\n  \x1b[4m\x1b]8;id=fx-1") != null);
+    try std.testing.expect(std.mem.startsWith(u8, out, "  \x1b[4m\x1b]8;id=pf-1;https://example.com\x1b\\abc"));
+    try std.testing.expect(std.mem.find(u8, out, "\x1b[0m\x1b]8;;\x1b\\\n  \x1b[4m\x1b]8;id=pf-1") != null);
 }
 
 test "renderEntriesToBytes reflows an inline image label at narrow widths" {

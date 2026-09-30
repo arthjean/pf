@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, runFx } from "../evals/eval-helpers";
+import { PF_BIN, runPf } from "../evals/eval-helpers";
 import {
   composerContains,
   FAKE_GATEWAY_MODEL,
@@ -65,16 +65,16 @@ afterEach(async () => {
 function createIsolatedRoot(): IsolatedRoot {
   const tempRoot = existsSync("/private/tmp") ? "/private/tmp" : tmpdir();
   const root = realpathSync(
-    mkdtempSync(join(tempRoot, "fx-file-approval-e2e-")),
+    mkdtempSync(join(tempRoot, "pf-file-approval-e2e-")),
   );
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   const external = join(root, "external");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   mkdirSync(external, { recursive: true });
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({
       sandbox: "none",
       permission_mode: "ask",
@@ -99,11 +99,11 @@ function gatewayEnv(
     HOME: root.home,
     AI_GATEWAY_API_KEY: "fake-file-approval-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_GATEWAY_BASE_URL: gateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_MODEL: FAKE_GATEWAY_MODEL,
-    FX_PERMISSION_MODE: "ask",
-    FX_AUTO_UPGRADE: "0",
+    PF_GATEWAY_BASE_URL: gateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_MODEL: FAKE_GATEWAY_MODEL,
+    PF_PERMISSION_MODE: "ask",
+    PF_AUTO_UPGRADE: "0",
     NO_COLOR: "1",
     ...overrides,
   };
@@ -118,7 +118,7 @@ async function launch(
   const stderrPath = join(root.root, "stderr.log");
   writeFileSync(stderrPath, "");
   activeSession = await TmuxSession.create({
-    cmd: FX_BIN,
+    cmd: PF_BIN,
     cwd: root.workspace,
     env: gatewayEnv(root, gateway, envOverrides),
     stderrPath,
@@ -188,7 +188,7 @@ function expectAtomicApprovalExit(tapePath: string, frameStart: number) {
 }
 
 function sessionIdFromHome(root: IsolatedRoot): string {
-  const sessionsRoot = join(root.home, ".fx", "sessions");
+  const sessionsRoot = join(root.home, ".pf", "sessions");
   const sessionIds = readdirSync(sessionsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== "latest")
     .map((entry) => entry.name);
@@ -262,7 +262,7 @@ function expectApprovalControls(
   for (const oldCopy of [
     "1. Yes, proceed",
     "2. Yes, and don't ask again",
-    "3. No, and tell fx",
+    "3. No, and tell pf",
     "This action changes files in your workspace.",
   ]) {
     expect(block).not.toContain(oldCopy);
@@ -365,7 +365,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
       const root = createIsolatedRoot();
       const target = join(root.workspace, "target.txt");
       const tracePath = join(root.root, "trace.log");
-      const tapePath = join(root.root, "approval-resize.fxtape");
+      const tapePath = join(root.root, "approval-resize.pftape");
       writeFileSync(target, "original line\n");
       let releaseEdit!: () => void;
       const editReady = new Promise<void>((resolve) => { releaseEdit = resolve; });
@@ -385,9 +385,9 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         width: 120,
         height: 36,
       }, {
-        FX_RECORD: tapePath,
-        FX_TRACE_LOG: tracePath,
-        FX_TRACE_SCOPES: "agent,permission,frame_commit,scroll",
+        PF_RECORD: tapePath,
+        PF_TRACE_LOG: tracePath,
+        PF_TRACE_SCOPES: "agent,permission,frame_commit,scroll",
       });
       const expectCompleteHistory = async () => {
         const text = (await session.captureFullScrollback()).replace(/\s+/g, "");
@@ -491,7 +491,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
       const root = createIsolatedRoot();
       const target = join(root.workspace, "pacer-gate.txt");
       const marker = "PENDING-FILE-APPROVAL-PACER-SENTINEL";
-      const tapePath = join(root.root, "pacer-gate.fxtape");
+      const tapePath = join(root.root, "pacer-gate.pftape");
       const gateway = startFakeGateway([
         fakeGatewaySse([
           {
@@ -519,7 +519,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         root,
         gateway,
         {},
-        { FX_RECORD: tapePath, FX_SYNC_UPDATES: "1" },
+        { PF_RECORD: tapePath, PF_SYNC_UPDATES: "1" },
       );
 
       await session.sendText("Run the file approval pacing fixture.");
@@ -577,7 +577,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
     "file approval keeps fragmented mouse scrolling inside the review",
     async () => {
       const root = createIsolatedRoot();
-      const tapePath = join(root.root, "full-review.fxtape");
+      const tapePath = join(root.root, "full-review.pftape");
       const tracePath = join(root.root, "full-review.trace.log");
       const injectionLogPath = join(root.root, "full-review.injected-input.log");
       const lines = Array.from(
@@ -605,10 +605,10 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         gateway,
         { width: 80, height: 14 },
         {
-          FX_RECORD: tapePath,
-          FX_RECORD_INPUT: "1",
-          FX_TRACE_LOG: tracePath,
-          FX_TRACE_SCOPES: "input,permission",
+          PF_RECORD: tapePath,
+          PF_RECORD_INPUT: "1",
+          PF_TRACE_LOG: tracePath,
+          PF_TRACE_SCOPES: "input,permission",
         },
       );
 
@@ -719,7 +719,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
       const scrollback = await session.captureFullScrollback();
       expect(scrollback).not.toContain("Apply this change?");
       expect(scrollback).not.toContain("+ review-line-15");
-      const replay = await runFx(["replay", tapePath, "--frames"], {
+      const replay = await runPf(["replay", tapePath, "--frames"], {
         cwd: root.workspace,
         env: { HOME: root.home },
       });
@@ -809,7 +809,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
     "short file approval captures wheel input without moving the selected choice",
     async () => {
       const root = createIsolatedRoot();
-      const tapePath = join(root.root, "short-review.fxtape");
+      const tapePath = join(root.root, "short-review.pftape");
       const gateway = startFakeGateway([
         toolCall("short_review", "write_file", {
           path: "short-review.txt",
@@ -821,7 +821,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         root,
         gateway,
         { width: 80, height: 30 },
-        { FX_RECORD: tapePath, FX_SYNC_UPDATES: "1" },
+        { PF_RECORD: tapePath, PF_SYNC_UPDATES: "1" },
       );
 
       await session.sendText("Create the short review fixture.");
@@ -903,7 +903,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         required: ["amended-review.txt", "+ amended review content"],
       });
       await session.sendKeys("Tab");
-      await session.waitForText("Apply once, and tell fx what to do next", TIMEOUT);
+      await session.waitForText("Apply once, and tell pf what to do next", TIMEOUT);
       await session.sendLiteralText(feedback);
       await session.waitForText(`Apply once, ${feedback}`, TIMEOUT);
 
@@ -935,14 +935,14 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
 
       const sessionId = sessionIdFromHome(root);
       const events = readFileSync(
-        join(root.home, ".fx", "sessions", sessionId, "events.jsonl"),
+        join(root.home, ".pf", "sessions", sessionId, "events.jsonl"),
         "utf8",
       );
       expect(events).toContain('"permission_feedback"');
       expect(events).toContain(feedback);
 
       const resumedGateway = startFakeGateway([finalText("amended review resume complete")]);
-      const resumed = await runFx(
+      const resumed = await runPf(
         [
           "ask",
           "--auto",
@@ -1100,7 +1100,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
     async () => {
       const root = createIsolatedRoot();
       const target = join(root.workspace, "cancelled.txt");
-      const tapePath = join(root.root, "cancelled.fxtape");
+      const tapePath = join(root.root, "cancelled.pftape");
       const gateway = startFakeGateway([
         toolCall("cancel_write", "write_file", {
           path: "cancelled.txt",
@@ -1112,7 +1112,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         root,
         gateway,
         {},
-        { FX_RECORD: tapePath, FX_SYNC_UPDATES: "1" },
+        { PF_RECORD: tapePath, PF_SYNC_UPDATES: "1" },
       );
 
       await launched.session.sendText("Create the cancellation fixture.");
@@ -1189,7 +1189,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
           root,
           gateway,
           { width: 120, height: 40 },
-          { FX_THEME: "dark", NO_COLOR: undefined },
+          { PF_THEME: "dark", NO_COLOR: undefined },
         );
 
         await launched.session.sendText(`Create the ${testCase.name} marker fixture.`);
@@ -1231,7 +1231,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         const content = "private-value\n";
         writeFileSync(target, content);
         writeFileSync(
-          join(root.home, ".fx", "settings.json"),
+          join(root.home, ".pf", "settings.json"),
           JSON.stringify({
             sandbox: "none",
             permission: {
@@ -1336,7 +1336,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
           root,
           gateway,
           { width: 120, height: 40 },
-          { FX_THEME: theme, NO_COLOR: undefined },
+          { PF_THEME: theme, NO_COLOR: undefined },
         );
 
         await launched.session.sendText(
@@ -1384,13 +1384,13 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         const target = join(root.workspace, "marker.txt");
         writeFileSync(target, "before\n");
         if (selection === "named") {
-          mkdirSync(join(root.home, ".fx", "themes"), { recursive: true });
-          writeFileSync(join(root.home, ".fx", "themes", "marker-dark.json"), JSON.stringify({
+          mkdirSync(join(root.home, ".pf", "themes"), { recursive: true });
+          writeFileSync(join(root.home, ".pf", "themes", "marker-dark.json"), JSON.stringify({
             name: "Marker Dark",
             type: "dark",
             colors: { diff_added_marker: "#30A46C", diff_removed_marker: "#E5484D" },
           }));
-          writeFileSync(join(root.home, ".fx", "settings.json"), JSON.stringify({
+          writeFileSync(join(root.home, ".pf", "settings.json"), JSON.stringify({
             sandbox: "none",
             permission_mode: "ask",
             permission: {},
@@ -1406,7 +1406,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
           finalText(`${selection} marker complete`),
         ]);
         const { session, stderrPath } = await launch(root, gateway, {}, {
-          FX_THEME: selection === "pinned" ? "dark" : undefined,
+          PF_THEME: selection === "pinned" ? "dark" : undefined,
           NO_COLOR: undefined,
           COLORTERM: undefined,
           TERM_PROGRAM: "Apple_Terminal",
@@ -1505,9 +1505,9 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
       const stderrPath = join(root.root, "stderr.log");
       writeFileSync(stderrPath, "");
       activeSession = await TmuxSession.create({
-        cmd: FX_BIN,
+        cmd: PF_BIN,
         cwd: root.workspace,
-        env: { ...gatewayEnv(root, gateway), FX_DEBUG_RECORD: "1" },
+        env: { ...gatewayEnv(root, gateway), PF_DEBUG_RECORD: "1" },
         stderrPath,
         width: 180,
         height: 40,
@@ -1517,7 +1517,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
       await session.waitForText("visual terminal capture:", TIMEOUT);
       const recording = (await session.capturePaneGrid()).join("\n");
       const tapePath = recording.match(
-        /visual terminal capture:\s*(\S+\.fxtape)/,
+        /visual terminal capture:\s*(\S+\.pftape)/,
       )?.[1];
       if (!tapePath) {
         throw new Error(`recording path was not printed:\n${recording}`);
@@ -1589,7 +1589,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
       );
       expectCleanStderr(stderrPath);
 
-      const replay = await runFx(["replay", tapePath, "--frames"], {
+      const replay = await runPf(["replay", tapePath, "--frames"], {
         cwd: root.workspace,
         env: { HOME: root.home },
       });
@@ -1617,12 +1617,12 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
         }),
         finalText("WRAP_DIFF_COMPLETE"),
       ]);
-      const tapePath = join(root.root, "diff-wrap.fxtape");
+      const tapePath = join(root.root, "diff-wrap.pftape");
       const { session, stderrPath } = await launch(
         root,
         gateway,
         { width: 72, height: 40 },
-        { FX_RECORD: tapePath },
+        { PF_RECORD: tapePath },
       );
 
       await session.sendText("Replace the wrapped fixture value.");
@@ -1657,7 +1657,7 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
 
       expect(session.isAlive()).toBe(true);
       expectCleanStderr(stderrPath);
-      const replay = await runFx(["replay", tapePath, "--frames"], {
+      const replay = await runPf(["replay", tapePath, "--frames"], {
         cwd: root.workspace,
         env: { HOME: root.home },
       });
@@ -1942,8 +1942,8 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
     "hostile path stays encoded through approval transcript changes and undo",
     async () => {
       const root = createIsolatedRoot();
-      const hostileName = "name\x1b]2;FX_PWN\x07\nfile.txt";
-      const encodedName = "name\\x1b]2;FX_PWN\\x07\\x0afile.txt";
+      const hostileName = "name\x1b]2;PF_PWN\x07\nfile.txt";
+      const encodedName = "name\\x1b]2;PF_PWN\\x07\\x0afile.txt";
       const target = join(root.workspace, hostileName);
       const gateway = startFakeGateway([
         toolCall("hostile_write", "write_file", {
@@ -1969,12 +1969,12 @@ describe.skipIf(!tmuxAvailable())("tui: file permissions", () => {
 
       expect(readFileSync(target, "utf8")).toBe("hostile\n");
       expect(settled).toContain(encodedName);
-      expect(settled).not.toContain("\x1b]2;FX_PWN\x07");
+      expect(settled).not.toContain("\x1b]2;PF_PWN\x07");
 
       await session.sendText("/undo");
       settled = await session.waitForText("Deleted", TIMEOUT);
       expect(settled).toContain(encodedName);
-      expect(settled).not.toContain("\x1b]2;FX_PWN\x07");
+      expect(settled).not.toContain("\x1b]2;PF_PWN\x07");
       expect(existsSync(target)).toBe(false);
       expectCleanStderr(stderrPath);
     },

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runFx } from "../evals/eval-helpers";
+import { runPf } from "../evals/eval-helpers";
 import { fakeGatewayFinalText, TmuxSession } from "./tmux-helpers";
 
 const TIMEOUT = 30_000;
@@ -23,7 +23,7 @@ describe("host-managed authentication", () => {
   let codexUnauthorizedResponses = 0;
 
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), "fx-host-managed-auth-"));
+    root = mkdtempSync(join(tmpdir(), "pf-host-managed-auth-"));
     home = join(root, "home");
     workspace = join(root, "workspace");
     mkdirSync(home, { recursive: true });
@@ -118,42 +118,42 @@ describe("host-managed authentication", () => {
       HOME: home,
       AI_GATEWAY_API_KEY: undefined,
       VERCEL_OIDC_TOKEN: undefined,
-      FX_AUTH_MODE: "host-managed",
-      FX_AUTO_UPGRADE: "0",
-      FX_DISABLE_KEYCHAIN: "1",
-      FX_SKIP_ONBOARDING: "1",
-      FX_SOUND: "0",
-      FX_E2E_GATEWAY_MODELS_URL: `${baseUrl}/gateway/models`,
-      FX_E2E_GATEWAY_CHAT_URL: `${baseUrl}/gateway/responses`,
-      FX_E2E_OPENAI_CODEX_MODELS_URL: `${baseUrl}/codex/models`,
-      FX_E2E_OPENAI_CODEX_RESPONSES_URL: `${baseUrl}/codex/responses`,
-      FX_E2E_XAI_GROK_MODELS_URL: `${baseUrl}/grok/models`,
-      FX_E2E_XAI_GROK_MODALITIES_URL: `${baseUrl}/grok/modalities`,
-      FX_E2E_XAI_GROK_RESPONSES_URL: `${baseUrl}/grok/responses`,
+      PF_AUTH_MODE: "host-managed",
+      PF_AUTO_UPGRADE: "0",
+      PF_DISABLE_KEYCHAIN: "1",
+      PF_SKIP_ONBOARDING: "1",
+      PF_SOUND: "0",
+      PF_E2E_GATEWAY_MODELS_URL: `${baseUrl}/gateway/models`,
+      PF_E2E_GATEWAY_CHAT_URL: `${baseUrl}/gateway/responses`,
+      PF_E2E_OPENAI_CODEX_MODELS_URL: `${baseUrl}/codex/models`,
+      PF_E2E_OPENAI_CODEX_RESPONSES_URL: `${baseUrl}/codex/responses`,
+      PF_E2E_XAI_GROK_MODELS_URL: `${baseUrl}/grok/models`,
+      PF_E2E_XAI_GROK_MODALITIES_URL: `${baseUrl}/grok/modalities`,
+      PF_E2E_XAI_GROK_RESPONSES_URL: `${baseUrl}/grok/responses`,
     };
   }
 
   test("runs Gateway Codex and Grok without local authentication headers", async () => {
     const childEnv = env();
-    const status = await runFx(["status", "--json"], { cwd: workspace, env: childEnv });
+    const status = await runPf(["status", "--json"], { cwd: workspace, env: childEnv });
     expect(status.code).toBe(0);
     expect(status.stderr).toBe("");
     expect(JSON.parse(status.stdout).auth).toBe("host managed");
 
     for (const command of [["login"], ["logout"], ["setup"], ["teams"]]) {
-      const result = await runFx(command, { cwd: workspace, env: childEnv });
+      const result = await runPf(command, { cwd: workspace, env: childEnv });
       expect(result.code).toBe(0);
       expect(result.stderr).toBe("");
       expect(result.stdout).toBe("Authentication is managed by the host.\n");
     }
-    expect(existsSync(join(home, ".fx", "auth.json"))).toBe(false);
+    expect(existsSync(join(home, ".pf", "auth.json"))).toBe(false);
 
     for (const [provider, marker] of [
       ["gateway", "GATEWAY_HOST_MANAGED_OK"],
       ["codex", "CODEX_HOST_MANAGED_OK"],
       ["grok", "GROK_HOST_MANAGED_OK"],
     ] as const) {
-      const selected = await runFx(["provider", provider], {
+      const selected = await runPf(["provider", provider], {
         cwd: workspace,
         env: childEnv,
         timeoutMs: TIMEOUT,
@@ -161,7 +161,7 @@ describe("host-managed authentication", () => {
       expect(selected.code).toBe(0);
       expect(selected.stderr).toBe("");
 
-      const models = await runFx(["models", "--json"], {
+      const models = await runPf(["models", "--json"], {
         cwd: workspace,
         env: childEnv,
         timeoutMs: TIMEOUT,
@@ -169,7 +169,7 @@ describe("host-managed authentication", () => {
       expect(models.code).toBe(0);
       expect(models.stderr).toBe("");
 
-      const asked = await runFx(["ask", "--json", "--no-save", "Reply once."], {
+      const asked = await runPf(["ask", "--json", "--no-save", "Reply once."], {
         cwd: workspace,
         env: childEnv,
         timeoutMs: TIMEOUT,
@@ -189,24 +189,24 @@ describe("host-managed authentication", () => {
       expect(request.headers.get("x-grok-user-id"), request.path).toBeNull();
       expect(request.headers.get("x-userid"), request.path).toBeNull();
     }
-    expect(existsSync(join(home, ".fx", "auth.json"))).toBe(false);
+    expect(existsSync(join(home, ".pf", "auth.json"))).toBe(false);
   }, TIMEOUT);
 
   test("rejects malformed auth mode before provider I/O", async () => {
     const before = requests.length;
-    const result = await runFx(["ask", "--json", "--no-save", "Do nothing."], {
+    const result = await runPf(["ask", "--json", "--no-save", "Do nothing."], {
       cwd: workspace,
-      env: { ...env(), FX_AUTH_MODE: "host_managed" },
+      env: { ...env(), PF_AUTH_MODE: "host_managed" },
       timeoutMs: TIMEOUT,
     });
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("FX_AUTH_MODE must be local or host-managed");
+    expect(result.stderr).toContain("PF_AUTH_MODE must be local or host-managed");
     expect(requests.length).toBe(before);
   }, TIMEOUT);
 
   test("final provider 401 does not enter local refresh or replay", async () => {
     const childEnv = env();
-    const selected = await runFx(["provider", "codex"], {
+    const selected = await runPf(["provider", "codex"], {
       cwd: workspace,
       env: childEnv,
       timeoutMs: TIMEOUT,
@@ -215,7 +215,7 @@ describe("host-managed authentication", () => {
 
     const before = requests.filter((request) => request.path === "/codex/responses").length;
     codexUnauthorizedResponses = 1;
-    const asked = await runFx(["ask", "--json", "--no-save", "Reply once."], {
+    const asked = await runPf(["ask", "--json", "--no-save", "Reply once."], {
       cwd: workspace,
       env: childEnv,
       timeoutMs: TIMEOUT,
@@ -223,12 +223,12 @@ describe("host-managed authentication", () => {
     expect(asked.code).toBe(1);
     const after = requests.filter((request) => request.path === "/codex/responses").length;
     expect(after - before).toBe(1);
-    expect(existsSync(join(home, ".fx", "auth.json"))).toBe(false);
+    expect(existsSync(join(home, ".pf", "auth.json"))).toBe(false);
   }, TIMEOUT);
 
   test("interactive host-managed session streams through the same authority", async () => {
     const childEnv = env();
-    const selected = await runFx(["provider", "gateway"], {
+    const selected = await runPf(["provider", "gateway"], {
       cwd: workspace,
       env: childEnv,
       timeoutMs: TIMEOUT,
@@ -242,8 +242,8 @@ describe("host-managed authentication", () => {
       cwd: workspace,
       env: {
         ...childEnv,
-        FX_TRACE_LOG: tracePath,
-        FX_TRACE_SCOPES: "auth,session,worker,gateway",
+        PF_TRACE_LOG: tracePath,
+        PF_TRACE_SCOPES: "auth,session,worker,gateway",
       },
       stderrPath,
       isolated: true,

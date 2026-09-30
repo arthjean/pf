@@ -1342,7 +1342,7 @@ pub fn Bindings(comptime App: type) type {
                     .{
                         message,
                         switch (failure.source) {
-                            .fx_login => "Run /login to repair this source.",
+                            .pf_login => "Run /login to repair this source.",
                             .chatgpt_subscription => "Reconnect Codex through /login to repair this source.",
                             .grok_subscription => "Reconnect Grok through /login to repair this source.",
                             .vercel_oidc_token, .ai_gateway_api_key, .stored_key => "Run /provider to repair this source.",
@@ -1360,11 +1360,11 @@ pub fn Bindings(comptime App: type) type {
         fn agentRequestRouteRecovery(ctx: *anyopaque, arena: Allocator, request: agent_runtime.RouteRecoveryRequest) !agent_runtime.RouteRecoveryDecision {
             const app: *App = @ptrCast(@alignCast(ctx));
             const question = switch (request.finish_reason) {
-                .content_filter => "Response blocked by content filter. What should fx do?",
+                .content_filter => "Response blocked by content filter. What should pf do?",
                 else => if (request.replay_safe)
                     try std.fmt.allocPrint(
                         arena,
-                        "Route failed after {d} attempt{s} for {s}. What should fx do?",
+                        "Route failed after {d} attempt{s} for {s}. What should pf do?",
                         .{
                             request.semantic_attempts,
                             if (request.semantic_attempts == 1) "" else "s",
@@ -1372,8 +1372,8 @@ pub fn Bindings(comptime App: type) type {
                         },
                     )
                 else switch (request.unsafe_no_retry_reason orelse .assistant_output) {
-                    .assistant_output => "Route failed after assistant output started. What should fx do?",
-                    .tool_start => "Route failed after tool use started. What should fx do?",
+                    .assistant_output => "Route failed after assistant output started. What should pf do?",
+                    .tool_start => "Route failed after tool use started. What should pf do?",
                 },
             };
             var options_buf: [3]types.QuestionOption = undefined;
@@ -2393,7 +2393,7 @@ test "worker credential publication adopts secret rotation on the app owner" {
     defer app.deinit();
     var initial = credentials.Credential{
         .token = try alloc.dupe(u8, "stale-token"),
-        .source = .fx_login,
+        .source = .pf_login,
         .team_id = try alloc.dupe(u8, "team_123"),
         .refresh_after_ms = 10,
     };
@@ -2402,7 +2402,7 @@ test "worker credential publication adopts secret rotation on the app owner" {
 
     var refreshed = credentials.Credential{
         .token = try alloc.dupe(u8, "fresh-token"),
-        .source = .fx_login,
+        .source = .pf_login,
         .team_id = try alloc.dupe(u8, "team_123"),
         .refresh_after_ms = std.math.maxInt(i64),
     };
@@ -2554,7 +2554,7 @@ test "interactive stream adapter queues byte-identical rendered spans" {
 
     const spans = [_][]const u8{
         "\x1b[1mbold\x1b[22m and \x1b[3mitalic\x1b[23m\n",
-        "\x1b]8;id=fx-1;https://example.com\x1b\\docs\x1b]8;;\x1b\\\n",
+        "\x1b]8;id=pf-1;https://example.com\x1b\\docs\x1b]8;;\x1b\\\n",
         "\x1b[2m\xe2\x94\x82 \x1b[22mconst x = **literal**;\n",
     };
     const deps = Bindings(FakeApp).agentRuntimeDeps(&app);
@@ -2784,7 +2784,7 @@ test "subagent status renderer honors session and parent workspace toggles" {
         statusline_session: bool = true,
         workspace_identity: @import("../workspace/statusline_identity.zig").Runtime = .{
             .enabled = true,
-            .workspace_label = @constCast("~/fx"),
+            .workspace_label = @constCast("~/pf"),
             .branch_label = @constCast("feature/status"),
         },
 
@@ -2804,7 +2804,7 @@ test "subagent status renderer honors session and parent workspace toggles" {
     };
 
     try std.testing.expectEqualStrings(
-        "gpt-5.5 · high · reviewer · 12k/100k 12% · ~/fx (feature/status)",
+        "gpt-5.5 · high · reviewer · 12k/100k 12% · ~/pf (feature/status)",
         renderer.render(&buf, status),
     );
 

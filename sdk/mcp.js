@@ -73,7 +73,7 @@ export async function createMcpAdapter(client, options = {}) {
         const images = (Array.isArray(result?.content) ? result.content : []).flatMap((item) => item?.type === "image" ? [item] : item?.type === "resource" && item.resource?.mimeType?.startsWith("image/") && typeof item.resource?.blob === "string" ? [{ type: "image", mimeType: item.resource.mimeType, data: item.resource.blob }] : []).map((item) => ({
           type: "image", mimeType: item.mimeType, data: item.data,
         }));
-        const rich = images.length ? { type: "libfx.tool-result", text, images } : null;
+        const rich = images.length ? { type: "libpf.tool-result", text, images } : null;
         if (result?.isError) {
           const error = new Error(text || `MCP tool ${tool.name} failed`);
           if (rich) error.toolResult = rich;
@@ -102,7 +102,7 @@ export async function createMcpAdapter(client, options = {}) {
   }
   const instructionText = instructions.join("\n\n");
   if (new TextEncoder().encode(instructionText).length > maxInstructionsBytes) {
-    throw new RangeError(`MCP instructions exceed the ${maxInstructionsBytes} byte libfx limit`);
+    throw new RangeError(`MCP instructions exceed the ${maxInstructionsBytes} byte libpf limit`);
   }
 
   let closed = false;

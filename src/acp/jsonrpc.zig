@@ -579,14 +579,14 @@ test "Writer Frame formats protocol lines" {
                 .code = ErrorCode.invalid_params,
                 .message = "Unsupported fast mode",
                 .data = .{
-                    .code = "LIBFX_MODEL_UNSUPPORTED_FAST",
+                    .code = "LIBPF_MODEL_UNSUPPORTED_FAST",
                     .model = "provider/quoted\"model",
                     .capability = "fast",
                 },
             },
         } }).write(&out.writer);
         try std.testing.expectEqualStrings(
-            "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32602,\"message\":\"Unsupported fast mode\",\"data\":{\"code\":\"LIBFX_MODEL_UNSUPPORTED_FAST\",\"model\":\"provider/quoted\\\"model\",\"capability\":\"fast\"}}}\n",
+            "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32602,\"message\":\"Unsupported fast mode\",\"data\":{\"code\":\"LIBPF_MODEL_UNSUPPORTED_FAST\",\"model\":\"provider/quoted\\\"model\",\"capability\":\"fast\"}}}\n",
             out.writer.buffered(),
         );
     }

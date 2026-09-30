@@ -228,11 +228,11 @@ test "compaction handoff rejects empty and invalid summary chunks" {
 
 test "continuation handle prefers exact command replay" {
     try std.testing.expectEqualStrings(
-        "fx-command-replay-complete.bin",
+        "pf-command-replay-complete.bin",
         resultHandleForContinuation(.{
             .output_handle = "bounded-result.txt",
             .command_output_replay = .{ .available = .{
-                .handle = "fx-command-replay-complete.bin",
+                .handle = "pf-command-replay-complete.bin",
                 .framed_bytes = 128,
             } },
         }).?,

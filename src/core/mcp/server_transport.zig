@@ -1191,14 +1191,14 @@ const StartupFailure = union(enum) {
         /// The launch that was still running at the deadline.
         live: ?*const stdio_dispatcher.ChildDiagnostics,
     },
-    /// fx ended the connection on stdout output that is not an MCP message.
+    /// pf ended the connection on stdout output that is not an MCP message.
     rejected_output: struct {
         line: *const stdio_dispatcher.RejectedOutput,
         stderr: *const stdio_dispatcher.StderrCapture,
     },
 };
 
-/// Publishes the stdout line fx rejected, if the current launch left one.
+/// Publishes the stdout line pf rejected, if the current launch left one.
 /// Other failures return without waiting for the child's diagnostics.
 fn publishRejectedOutput(alloc: Allocator, server: *McpServer) void {
     const dispatcher = server.dispatcher orelse return;
@@ -1440,7 +1440,7 @@ test "startup failure names how the server ended and its cleaned stderr" {
     );
 }
 
-test "startup failure shows the stdout line fx rejected" {
+test "startup failure shows the stdout line pf rejected" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();

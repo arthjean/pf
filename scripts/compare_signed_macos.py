@@ -129,7 +129,7 @@ def main() -> None:
         for label, lane in (("control", cohort % 2), ("candidate", 1 - cohort % 2)):
             directory = args.output / f"cohort-{cohort}" / f"lane-{lane}"
             directory.mkdir(parents=True)
-            paths[label] = directory / "fx"
+            paths[label] = directory / "pf"
             shutil.copy2(binaries["control" if cohort == 2 else label], paths[label])
         results = measure_startup(
             repo_root=repo, control_binary=paths["control"], candidate_binary=paths["candidate"],

@@ -3,10 +3,10 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/fx-core.wasm"));
+const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/pf-core.wasm"));
 if (!supportsJspi()) {
   console.error("Node JSPI is disabled. Run with --experimental-wasm-jspi");
   process.exit(2);
@@ -39,7 +39,7 @@ const mockFetch = async (url, init) => {
   }), { status: 200, headers: { "content-type": "text/event-stream" } });
 };
 
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   backend: "wasm",
   wasm: await readFile(wasmPath),
   fetch: mockFetch,

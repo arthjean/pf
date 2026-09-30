@@ -22,7 +22,7 @@ pub const Paths = struct {
     home_dir: ?[]u8 = null,
     user_settings: ?[]u8 = null,
     workspace_settings: []u8,
-    home_fx_dir: ?[]u8 = null,
+    home_pf_dir: ?[]u8 = null,
     sessions_dir: ?[]u8 = null,
     workspace_root: []u8,
 
@@ -30,7 +30,7 @@ pub const Paths = struct {
         if (self.home_dir) |path| alloc.free(path);
         if (self.user_settings) |path| alloc.free(path);
         alloc.free(self.workspace_settings);
-        if (self.home_fx_dir) |path| alloc.free(path);
+        if (self.home_pf_dir) |path| alloc.free(path);
         if (self.sessions_dir) |path| alloc.free(path);
         alloc.free(self.workspace_root);
         self.* = undefined;
@@ -286,14 +286,14 @@ pub fn discoverPathsFromHome(alloc: Allocator, home_dir: []const u8, workspace_r
 }
 
 pub fn providerEnvOverride() ?[]const u8 {
-    const raw = io_mod.getenv("FX_PROVIDER") orelse return null;
+    const raw = io_mod.getenv("PF_PROVIDER") orelse return null;
     if (std.mem.trim(u8, raw, " \t\r\n").len == 0) return null;
     return raw;
 }
 
-/// Trimmed FX_MODEL, or null when unset or blank. Borrows process environment storage.
+/// Trimmed PF_MODEL, or null when unset or blank. Borrows process environment storage.
 pub fn modelEnvOverride() ?[]const u8 {
-    const raw = io_mod.getenv("FX_MODEL") orelse return null;
+    const raw = io_mod.getenv("PF_MODEL") orelse return null;
     const trimmed = std.mem.trim(u8, raw, " \t\r\n");
     return if (trimmed.len > 0) trimmed else null;
 }
@@ -306,7 +306,7 @@ pub const ModelSelectionError = error{
 
 /// Chooses the provider and the model it persists as its preference. A saved
 /// model wins; Gateway falls back to `default_model`; providers without a
-/// built-in default accept `run_model` (--model or FX_MODEL) for this run.
+/// built-in default accept `run_model` (--model or PF_MODEL) for this run.
 /// The result borrows from its arguments.
 pub fn selectProviderModel(
     default_model: []const u8,
@@ -326,11 +326,11 @@ pub fn selectProviderModel(
 
 /// User-facing guidance for a `ModelSelectionError`, or null for any other error.
 pub fn modelNotSelectedMessage(err: anyerror) ?[]const u8 {
-    const for_this_run = "or set a model for this run with --model or FX_MODEL";
+    const for_this_run = "or set a model for this run with --model or PF_MODEL";
     return switch (err) {
-        error.CodexModelNotSelected => "no Codex model is selected; run `fx provider codex` to choose one, " ++ for_this_run,
-        error.GrokModelNotSelected => "no Grok model is selected; run `fx provider grok` to choose one, " ++ for_this_run,
-        error.ConfiguredModelNotSelected => "no model is selected for this connection; save one under \"models\" in ~/.fx/settings.json, " ++ for_this_run,
+        error.CodexModelNotSelected => "no Codex model is selected; run `pf provider codex` to choose one, " ++ for_this_run,
+        error.GrokModelNotSelected => "no Grok model is selected; run `pf provider grok` to choose one, " ++ for_this_run,
+        error.ConfiguredModelNotSelected => "no model is selected for this connection; save one under \"models\" in ~/.pf/settings.json, " ++ for_this_run,
         else => null,
     };
 }
@@ -508,7 +508,7 @@ fn loadMergedSettingsDetailedWithOptionalHome(
         }
     }
 
-    const project_path = try std.fs.path.join(alloc, &.{ workspace_root, ".fx.json" });
+    const project_path = try std.fs.path.join(alloc, &.{ workspace_root, ".pf.json" });
     defer alloc.free(project_path);
     const project_text = readOptionalFile(alloc, project_path) catch |err| blk: {
         if (err == error.OutOfMemory) return err;
@@ -629,7 +629,7 @@ fn loadMergedSettingsDetailedWithOptionalHome(
             ),
         };
     }
-    if (io_mod.getenv("FX_PROVIDER_ORDER")) |order_override| {
+    if (io_mod.getenv("PF_PROVIDER_ORDER")) |order_override| {
         switch (parseProviderOrderList(alloc, order_override)) {
             .ok => |maybe_order| {
                 if (maybe_order) |order| {
@@ -640,25 +640,25 @@ fn loadMergedSettingsDetailedWithOptionalHome(
                     settings.provider_order = order;
                 }
             },
-            .invalid => debug_trace.logf("config", "ignoring invalid FX_PROVIDER_ORDER value", .{}),
+            .invalid => debug_trace.logf("config", "ignoring invalid PF_PROVIDER_ORDER value", .{}),
         }
     }
-    if (io_mod.getenv("FX_PROVIDER_STRICT")) |strict_override| {
+    if (io_mod.getenv("PF_PROVIDER_STRICT")) |strict_override| {
         const trimmed = std.mem.trim(u8, strict_override, " \t\r\n");
         if (parseEnvBool(trimmed)) |strict| {
             settings.provider_strict = strict;
         } else if (trimmed.len > 0) {
-            debug_trace.logf("config", "ignoring invalid FX_PROVIDER_STRICT value", .{});
+            debug_trace.logf("config", "ignoring invalid PF_PROVIDER_STRICT value", .{});
         }
     }
-    if (io_mod.getenv("FX_REVIEW_MODEL")) |review_override| {
+    if (io_mod.getenv("PF_REVIEW_MODEL")) |review_override| {
         const trimmed = std.mem.trim(u8, review_override, " \t\r\n");
         if (trimmed.len > 0) {
             if (settings_store.validateModel(trimmed)) |_| {
                 if (settings.review_model) |old| alloc.free(old);
                 settings.review_model = try alloc.dupe(u8, trimmed);
             } else |_| {
-                debug_trace.logf("config", "ignoring invalid FX_REVIEW_MODEL value", .{});
+                debug_trace.logf("config", "ignoring invalid PF_REVIEW_MODEL value", .{});
             }
         }
     }
@@ -1016,7 +1016,7 @@ pub fn loadStartupStatusSettingsFromHome(alloc: Allocator, home_dir: []const u8,
 }
 
 pub fn ensureStateLayout(paths: Paths) !void {
-    if (paths.home_fx_dir) |dir| try ensureAbsoluteDir(dir);
+    if (paths.home_pf_dir) |dir| try ensureAbsoluteDir(dir);
     if (paths.sessions_dir) |dir| try ensureAbsoluteDir(dir);
 }
 
@@ -1221,8 +1221,8 @@ fn discoverPathsWithOptionalHome(alloc: Allocator, home_dir: ?[]const u8, worksp
         paths.home_dir = try alloc.dupe(u8, home);
         errdefer alloc.free(paths.home_dir.?);
 
-        paths.home_fx_dir = try profile_paths.rootDir(alloc, home);
-        errdefer alloc.free(paths.home_fx_dir.?);
+        paths.home_pf_dir = try profile_paths.rootDir(alloc, home);
+        errdefer alloc.free(paths.home_pf_dir.?);
 
         paths.user_settings = try profile_paths.settingsPath(alloc, home);
         errdefer alloc.free(paths.user_settings.?);
@@ -1231,7 +1231,7 @@ fn discoverPathsWithOptionalHome(alloc: Allocator, home_dir: ?[]const u8, worksp
         errdefer alloc.free(paths.sessions_dir.?);
     }
 
-    paths.workspace_settings = try std.fs.path.join(alloc, &.{ trimmed_workspace, ".fx.json" });
+    paths.workspace_settings = try std.fs.path.join(alloc, &.{ trimmed_workspace, ".pf.json" });
     errdefer alloc.free(paths.workspace_settings);
 
     return paths;
@@ -2187,10 +2187,10 @@ test "discoverPathsFromHome returns home-backed and workspace paths" {
     defer paths.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings("/Users/tester", paths.home_dir.?);
-    try std.testing.expectEqualStrings("/Users/tester/.fx/settings.json", paths.user_settings.?);
-    try std.testing.expectEqualStrings("/tmp/workspace/.fx.json", paths.workspace_settings);
-    try std.testing.expectEqualStrings("/Users/tester/.fx", paths.home_fx_dir.?);
-    try std.testing.expectEqualStrings("/Users/tester/.fx/sessions", paths.sessions_dir.?);
+    try std.testing.expectEqualStrings("/Users/tester/.pf/settings.json", paths.user_settings.?);
+    try std.testing.expectEqualStrings("/tmp/workspace/.pf.json", paths.workspace_settings);
+    try std.testing.expectEqualStrings("/Users/tester/.pf", paths.home_pf_dir.?);
+    try std.testing.expectEqualStrings("/Users/tester/.pf/sessions", paths.sessions_dir.?);
     try std.testing.expectEqualStrings("/tmp/workspace", paths.workspace_root);
 }
 
@@ -2205,7 +2205,7 @@ test "merged settings rejects symlinked durable root reload path" {
         "outside/settings.json",
         "{\"permission_mode\":\"auto\",\"permission\":{\"bash\":\"allow\"}}\n",
     );
-    tmp.dir.symLink(io_mod.getIo(), "../outside", "home/.fx", .{ .is_directory = true }) catch |err| switch (err) {
+    tmp.dir.symLink(io_mod.getIo(), "../outside", "home/.pf", .{ .is_directory = true }) catch |err| switch (err) {
         error.AccessDenied => return error.SkipZigTest,
         else => return err,
     };
@@ -2224,14 +2224,14 @@ test "merged settings rejects symlinked durable root reload path" {
 test "merged settings rejects writable user policy files" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     try writeFixtureFile(
         tmp.dir,
-        "home/.fx/settings.json",
+        "home/.pf/settings.json",
         "{\"permission_mode\":\"auto\",\"permission\":{\"bash\":\"allow\"}}\n",
     );
-    var root_dir = try tmp.dir.openDir(io_mod.getIo(), "home/.fx", .{});
+    var root_dir = try tmp.dir.openDir(io_mod.getIo(), "home/.pf", .{});
     defer root_dir.close(io_mod.getIo());
     var file = try root_dir.openFile(io_mod.getIo(), "settings.json", .{ .mode = .read_write });
     file.setPermissions(io_mod.getIo(), std.Io.File.Permissions.fromMode(0o666)) catch {
@@ -2256,7 +2256,7 @@ test "discoverPathsFromHome trims trailing workspace slashes" {
     defer paths.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings("/tmp/workspace", paths.workspace_root);
-    try std.testing.expectEqualStrings("/tmp/workspace/.fx.json", paths.workspace_settings);
+    try std.testing.expectEqualStrings("/tmp/workspace/.pf.json", paths.workspace_settings);
 }
 
 test "discoverPathsFromHome rejects empty workspace root" {
@@ -2271,10 +2271,10 @@ test "discoverPaths with absent HOME returns owned workspace paths only" {
     defer paths.deinit(std.testing.allocator);
 
     try std.testing.expect(paths.user_settings == null);
-    try std.testing.expect(paths.home_fx_dir == null);
+    try std.testing.expect(paths.home_pf_dir == null);
     try std.testing.expect(paths.sessions_dir == null);
     try std.testing.expectEqualStrings("/tmp/workspace", paths.workspace_root);
-    try std.testing.expectEqualStrings("/tmp/workspace/.fx.json", paths.workspace_settings);
+    try std.testing.expectEqualStrings("/tmp/workspace/.pf.json", paths.workspace_settings);
 }
 
 test "ensureStateLayout creates only home-backed state directories" {
@@ -2294,11 +2294,11 @@ test "ensureStateLayout creates only home-backed state directories" {
 
     try ensureStateLayout(paths);
 
-    const home_fx_real = try io_mod.realpathAlloc(std.testing.allocator, paths.home_fx_dir.?);
-    defer std.testing.allocator.free(home_fx_real);
+    const home_pf_real = try io_mod.realpathAlloc(std.testing.allocator, paths.home_pf_dir.?);
+    defer std.testing.allocator.free(home_pf_real);
     const sessions_real = try io_mod.realpathAlloc(std.testing.allocator, paths.sessions_dir.?);
     defer std.testing.allocator.free(sessions_real);
-    try std.testing.expectEqualStrings(paths.home_fx_dir.?, home_fx_real);
+    try std.testing.expectEqualStrings(paths.home_pf_dir.?, home_pf_real);
     try std.testing.expectEqualStrings(paths.sessions_dir.?, sessions_real);
 
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io_mod.getIo(), paths.workspace_settings, .{}));
@@ -2308,7 +2308,7 @@ test "loadMergedSettings merges project defaults before profile layers" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2323,8 +2323,8 @@ test "loadMergedSettings merges project defaults before profile layers" {
     );
     defer std.testing.allocator.free(user_settings);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"model\":\"workspace-model\",\"max_agent_steps\":16}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"model\":\"workspace-model\",\"max_agent_steps\":16}");
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2338,7 +2338,7 @@ test "provider routing settings merge across layers with project defaults" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     try tmp.dir.createDirPath(io_mod.getIo(), "project-only");
 
@@ -2356,9 +2356,9 @@ test "provider routing settings merge across layers with project defaults" {
     );
     defer std.testing.allocator.free(user_settings);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"provider_order\":[\"azure\",\"openai\"]}");
-    try writeFixtureFile(tmp.dir, "project-only/.fx.json", "{\"provider_order\":[\"azure\",\"openai\"],\"provider_strict\":true}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"provider_order\":[\"azure\",\"openai\"]}");
+    try writeFixtureFile(tmp.dir, "project-only/.pf.json", "{\"provider_order\":[\"azure\",\"openai\"],\"provider_strict\":true}");
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2383,7 +2383,7 @@ test "provider routing project defaults apply when profile is silent" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2391,8 +2391,8 @@ test "provider routing project defaults apply when profile is silent" {
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
     defer std.testing.allocator.free(workspace_root);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{}");
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"provider_order\":[\"azure\",\"openai\"],\"provider_strict\":true}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{}");
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"provider_order\":[\"azure\",\"openai\"],\"provider_strict\":true}");
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2408,7 +2408,7 @@ test "provider routing empty list clears an inherited order" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2423,7 +2423,7 @@ test "provider routing empty list clears an inherited order" {
     );
     defer std.testing.allocator.free(user_settings);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2490,7 +2490,7 @@ test "context limits resolve command line over workspace and global profile valu
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -2503,7 +2503,7 @@ test "context limits resolve command line over workspace and global profile valu
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2535,7 +2535,7 @@ test "loadStartupStatusSettings merges project defaults before profile layers" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2550,8 +2550,8 @@ test "loadStartupStatusSettings merges project defaults before profile layers" {
     );
     defer std.testing.allocator.free(user_settings);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"model\":\"workspace-model\",\"sandbox\":\"none\",\"max_agent_steps\":16}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"model\":\"workspace-model\",\"sandbox\":\"none\",\"max_agent_steps\":16}");
 
     var settings = try loadStartupStatusSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2565,7 +2565,7 @@ test "loadMergedSettings applies startup scrollback precedence with normalized w
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2583,8 +2583,8 @@ test "loadMergedSettings applies startup scrollback precedence with normalized w
     const workspace_with_slash = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{workspace_root});
     defer std.testing.allocator.free(workspace_with_slash);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"startup_scrollback\":true}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"startup_scrollback\":true}");
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_with_slash);
     defer settings.deinit(std.testing.allocator);
@@ -2745,7 +2745,7 @@ test "skill_symlink_authorities is profile-only and workspace overrides replace 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     try tmp.dir.createDirPath(io_mod.getIo(), "project-only");
 
@@ -2762,9 +2762,9 @@ test "skill_symlink_authorities is profile-only and workspace overrides replace 
         .{workspace_root},
     );
     defer alloc.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"skill_symlink_authorities\":[\"/opt/project-skills\"]}");
-    try writeFixtureFile(tmp.dir, "project-only/.fx.json", "{\"skill_symlink_authorities\":[\"/opt/project-skills\"]}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"skill_symlink_authorities\":[\"/opt/project-skills\"]}");
+    try writeFixtureFile(tmp.dir, "project-only/.pf.json", "{\"skill_symlink_authorities\":[\"/opt/project-skills\"]}");
 
     var workspace = try loadMergedSettingsFromHome(alloc, home_root, workspace_root);
     defer workspace.deinit(alloc);
@@ -2785,13 +2785,13 @@ test "invalid skill_symlink_authorities reports a specific diagnostic" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home_root);
     const workspace_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace_root);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"skill_symlink_authorities\":[\"relative/skills\"]}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"skill_symlink_authorities\":[\"relative/skills\"]}");
 
     var detailed = try loadMergedSettingsDetailedFromHome(alloc, home_root, workspace_root);
     defer detailed.deinit(alloc);
@@ -2878,7 +2878,7 @@ test "first_call_tool_choice ignores unknown strings and rejects invalid types" 
     try std.testing.expectError(error.InvalidFirstCallToolChoiceType, parseSettingsJson(std.testing.allocator, "{\"first_call_tool_choice\":false}"));
 }
 
-test "review_model parses, merges, and yields to FX_REVIEW_MODEL" {
+test "review_model parses, merges, and yields to PF_REVIEW_MODEL" {
     var absent = try parseSettingsJson(std.testing.allocator, "{}");
     defer absent.deinit(std.testing.allocator);
     try std.testing.expect(absent.review_model == null);
@@ -2898,17 +2898,17 @@ test "review_model parses, merges, and yields to FX_REVIEW_MODEL" {
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
     defer std.testing.allocator.free(workspace_root);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"review_model\":\"profile/review\"}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"review_model\":\"profile/review\"}\n");
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
-    try home.map.put("FX_REVIEW_MODEL", "process/review");
+    try home.map.put("PF_REVIEW_MODEL", "process/review");
 
     var result = try loadMergedSettingsDetailedFromHome(std.testing.allocator, home_root, workspace_root);
     defer result.deinit(std.testing.allocator);
@@ -2925,7 +2925,7 @@ test "workspace override can change effort from high to auto" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2939,7 +2939,7 @@ test "workspace override can change effort from high to auto" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2951,7 +2951,7 @@ test "profile workspace settings effort null loads as auto" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -2963,7 +2963,7 @@ test "profile workspace settings effort null loads as auto" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -2975,9 +2975,9 @@ test "invalid permission mode returns InvalidPermissionMode" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"permission_mode\":\"danger\"}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"permission_mode\":\"danger\"}");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -2991,7 +2991,7 @@ test "oversized user and workspace settings propagate StreamTooLong" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -3001,13 +3001,13 @@ test "oversized user and workspace settings propagate StreamTooLong" {
 
     const user_settings = try profile_paths.settingsPath(std.testing.allocator, home_root);
     defer std.testing.allocator.free(user_settings);
-    const workspace_settings = try std.fs.path.join(std.testing.allocator, &.{ workspace_root, ".fx.json" });
+    const workspace_settings = try std.fs.path.join(std.testing.allocator, &.{ workspace_root, ".pf.json" });
     defer std.testing.allocator.free(workspace_settings);
 
     try writeRepeatedByteAbsolute(user_settings, 'a', max_settings_bytes + 1);
     try std.testing.expectError(error.StreamTooLong, loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root));
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{}");
     try writeRepeatedByteAbsolute(workspace_settings, 'b', max_settings_bytes + 1);
     try std.testing.expectError(error.StreamTooLong, loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root));
 }
@@ -3016,7 +3016,7 @@ test "permission rules parse from workspace override" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -3030,7 +3030,7 @@ test "permission rules parse from workspace override" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -3046,7 +3046,7 @@ test "later permission layers replace earlier rules" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3058,7 +3058,7 @@ test "later permission layers replace earlier rules" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -3072,7 +3072,7 @@ test "empty workspace override permission clears earlier rules" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -3086,7 +3086,7 @@ test "empty workspace override permission clears earlier rules" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var settings = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer settings.deinit(std.testing.allocator);
@@ -3099,9 +3099,9 @@ test "nested permission config preserves JSON object order" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"permission\":{\"*\":\"ask\",\"bash\":{\"git *\":\"allow\",\"git push *\":\"deny\"},\"edit\":\"deny\"}}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"permission\":{\"*\":\"ask\",\"bash\":{\"git *\":\"allow\",\"git push *\":\"deny\"},\"edit\":\"deny\"}}");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3159,7 +3159,7 @@ test "userSettingsPath follows absent and present HOME" {
 
         const path = (try userSettingsPath(std.testing.allocator)).?;
         defer std.testing.allocator.free(path);
-        try std.testing.expectEqualStrings("/Users/tester/.fx/settings.json", path);
+        try std.testing.expectEqualStrings("/Users/tester/.pf/settings.json", path);
     }
 }
 
@@ -3179,7 +3179,7 @@ test "HOME test helper remains stable across absent A and B states" {
 
         const path = (try userSettingsPath(std.testing.allocator)).?;
         defer std.testing.allocator.free(path);
-        try std.testing.expectEqualStrings("/home/a/.fx/settings.json", path);
+        try std.testing.expectEqualStrings("/home/a/.pf/settings.json", path);
     }
 
     {
@@ -3188,7 +3188,7 @@ test "HOME test helper remains stable across absent A and B states" {
 
         const path = (try userSettingsPath(std.testing.allocator)).?;
         defer std.testing.allocator.free(path);
-        try std.testing.expectEqualStrings("/home/b/.fx/settings.json", path);
+        try std.testing.expectEqualStrings("/home/b/.pf/settings.json", path);
     }
 }
 
@@ -3222,7 +3222,7 @@ test "explicit user permission mutation writes top level and preserves local rul
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3234,7 +3234,7 @@ test "explicit user permission mutation writes top level and preserves local rul
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -3368,7 +3368,7 @@ test "addPermissionRule preserves unrelated workspace override keys" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3381,7 +3381,7 @@ test "addPermissionRule preserves unrelated workspace override keys" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -3399,7 +3399,7 @@ test "addPermissionRule preserves non-object category under star" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3412,7 +3412,7 @@ test "addPermissionRule preserves non-object category under star" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -3463,7 +3463,7 @@ test "removePermissionRule missing rule returns false without rewrite" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3476,7 +3476,7 @@ test "removePermissionRule missing rule returns false without rewrite" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -3525,7 +3525,7 @@ test "user effort preference preserves unrelated workspace override keys" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3538,7 +3538,7 @@ test "user effort preference preserves unrelated workspace override keys" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -3567,7 +3567,7 @@ test "user fast mode preference writes bool and preserves unrelated keys" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3580,7 +3580,7 @@ test "user fast mode preference writes bool and preserves unrelated keys" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -3609,7 +3609,7 @@ test "user startup scrollback preference writes bool and preserves unrelated key
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3622,7 +3622,7 @@ test "user startup scrollback preference writes bool and preserves unrelated key
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
@@ -3650,16 +3650,16 @@ test "user startup scrollback preference writes bool and preserves unrelated key
 test "project profile-only settings are ignored and diagnosed by key" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     try writeFixtureFile(
         tmp.dir,
-        "home/.fx/settings.json",
+        "home/.pf/settings.json",
         "{\"model\":\"profile/model\",\"permission_mode\":\"auto\",\"permission\":{\"bash\":{\"profile *\":\"allow\"}},\"prompt_history\":{\"enabled\":true},\"statusLine\":{\"sandbox\":true,\"context\":false},\"first_call_tool_choice\":\"none\",\"review_model\":\"profile/review\",\"auto_upgrade\":false,\"update_channel\":\"dev\",\"fast_mode\":false,\"input_appearance\":\"tint\",\"maxxing_mode\":\"minimal\",\"slash_menu_categories\":false,\"effort\":\"high\",\"output_level\":\"quiet\",\"startup_scrollback\":false}\n",
     );
     try writeFixtureFile(
         tmp.dir,
-        "workspace/.fx.json",
+        "workspace/.pf.json",
         "{\"model\":\"project/model\",\"permission_mode\":\"ask\",\"permission\":\"deny\",\"prompt_history\":{\"enabled\":false},\"statusLine\":{\"sandbox\":false,\"context\":true},\"skill_match_fuzzy\":true,\"first_call_tool_choice\":\"auto\",\"review_model\":\"project/review\",\"auto_upgrade\":true,\"update_channel\":\"stable\",\"fast_mode\":true,\"input_appearance\":\"lines\",\"maxxing_mode\":\"normal\",\"slash_menu_categories\":true,\"effort\":\"low\",\"output_level\":\"normal\",\"startup_scrollback\":true,\"max_agent_steps\":17}\n",
     );
 
@@ -3711,16 +3711,16 @@ test "project profile-only settings are ignored and diagnosed by key" {
 test "malformed project profile-only settings are ignored before value parsing" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     try writeFixtureFile(
         tmp.dir,
-        "home/.fx/settings.json",
+        "home/.pf/settings.json",
         "{\"model\":\"profile/model\",\"permission_mode\":\"ask\",\"fast_mode\":false}\n",
     );
     try writeFixtureFile(
         tmp.dir,
-        "workspace/.fx.json",
+        "workspace/.pf.json",
         "{\"model\":123,\"permission_mode\":\"danger\",\"permission\":{\"bash\":true},\"statusLine\":7,\"fast_mode\":\"yes\",\"max_agent_steps\":12}\n",
     );
 
@@ -3742,7 +3742,7 @@ test "malformed project profile-only settings are ignored before value parsing" 
 
     try writeFixtureFile(
         tmp.dir,
-        "workspace/.fx.json",
+        "workspace/.pf.json",
         "{\"model\":123,\"max_agent_steps\":\"many\"}\n",
     );
     try std.testing.expectError(
@@ -3815,7 +3815,7 @@ test "legacy sandbox keys are inert unknown data" {
 test "workspace statusline is global only in ordinary and detailed loads" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -3829,7 +3829,7 @@ test "workspace statusline is global only in ordinary and detailed loads" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var ordinary = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer ordinary.deinit(std.testing.allocator);
@@ -3844,7 +3844,7 @@ test "workspace statusline is global only in ordinary and detailed loads" {
 test "ordinary and detailed loads agree on workspace overrides with legacy statusline containers" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -3858,8 +3858,8 @@ test "ordinary and detailed loads agree on workspace overrides with legacy statu
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"startup_scrollback\":true,\"max_agent_steps\":42}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"startup_scrollback\":true,\"max_agent_steps\":42}\n");
 
     var ordinary = try loadMergedSettingsFromHome(std.testing.allocator, home_root, workspace_root);
     defer ordinary.deinit(std.testing.allocator);
@@ -3922,7 +3922,7 @@ test "notification settings default off parse and merge by field" {
 test "notification settings merge global and workspace while project values are ignored" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -3935,10 +3935,10 @@ test "notification settings merge global and workspace while project values are 
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
     try writeFixtureFile(
         tmp.dir,
-        "workspace/.fx.json",
+        "workspace/.pf.json",
         "{\"notifications\":{\"turn_end\":false,\"attention_required\":false}}",
     );
 
@@ -3959,7 +3959,7 @@ test "notification settings merge global and workspace while project values are 
 test "detailed settings diagnose legacy workspace preferences" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(
         std.testing.allocator,
@@ -3979,7 +3979,7 @@ test "detailed settings diagnose legacy workspace preferences" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     var result = try loadMergedSettingsDetailedFromHome(
         std.testing.allocator,
@@ -4000,7 +4000,7 @@ test "detailed settings diagnose legacy workspace preferences" {
 test "detailed settings preserve model precedence and source" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -4012,8 +4012,8 @@ test "detailed settings preserve model precedence and source" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_fixture);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"model\":\"project/model\"}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_fixture);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"model\":\"project/model\"}\n");
 
     var result = try loadMergedSettingsDetailedFromHome(std.testing.allocator, home_root, workspace_root);
     defer result.deinit(std.testing.allocator);
@@ -4024,7 +4024,7 @@ test "detailed settings preserve model precedence and source" {
 test "detailed settings expose target sources and permission views" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -4042,10 +4042,10 @@ test "detailed settings expose target sources and permission views" {
         .{workspace_root},
     );
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
     try writeFixtureFile(
         tmp.dir,
-        "workspace/.fx.json",
+        "workspace/.pf.json",
         "{\"effort\":\"high\",\"output_level\":\"quiet\",\"permission\":{\"bash\":{\"project *\":\"deny\"}},\"max_agent_steps\":33}\n",
     );
 
@@ -4078,18 +4078,18 @@ test "detailed settings expose target sources and permission views" {
 test "detailed settings report non-empty process model override as winning source" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
     defer std.testing.allocator.free(workspace_root);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"model\":\"user/model\"}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"model\":\"user/model\"}\n");
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
-    try home.map.put("FX_MODEL", "process/model");
+    try home.map.put("PF_MODEL", "process/model");
 
     var result = try loadMergedSettingsDetailedFromHome(std.testing.allocator, home_root, workspace_root);
     defer result.deinit(std.testing.allocator);
@@ -4102,7 +4102,7 @@ test "detailed settings report non-empty process model override as winning sourc
 test "full model provenance table drops process override bookkeeping without failing the load" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -4120,11 +4120,11 @@ test "full model provenance table drops process override bookkeeping without fai
     try json.writer.writeAll("}}\n");
     const user_settings = try json.toOwnedSlice();
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
-    try home.map.put("FX_MODEL", "process/model");
+    try home.map.put("PF_MODEL", "process/model");
 
     var result = try loadMergedSettingsDetailedFromHome(std.testing.allocator, home_root, workspace_root);
     defer result.deinit(std.testing.allocator);
@@ -4138,7 +4138,7 @@ test "full model provenance table drops process override bookkeeping without fai
 test "provider routing stays fail-closed only when provider fields are broken" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -4147,7 +4147,7 @@ test "provider routing stays fail-closed only when provider fields are broken" {
     defer std.testing.allocator.free(workspace_root);
     try writeFixtureFile(
         tmp.dir,
-        "home/.fx/settings.json",
+        "home/.pf/settings.json",
         "{\"providers\":{\"local\":{\"protocol\":\"openai-chat-completions\",\"base_url\":\"http://localhost:11434/v1/\",\"auth\":{\"type\":\"none\"}}},\"provider\":\"local\",\"models\":{\"local\":\"local-model\"},\"effort\":42}\n",
     );
 
@@ -4169,7 +4169,7 @@ test "provider routing stays fail-closed only when provider fields are broken" {
 test "broken provider definitions in the profile still fail the load" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -4178,7 +4178,7 @@ test "broken provider definitions in the profile still fail the load" {
     defer std.testing.allocator.free(workspace_root);
     try writeFixtureFile(
         tmp.dir,
-        "home/.fx/settings.json",
+        "home/.pf/settings.json",
         "{\"providers\":{\"local\":{\"protocol\":\"bogus\",\"base_url\":\"http://localhost:11434/v1/\",\"auth\":{\"type\":\"none\"}}},\"provider\":\"local\"}\n",
     );
 
@@ -4188,7 +4188,7 @@ test "broken provider definitions in the profile still fail the load" {
 test "workspace provider definitions stay ignored when a sibling workspace field fails to parse" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -4204,7 +4204,7 @@ test "workspace provider definitions stay ignored when a sibling workspace field
     );
     const user_settings = try json.toOwnedSlice();
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var result = try loadMergedSettingsDetailedFromHome(std.testing.allocator, home_root, workspace_root);
     defer result.deinit(std.testing.allocator);
@@ -4226,7 +4226,7 @@ test "workspace provider definitions stay ignored when a sibling workspace field
 test "ignored workspace provider definitions with broken protocols stay inert during recovery" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -4242,7 +4242,7 @@ test "ignored workspace provider definitions with broken protocols stay inert du
     );
     const user_settings = try json.toOwnedSlice();
     defer std.testing.allocator.free(user_settings);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
 
     var result = try loadMergedSettingsDetailedFromHome(std.testing.allocator, home_root, workspace_root);
     defer result.deinit(std.testing.allocator);
@@ -4251,21 +4251,21 @@ test "ignored workspace provider definitions with broken protocols stay inert du
     try std.testing.expect(result.settings.providers.?.get("shadow") == null);
 }
 
-test "empty FX_PROVIDER is ignored like an empty FX_MODEL" {
+test "empty PF_PROVIDER is ignored like an empty PF_MODEL" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
     defer std.testing.allocator.free(workspace_root);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{}\n");
 
     const home = try TestHome.install(std.testing.allocator, home_root);
     defer home.deinit();
-    try home.map.put("FX_PROVIDER", "");
+    try home.map.put("PF_PROVIDER", "");
 
     var result = try loadMergedSettingsDetailedFromHome(std.testing.allocator, home_root, workspace_root);
     defer result.deinit(std.testing.allocator);
@@ -4277,10 +4277,10 @@ test "empty FX_PROVIDER is ignored like an empty FX_MODEL" {
 test "invalid user model emits typed diagnostic and project model is ignored" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"model\":\" invalid/model \"}\n");
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"model\":\"project/model\"}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"model\":\" invalid/model \"}\n");
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"model\":\"project/model\"}\n");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
@@ -4298,10 +4298,10 @@ test "invalid user model emits typed diagnostic and project model is ignored" {
 test "detailed settings report unsafe user permissions distinctly" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"permission_mode\":\"auto\"}\n");
-    var root_dir = try tmp.dir.openDir(io_mod.getIo(), "home/.fx", .{});
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"permission_mode\":\"auto\"}\n");
+    var root_dir = try tmp.dir.openDir(io_mod.getIo(), "home/.pf", .{});
     defer root_dir.close(io_mod.getIo());
     var file = try root_dir.openFile(io_mod.getIo(), "settings.json", .{ .mode = .read_write });
     file.setPermissions(io_mod.getIo(), std.Io.File.Permissions.fromMode(0o666)) catch {
@@ -4345,12 +4345,12 @@ test "detailed settings treat a missing home as read-only absence" {
 test "invalid user settings report newest valid manual recovery backup" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx/backups");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf/backups");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{broken");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{broken");
     try writeFixtureFile(
         tmp.dir,
-        "home/.fx/backups/settings.json.backup.100-0000000000000001-00000000000000000000000000000000",
+        "home/.pf/backups/settings.json.backup.100-0000000000000001-00000000000000000000000000000000",
         "{\"model\":\"backup/model\"}\n",
     );
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -4374,7 +4374,7 @@ test "update channel resolves only from the global user profile" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
@@ -4388,8 +4388,8 @@ test "update channel resolves only from the global user profile" {
     );
     defer alloc.free(user_settings);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", user_settings);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"update_channel\":\"stable\"}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"update_channel\":\"stable\"}");
 
     var settings = try loadMergedSettingsFromHome(alloc, home_root, workspace_root);
     defer settings.deinit(alloc);
@@ -4417,7 +4417,7 @@ test "additional directories load only from the current profile workspace" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "home/.fx");
+    try tmp.dir.createDirPath(std.testing.io, "home/.pf");
     try tmp.dir.createDir(std.testing.io, "workspace", .default_dir);
     try tmp.dir.createDir(std.testing.io, "shared", .default_dir);
     try tmp.dir.createDir(std.testing.io, "global", .default_dir);
@@ -4440,7 +4440,7 @@ test "additional directories load only from the current profile workspace" {
         .{ global_root, workspace_root, shared_root },
     );
     defer alloc.free(settings_fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", settings_fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", settings_fixture);
 
     const project_fixture = try std.fmt.allocPrint(
         alloc,
@@ -4448,7 +4448,7 @@ test "additional directories load only from the current profile workspace" {
         .{project_root},
     );
     defer alloc.free(project_fixture);
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", project_fixture);
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", project_fixture);
 
     var detailed = try loadMergedSettingsDetailedFromHome(alloc, home_root, workspace_root);
     defer detailed.deinit(alloc);
@@ -4471,7 +4471,7 @@ test "detailed settings retain raw additional directory sources beside canonical
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "home/.fx");
+    try tmp.dir.createDirPath(std.testing.io, "home/.pf");
     try tmp.dir.createDir(std.testing.io, "workspace", .default_dir);
     try tmp.dir.createDir(std.testing.io, "shared", .default_dir);
     tmp.dir.symLink(std.testing.io, "shared", "shared-link", .{ .is_directory = true }) catch |err| switch (err) {
@@ -4493,7 +4493,7 @@ test "detailed settings retain raw additional directory sources beside canonical
         .{ workspace_root, shared_source },
     );
     defer alloc.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     var detailed = try loadMergedSettingsDetailedFromHome(alloc, home_root, workspace_root);
     defer detailed.deinit(alloc);
@@ -4505,7 +4505,7 @@ test "malformed or duplicate additional directories do not discard sibling setti
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(std.testing.io, "home/.fx");
+    try tmp.dir.createDirPath(std.testing.io, "home/.pf");
     try tmp.dir.createDir(std.testing.io, "workspace", .default_dir);
 
     const home_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
@@ -4520,7 +4520,7 @@ test "malformed or duplicate additional directories do not discard sibling setti
             .{ workspace_root, value },
         );
         defer alloc.free(fixture);
-        try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+        try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
         var detailed = try loadMergedSettingsDetailedFromHome(alloc, home_root, workspace_root);
         defer detailed.deinit(alloc);
@@ -4540,10 +4540,10 @@ test "malformed or duplicate additional directories do not discard sibling setti
 test "theme setting parses from profile settings and project theme is ignored" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"theme\":\"cursor-dark\"}\n");
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"theme\":\"project-theme\"}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"theme\":\"cursor-dark\"}\n");
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"theme\":\"project-theme\"}\n");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -4611,7 +4611,7 @@ test "selectProviderModel chooses only its provider-scoped model" {
 }
 
 test "selectProviderModel accepts the run model when the provider has none saved" {
-    // FX_PROVIDER=codex FX_MODEL=... in a profile that never saved a Codex model.
+    // PF_PROVIDER=codex PF_MODEL=... in a profile that never saved a Codex model.
     const missing_codex = Settings{ .provider = .codex };
     const env_codex = try selectProviderModel("default/model", &missing_codex, null, "gpt-env");
     try std.testing.expectEqual(model_provider.ProviderId.codex, env_codex.provider);
@@ -4621,19 +4621,19 @@ test "selectProviderModel accepts the run model when the provider has none saved
     const env_grok = try selectProviderModel("default/model", &missing_grok, null, "grok-env");
     try std.testing.expectEqualStrings("grok-env", env_grok.model);
 
-    // FX_PROVIDER=local names a custom connection, which has no default either.
+    // PF_PROVIDER=local names a custom connection, which has no default either.
     const missing_local = Settings{ .provider = model_provider.parse("local").? };
     try std.testing.expectError(error.ConfiguredModelNotSelected, selectProviderModel("default/model", &missing_local, null, null));
     const env_local = try selectProviderModel("default/model", &missing_local, null, "local-env");
     try std.testing.expectEqualStrings("local-env", env_local.model);
 
-    // --provider codex with FX_MODEL from a Gateway-only profile.
+    // --provider codex with PF_MODEL from a Gateway-only profile.
     const gateway_only = Settings{ .provider = .gateway };
     const launched = try selectProviderModel("default/model", &gateway_only, .codex, "gpt-env");
     try std.testing.expectEqual(model_provider.ProviderId.codex, launched.provider);
     try std.testing.expectEqualStrings("gpt-env", launched.model);
 
-    // A saved model remains the persisted preference; FX_MODEL applies on top of it later.
+    // A saved model remains the persisted preference; PF_MODEL applies on top of it later.
     var saved_codex = Settings{ .provider = .codex };
     defer saved_codex.deinit(std.testing.allocator);
     try saved_codex.models.putCopy(std.testing.allocator, .codex, "gpt-saved");
@@ -4647,9 +4647,9 @@ test "selectProviderModel accepts the run model when the provider has none saved
 
 test "modelNotSelectedMessage names the provider and both ways to recover" {
     const codex = modelNotSelectedMessage(error.CodexModelNotSelected).?;
-    try std.testing.expect(std.mem.find(u8, codex, "`fx provider codex`") != null);
-    try std.testing.expect(std.mem.find(u8, codex, "--model or FX_MODEL") != null);
-    try std.testing.expect(std.mem.find(u8, modelNotSelectedMessage(error.GrokModelNotSelected).?, "`fx provider grok`") != null);
-    try std.testing.expect(std.mem.find(u8, modelNotSelectedMessage(error.ConfiguredModelNotSelected).?, "\"models\" in ~/.fx/settings.json") != null);
+    try std.testing.expect(std.mem.find(u8, codex, "`pf provider codex`") != null);
+    try std.testing.expect(std.mem.find(u8, codex, "--model or PF_MODEL") != null);
+    try std.testing.expect(std.mem.find(u8, modelNotSelectedMessage(error.GrokModelNotSelected).?, "`pf provider grok`") != null);
+    try std.testing.expect(std.mem.find(u8, modelNotSelectedMessage(error.ConfiguredModelNotSelected).?, "\"models\" in ~/.pf/settings.json") != null);
     try std.testing.expect(modelNotSelectedMessage(error.OutOfMemory) == null);
 }

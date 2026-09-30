@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const temp = await mkdtemp(join(tmpdir(), "fx-term-demo-package-"));
+const temp = await mkdtemp(join(tmpdir(), "pf-term-demo-package-"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 try {

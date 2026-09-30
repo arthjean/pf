@@ -6,21 +6,21 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
-const outputDir = resolve(process.argv[2] || resolve(repoRoot, "sdk/dist/libfx"));
+const outputDir = resolve(process.argv[2] || resolve(repoRoot, "sdk/dist/libpf"));
 const requestedNativeAddons = process.argv.slice(3).map((path) => resolve(path));
-const defaultNativeAddon = resolve(repoRoot, "zig-out/lib/libfx.node");
+const defaultNativeAddon = resolve(repoRoot, "zig-out/lib/libpf.node");
 const nativeAddons = requestedNativeAddons.length ? requestedNativeAddons : [defaultNativeAddon];
 const requiredNativeNames = new Set([
-  "libfx.linux-x64.node",
-  "libfx.linux-arm64.node",
-  "libfx.darwin-x64.node",
-  "libfx.darwin-arm64.node",
+  "libpf.linux-x64.node",
+  "libpf.linux-arm64.node",
+  "libpf.darwin-x64.node",
+  "libpf.darwin-arm64.node",
 ]);
 const localNativeName = {
-  "linux-x64": "libfx.linux-x64.node",
-  "linux-arm64": "libfx.linux-arm64.node",
-  "darwin-x64": "libfx.darwin-x64.node",
-  "darwin-arm64": "libfx.darwin-arm64.node",
+  "linux-x64": "libpf.linux-x64.node",
+  "linux-arm64": "libpf.linux-arm64.node",
+  "darwin-x64": "libpf.darwin-x64.node",
+  "darwin-arm64": "libpf.darwin-arm64.node",
 }[`${process.platform}-${process.arch}`];
 const files = [
   ["sdk/package.json", "package.json"],
@@ -28,14 +28,14 @@ const files = [
   ["LICENSE", "LICENSE"],
   ["sdk/browser.js", "browser.js"],
   ["sdk/node.js", "node.js"],
-  ["sdk/fx-sdk.js", "fx-sdk.js"],
+  ["sdk/pf-sdk.js", "pf-sdk.js"],
   ["sdk/wasm-module.js", "wasm-module.js"],
   ["sdk/core-output.js", "core-output.js"],
   ["sdk/mcp.js", "mcp.js"],
   ["sdk/skills.js", "skills.js"],
   ["sdk/skills-node.js", "skills-node.js"],
-  ["zig-out/bin/fx-core.wasm", "fx-core.wasm"],
-  ["zig-out/bin/fx-term.wasm", "fx-term.wasm"],
+  ["zig-out/bin/pf-core.wasm", "pf-core.wasm"],
+  ["zig-out/bin/pf-term.wasm", "pf-term.wasm"],
 ];
 
 if (requestedNativeAddons.length) {

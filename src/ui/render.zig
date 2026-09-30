@@ -24,26 +24,26 @@ const user_message_card = @import("assistant/user_message_card.zig");
 pub const welcome_message_reserved_rows: u16 = 11;
 
 pub var is_light: bool = false;
-pub var divider_style: []const u8 = shared_theme.fx_dark.divider_style;
-pub var hint_style: []const u8 = shared_theme.fx_dark.hint_style;
-pub var statusline_style: []const u8 = shared_theme.fx_dark.statusline_style;
-pub var tag_style: []const u8 = shared_theme.fx_dark.tag_style;
-pub var subtitle_style: []const u8 = shared_theme.fx_dark.subtitle_style;
-pub var system_notice_label_style: []const u8 = shared_theme.fx_dark.system_notice_label_style;
-pub var system_notice_text_style: []const u8 = shared_theme.fx_dark.system_notice_text_style;
-pub var dim_style: []const u8 = shared_theme.fx_dark.dim_style;
-pub var warning_style: []const u8 = shared_theme.fx_dark.warning_style;
-pub var green_style: []const u8 = shared_theme.fx_dark.green_style;
-pub var red_style: []const u8 = shared_theme.fx_dark.red_style;
-pub var diff_added_style: []const u8 = shared_theme.fx_dark.diff_added_style;
-pub var diff_removed_style: []const u8 = shared_theme.fx_dark.diff_removed_style;
+pub var divider_style: []const u8 = shared_theme.pf_dark.divider_style;
+pub var hint_style: []const u8 = shared_theme.pf_dark.hint_style;
+pub var statusline_style: []const u8 = shared_theme.pf_dark.statusline_style;
+pub var tag_style: []const u8 = shared_theme.pf_dark.tag_style;
+pub var subtitle_style: []const u8 = shared_theme.pf_dark.subtitle_style;
+pub var system_notice_label_style: []const u8 = shared_theme.pf_dark.system_notice_label_style;
+pub var system_notice_text_style: []const u8 = shared_theme.pf_dark.system_notice_text_style;
+pub var dim_style: []const u8 = shared_theme.pf_dark.dim_style;
+pub var warning_style: []const u8 = shared_theme.pf_dark.warning_style;
+pub var green_style: []const u8 = shared_theme.pf_dark.green_style;
+pub var red_style: []const u8 = shared_theme.pf_dark.red_style;
+pub var diff_added_style: []const u8 = shared_theme.pf_dark.diff_added_style;
+pub var diff_removed_style: []const u8 = shared_theme.pf_dark.diff_removed_style;
 pub var diff_added_marker_style: []const u8 = "";
 pub var diff_removed_marker_style: []const u8 = "";
-pub var approval_button_active_style: []const u8 = shared_theme.fx_dark.approval_button_active_style;
-pub var approval_button_inactive_style: []const u8 = shared_theme.fx_dark.approval_button_inactive_style;
-pub var selected_completion_style: []const u8 = shared_theme.fx_dark.selected_completion_style;
+pub var approval_button_active_style: []const u8 = shared_theme.pf_dark.approval_button_active_style;
+pub var approval_button_inactive_style: []const u8 = shared_theme.pf_dark.approval_button_inactive_style;
+pub var selected_completion_style: []const u8 = shared_theme.pf_dark.selected_completion_style;
 // Statusbar permissions "auto": a step brighter than the statusline gray.
-pub var permission_auto_style: []const u8 = shared_theme.fx_dark.permission_auto_style;
+pub var permission_auto_style: []const u8 = shared_theme.pf_dark.permission_auto_style;
 var active_terminal_background: ?TerminalRgb = null;
 
 var truecolor_enabled: bool = true;
@@ -52,7 +52,7 @@ pub fn setTruecolorSupport(enabled: bool) void {
     truecolor_enabled = enabled;
 }
 
-// A configured light|dark pin (FX_THEME or the settings "theme" key) locks the
+// A configured light|dark pin (PF_THEME or the settings "theme" key) locks the
 // variant. Custom themes keep the live monitor so terminal mode flips
 // re-resolve the theme pair without a restart.
 pub fn themeInputLocked() bool {
@@ -188,7 +188,7 @@ pub fn welcomeMessage(alloc: std.mem.Allocator) ![]u8 {
     );
     return std.fmt.allocPrint(
         alloc,
-        "{s}𝒇x{s}{s} {s} · Run /help for commands" ++ reset_style ++ "\n\n",
+        "{s}𝒑f{s}{s} {s} · Run /help for commands" ++ reset_style ++ "\n\n",
         .{ subtitle_style, reset_style, dim_style, build_label },
     );
 }
@@ -740,13 +740,13 @@ test "terminal title writes the label to the caller's output file" {
 
     // A host that redirects its output keeps the escape sequence off the
     // real stdout, which the Zig test runner owns as its protocol channel.
-    terminalTitleFor(&sink).set("fx v" ++ main.version ++ " | fx");
+    terminalTitleFor(&sink).set("pf v" ++ main.version ++ " | pf");
 
     var written_file = try tmp.dir.openFile(io_mod.getIo(), "terminal-title.log", .{});
     defer written_file.close(io_mod.getIo());
     const written = try io_mod.readFileToEnd(alloc, &written_file, 128);
     defer alloc.free(written);
-    try std.testing.expectEqualStrings("\x1b]2;fx v" ++ main.version ++ " | fx\x07", written);
+    try std.testing.expectEqualStrings("\x1b]2;pf v" ++ main.version ++ " | pf\x07", written);
 }
 
 test "terminal title sanitizes and bounds untrusted labels" {
@@ -792,7 +792,7 @@ pub fn formatResumeHandoff(
     terminal_cols: u16,
 ) ![]const u8 {
     const label = "Continue session with:";
-    const command = "fx --resume ";
+    const command = "pf --resume ";
     const single_row_width = label.len + 1 + command.len + session_id.len;
     const separator = if (single_row_width <= terminal_cols) " " else "\n  ";
     return std.fmt.bufPrint(
@@ -823,21 +823,21 @@ test "diff markers are monochrome by default and colored for selected themes" {
     // same palette as the terminal-following default.
     shared_theme.setSource(null, true);
     initTheme(false, null);
-    try std.testing.expectEqualStrings(shared_theme.fx_dark.diff_added_marker_truecolor, diff_added_marker_style);
-    try std.testing.expectEqualStrings(shared_theme.fx_dark.diff_removed_marker_truecolor, diff_removed_marker_style);
+    try std.testing.expectEqualStrings(shared_theme.pf_dark.diff_added_marker_truecolor, diff_added_marker_style);
+    try std.testing.expectEqualStrings(shared_theme.pf_dark.diff_removed_marker_truecolor, diff_removed_marker_style);
     setTruecolorSupport(false);
     initTheme(true, null);
-    try std.testing.expectEqualStrings(shared_theme.fx_light.diff_added_marker_fallback, diff_added_marker_style);
-    try std.testing.expectEqualStrings(shared_theme.fx_light.diff_removed_marker_fallback, diff_removed_marker_style);
+    try std.testing.expectEqualStrings(shared_theme.pf_light.diff_added_marker_fallback, diff_added_marker_style);
+    try std.testing.expectEqualStrings(shared_theme.pf_light.diff_removed_marker_fallback, diff_removed_marker_style);
 
     // A named theme remains explicitly selected when its file is missing and
     // startup falls back to the builtin variant.
     shared_theme.setSource("missing-light", false);
     initTheme(true, null);
-    try std.testing.expectEqualStrings(shared_theme.fx_light.diff_added_marker_fallback, diff_added_marker_style);
-    try std.testing.expectEqualStrings(shared_theme.fx_light.diff_removed_marker_fallback, diff_removed_marker_style);
+    try std.testing.expectEqualStrings(shared_theme.pf_light.diff_added_marker_fallback, diff_added_marker_style);
+    try std.testing.expectEqualStrings(shared_theme.pf_light.diff_removed_marker_fallback, diff_removed_marker_style);
 
-    var custom = shared_theme.fx_dark;
+    var custom = shared_theme.pf_dark;
     custom.diff_added_marker_fallback = "[custom-add]";
     custom.diff_removed_marker_fallback = "[custom-remove]";
     applyTheme(custom, null);
@@ -859,18 +859,18 @@ test "resume handoff uses one row only when the full instruction fits" {
     initTheme(false, null);
     defer initTheme(false, null);
 
-    const single_row = "Continue session with: fx --resume session-123";
+    const single_row = "Continue session with: pf --resume session-123";
     var exact_buffer: [128]u8 = undefined;
     const exact = try formatResumeHandoff(&exact_buffer, "session-123", single_row.len);
     try std.testing.expectEqualStrings(
-        "\x1b[38;5;245mContinue session with: fx --resume session-123\x1b[0m\n",
+        "\x1b[38;5;245mContinue session with: pf --resume session-123\x1b[0m\n",
         exact,
     );
 
     var narrow_buffer: [128]u8 = undefined;
     const narrow = try formatResumeHandoff(&narrow_buffer, "session-123", single_row.len - 1);
     try std.testing.expectEqualStrings(
-        "\x1b[38;5;245mContinue session with:\n  fx --resume session-123\x1b[0m\n",
+        "\x1b[38;5;245mContinue session with:\n  pf --resume session-123\x1b[0m\n",
         narrow,
     );
 }
@@ -882,7 +882,7 @@ test "resume handoff follows the active muted theme shade" {
     var buffer: [128]u8 = undefined;
     const message = try formatResumeHandoff(&buffer, "session-123", 80);
     try std.testing.expectEqualStrings(
-        "\x1b[38;5;247mContinue session with: fx --resume session-123\x1b[0m\n",
+        "\x1b[38;5;247mContinue session with: pf --resume session-123\x1b[0m\n",
         message,
     );
 }
@@ -917,7 +917,7 @@ test "welcomeMessage shows version and help hint" {
     const message = try welcomeMessage(std.testing.allocator);
     defer std.testing.allocator.free(message);
 
-    try std.testing.expect(std.mem.find(u8, message, "𝒇x") != null);
+    try std.testing.expect(std.mem.find(u8, message, "𝒑f") != null);
     try std.testing.expect(std.mem.find(u8, message, main.version) != null);
     try std.testing.expect(std.mem.find(u8, message, "/help") != null);
 }
@@ -936,7 +936,7 @@ test "welcomeMessage keeps only the app name bright" {
     );
     const expected = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{s}𝒇x{s}{s} {s} · Run /help for commands" ++ reset_style ++ "\n\n",
+        "{s}𝒑f{s}{s} {s} · Run /help for commands" ++ reset_style ++ "\n\n",
         .{ subtitle_style, reset_style, dim_style, build_label },
     );
     defer std.testing.allocator.free(expected);
@@ -1067,11 +1067,11 @@ test "buildHintLine omits the session segment when no title is cached" {
 test "buildHintLine shows the workspace and Git branch" {
     var buf: [256]u8 = undefined;
     const line = buildHintLine(false, true, "openai/gpt-5", .ask, false, .auto, false, .{
-        .workspace_label = "/workspace/code/fx",
+        .workspace_label = "/workspace/code/pf",
         .git_branch = "feature/statusline",
     }, 100, &buf);
     try std.testing.expectEqualStrings(
-        "ask · gpt-5 · /workspace/code/fx (feature/statusline)",
+        "ask · gpt-5 · /workspace/code/pf (feature/statusline)",
         line,
     );
 }
@@ -1079,12 +1079,12 @@ test "buildHintLine shows the workspace and Git branch" {
 test "buildHintLine keeps workspace and branch readable at narrow widths" {
     var buf: [256]u8 = undefined;
     const line = buildHintLine(false, true, "openai/gpt-5", .ask, false, .auto, false, .{
-        .workspace_label = "/a/very/long/path/to/fx-repo",
+        .workspace_label = "/a/very/long/path/to/pf-repo",
         .git_branch = "feature/statusline",
     }, 36, &buf);
     try std.testing.expectEqual(@as(usize, 36), display_width.visibleWidthIgnoringAnsi(line));
     try std.testing.expect(std.mem.startsWith(u8, line, "ask · gpt-5 · "));
-    try std.testing.expect(std.mem.find(u8, line, "fx-repo") != null);
+    try std.testing.expect(std.mem.find(u8, line, "pf-repo") != null);
     try std.testing.expect(std.mem.find(u8, line, "feature/") != null);
     try std.testing.expect(std.mem.endsWith(u8, line, "…)"));
 }
@@ -1116,11 +1116,11 @@ test "buildHintLine shows a non-Git workspace without branch punctuation" {
 test "buildHintLine labels detached HEAD" {
     var buf: [128]u8 = undefined;
     const line = buildHintLine(false, true, "openai/gpt-5", .ask, false, .auto, false, .{
-        .workspace_label = "/tmp/fx",
+        .workspace_label = "/tmp/pf",
         .git_branch = "detached:0123456789ab",
     }, 80, &buf);
     try std.testing.expectEqualStrings(
-        "ask · gpt-5 · /tmp/fx (detached:0123456789ab)",
+        "ask · gpt-5 · /tmp/pf (detached:0123456789ab)",
         line,
     );
 }

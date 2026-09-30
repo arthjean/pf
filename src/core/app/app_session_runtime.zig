@@ -82,7 +82,7 @@ const RecoveryAutoContinue = enum {
 /// A leftover owner marker means the previous process died mid-recovery, and
 /// a leftover asked marker means a prior resume already suppressed this
 /// checkpoint without the user resolving it. Either way the turn is the
-/// user's to retry, not fx's to re-spend.
+/// user's to retry, not pf's to re-spend.
 fn recoveryAutoContinueDecision(
     checkpoint: session_codec.RecoveryCheckpoint,
     previous_owner_died: bool,
@@ -317,7 +317,7 @@ const ResumeNotice = union(enum) {
 };
 
 fn writeUpgradeNoticeBody(writer: *std.Io.Writer, upgrade: UpgradeNotice) !void {
-    try writer.writeAll("fx has been updated to ");
+    try writer.writeAll("pf has been updated to ");
     if (upgrade.channel == .dev and update_target.isValidRevision(upgrade.revision)) {
         try writer.print("dev {s} (v{s})", .{
             upgrade.revision[0..@min(upgrade.revision.len, 12)],
@@ -2284,7 +2284,7 @@ pub fn Runtime(comptime App: type) type {
             // source, not a turn waiting to run; the compaction flow owns it.
             // A checkpoint left behind by an unclean exit is different: the
             // interrupted turn may be what killed the process, so the user
-            // decides whether to retry it instead of fx re-spending the turn
+            // decides whether to retry it instead of pf re-spending the turn
             // on its own, and that suppression stays sticky until the turn
             // is resolved.
             if (comptime @hasDecl(App, "queueRecoveryCheckpoint")) {
@@ -2309,7 +2309,7 @@ pub fn Runtime(comptime App: type) type {
                             try app.writeDomainNotice(.{
                                 .topic = "recovery",
                                 .tone = .warning,
-                                .body = "fx quit unexpectedly while this response was recovering, so it was not restarted. Send \"continue\" to retry it, or a new message to move on.",
+                                .body = "pf quit unexpectedly while this response was recovering, so it was not restarted. Send \"continue\" to retry it, or a new message to move on.",
                             }, true);
                         },
                         .auto_continue => {
@@ -3194,13 +3194,13 @@ pub fn Runtime(comptime App: type) type {
                     const body = if (loaded.conversation_writer.turn_open)
                         try std.fmt.allocPrint(
                             app.alloc,
-                            "Turn completed, but fx could not save it ({s}). New messages are blocked until you reopen the session. The turn may run again.",
+                            "Turn completed, but pf could not save it ({s}). New messages are blocked until you reopen the session. The turn may run again.",
                             .{@errorName(err)},
                         )
                     else
                         try std.fmt.allocPrint(
                             app.alloc,
-                            "Turn completed, but fx could not save it ({s}). The session keeps running; this turn may be missing after a resume.",
+                            "Turn completed, but pf could not save it ({s}). The session keeps running; this turn may be missing after a resume.",
                             .{@errorName(err)},
                         );
                     defer app.alloc.free(body);
@@ -3352,11 +3352,11 @@ pub fn Runtime(comptime App: type) type {
             else
                 "";
             const folder = if (basename.len == 0) "workspace" else basename;
-            const prefix = "fx v" ++ build_options.app_version ++ " | ";
+            const prefix = "pf v" ++ build_options.app_version ++ " | ";
             var label_buffer: [prefix.len + std.fs.max_path_bytes]u8 = undefined;
             const label = std.fmt.bufPrint(&label_buffer, "{s}{s}", .{ prefix, folder }) catch |err| {
                 debug_trace.logf("session", "terminal title workspace omitted err={s}", .{@errorName(err)});
-                provider.set("fx v" ++ build_options.app_version);
+                provider.set("pf v" ++ build_options.app_version);
                 return;
             };
             provider.set(label);
@@ -5339,7 +5339,7 @@ pub fn Runtime(comptime App: type) type {
 
         /// A fresh interactive session that never received durable work has
         /// nothing to resume. Discarding it on close keeps each launch from
-        /// leaving an empty session directory behind, matching `fx ask` and
+        /// leaving an empty session directory behind, matching `pf ask` and
         /// ACP. A user-chosen title is durable intent, so a renamed session stays.
         fn discardableOnClose(
             app: *App,
@@ -5727,7 +5727,7 @@ pub fn Runtime(comptime App: type) type {
                 std.heap.c_allocator,
                 provider_runtime.model(app),
             );
-            // Launch flags (fx --effort/--fast) win over the resumed session's
+            // Launch flags (pf --effort/--fast) win over the resumed session's
             // stored preferences for this launch, without rewriting them.
             const effective_effort = app.session_persistence.process_effort_override orelse preferences.effort;
             const effective_fast_mode = app.session_persistence.process_fast_override orelse preferences.fast_mode;
@@ -5799,7 +5799,7 @@ pub fn Runtime(comptime App: type) type {
 
         fn reportRememberFailure(app: *App, failure: RememberFailure, comptime from_worker: bool) void {
             const alloc = std.heap.c_allocator;
-            const body = std.fmt.allocPrint(alloc, "Session saved, but could not remember it for -c ({s}). Resume with fx --resume {s}.", .{ @errorName(failure.err), failure.id[0..failure.len] }) catch return;
+            const body = std.fmt.allocPrint(alloc, "Session saved, but could not remember it for -c ({s}). Resume with pf --resume {s}.", .{ @errorName(failure.err), failure.id[0..failure.len] }) catch return;
             defer alloc.free(body);
             const notice = types.SemanticNotice{ .topic = "session", .tone = .warning, .body = body };
             if (comptime @hasDecl(@TypeOf(app.worker), "pushEvent") and (from_worker or !@hasDecl(App, "writeDomainNotice"))) {
@@ -6952,7 +6952,7 @@ test "session runtime owns temporary interactive image snapshot capture" {
 }
 
 fn testPaths(alloc: Allocator, tmp: *std.testing.TmpDir) !struct { home: []u8, workspace: []u8 } {
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     return .{
         .home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home"),
@@ -8150,7 +8150,7 @@ test "resume falls back to saved command output when replay contains an empty fr
     const saved_output =
         "exit_code=0\n<stdout>\nFALLBACK_STDOUT_MARKER\n</stdout>\n" ++
         "<stderr>\n</stderr>\n";
-    const replay_handle = "fx-command-replay-empty-frame.bin";
+    const replay_handle = "pf-command-replay-empty-frame.bin";
     var empty_replay = [_]u8{0} ** ("FXRPLY01".len + 9);
     @memcpy(empty_replay[0.."FXRPLY01".len], "FXRPLY01");
 
@@ -8460,7 +8460,7 @@ test "upgrade notice body identifies stable notes and dev changes" {
                 .previous_revision = "",
                 .revision = "",
             },
-            .expected = "fx has been updated to v9.9.9 (\x1b]8;;https://fx.sh/changelog#v9.9.9\x1b\\\x1b[4mnotes\x1b[24m\x1b]8;;\x1b\\)",
+            .expected = "pf has been updated to v9.9.9 (\x1b]8;;https://paneflow.dev/agent/changelog#v9.9.9\x1b\\\x1b[4mnotes\x1b[24m\x1b]8;;\x1b\\)",
         },
         .{
             .upgrade = .{
@@ -8469,7 +8469,7 @@ test "upgrade notice body identifies stable notes and dev changes" {
                 .previous_revision = "1111111111111111111111111111111111111111",
                 .revision = "abcdef0123456789abcdef0123456789abcdef01",
             },
-            .expected = "fx has been updated to dev abcdef012345 (v9.9.9) (\x1b]8;;https://github.com/vercel-labs/fx/compare/1111111111111111111111111111111111111111...abcdef0123456789abcdef0123456789abcdef01\x1b\\\x1b[4mchanges\x1b[24m\x1b]8;;\x1b\\)",
+            .expected = "pf has been updated to dev abcdef012345 (v9.9.9) (\x1b]8;;https://github.com/vercel-labs/fx/compare/1111111111111111111111111111111111111111...abcdef0123456789abcdef0123456789abcdef01\x1b\\\x1b[4mchanges\x1b[24m\x1b]8;;\x1b\\)",
         },
         .{
             .upgrade = .{
@@ -8478,7 +8478,7 @@ test "upgrade notice body identifies stable notes and dev changes" {
                 .previous_revision = "",
                 .revision = "abcdef0123456789abcdef0123456789abcdef01",
             },
-            .expected = "fx has been updated to dev abcdef012345 (v9.9.9) (\x1b]8;;https://github.com/vercel-labs/fx/commit/abcdef0123456789abcdef0123456789abcdef01\x1b\\\x1b[4mchanges\x1b[24m\x1b]8;;\x1b\\)",
+            .expected = "pf has been updated to dev abcdef012345 (v9.9.9) (\x1b]8;;https://github.com/vercel-labs/fx/commit/abcdef0123456789abcdef0123456789abcdef01\x1b\\\x1b[4mchanges\x1b[24m\x1b]8;;\x1b\\)",
         },
     };
 
@@ -8847,7 +8847,7 @@ test "upgrade resume restores active session with the installed version notice" 
     try std.testing.expectEqualStrings("run server", context[2].assistant.user.text);
     try std.testing.expectEqual(@as(usize, 1), app.notices.items.len);
     try std.testing.expectEqualStrings(
-        "✓ fx has been updated to v9.9.9 (\x1b]8;;https://fx.sh/changelog#v9.9.9\x1b\\\x1b[4mnotes\x1b[24m\x1b]8;;\x1b\\)",
+        "✓ pf has been updated to v9.9.9 (\x1b]8;;https://paneflow.dev/agent/changelog#v9.9.9\x1b\\\x1b[4mnotes\x1b[24m\x1b]8;;\x1b\\)",
         app.notices.items[0],
     );
     try std.testing.expectEqual(@as(usize, 2), app.completed_tool_statuses.items.len);
@@ -9421,7 +9421,7 @@ test "resumeRequestedSession replays persisted model Markdown without parsing ge
     );
     try std.testing.expectEqual(@as(usize, 1), app.assistant_thematic_rule_count);
     try std.testing.expect(std.mem.find(u8, app.transcript.items, "Cancelled") != null);
-    try std.testing.expect(std.mem.find(u8, app.transcript.items, "What can fx do differently?") != null);
+    try std.testing.expect(std.mem.find(u8, app.transcript.items, "What can pf do differently?") != null);
     try std.testing.expect(std.mem.find(u8, app.transcript.items, "System:") == null);
     try std.testing.expect(std.mem.find(u8, app.transcript.items, "Cancelling") == null);
     try std.testing.expectEqual(
@@ -9553,7 +9553,7 @@ test "resumeRequestedSession replays active-tool interruption with live cancella
     try std.testing.expectEqual(@as(usize, 1), app.cards.items.len);
     try std.testing.expectEqualStrings("inspect the browser", app.cards.items[0].text);
     try std.testing.expect(std.mem.find(u8, app.transcript.items, "Cancelled") != null);
-    try std.testing.expect(std.mem.find(u8, app.transcript.items, "What can fx do differently?") != null);
+    try std.testing.expect(std.mem.find(u8, app.transcript.items, "What can pf do differently?") != null);
     try std.testing.expect(std.mem.find(u8, app.transcript.items, "System:") == null);
     try std.testing.expect(std.mem.find(u8, app.transcript.items, "Cancelling") == null);
     try std.testing.expectEqual(@as(usize, 1), app.notices.items.len);
@@ -9645,7 +9645,7 @@ test "cancelled command presentation survives a persisted session restart" {
             .{ .terminal = .{
                 .id = lifecycle_id,
                 .outcome = .{ .kind = .cancelled, .summary = "Cancelled slow" },
-                .command_artifact_handle = "fx-command-cancelled.log",
+                .command_artifact_handle = "pf-command-cancelled.log",
             } },
             true,
         );
@@ -9679,7 +9679,7 @@ test "cancelled command presentation survives a persisted session restart" {
     try std.testing.expectEqual(@as(usize, 1), resumed.cancelled_command_detail_count);
     try std.testing.expect(resumed.cancelled_command_replayed_output);
     try std.testing.expectEqualStrings(
-        "fx-command-cancelled.log",
+        "pf-command-cancelled.log",
         resumed.cancelled_command_artifact_handle.?,
     );
     try std.testing.expectEqualSlices(
@@ -9780,7 +9780,7 @@ fn expectAuthoritativeCancelledReplayIsSoleArtifact() !void {
         .{ .terminal = .{
             .id = lifecycle_id,
             .outcome = .{ .kind = .cancelled, .summary = "Cancelled" },
-            .command_artifact_handle = "fx-command-cancelled.log",
+            .command_artifact_handle = "pf-command-cancelled.log",
         } },
         true,
     );
@@ -9807,7 +9807,7 @@ fn expectAuthoritativeCancelledReplayIsSoleArtifact() !void {
     };
     try std.testing.expectEqualStrings(descriptor.handle, stored.handle);
     try std.testing.expectEqualStrings(
-        "fx-command-cancelled.log",
+        "pf-command-cancelled.log",
         history[0].interrupted.cancelled_command.?
             .command_artifact_handle orelse return error.TestExpectedArtifactHandle,
     );
@@ -11149,7 +11149,7 @@ test "session picker current mode filters workspace and all mode includes every 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace-a");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace-b");
     const home_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
@@ -11815,8 +11815,8 @@ test "resumed usage reconciliation rejects the previous provider credential" {
     const cases = .{
         .{ model_provider.ProviderId.gateway, types.CredentialSource.chatgpt_subscription },
         .{ model_provider.ProviderId.gateway, types.CredentialSource.grok_subscription },
-        .{ model_provider.ProviderId.codex, types.CredentialSource.fx_login },
-        .{ model_provider.ProviderId.grok, types.CredentialSource.fx_login },
+        .{ model_provider.ProviderId.codex, types.CredentialSource.pf_login },
+        .{ model_provider.ProviderId.grok, types.CredentialSource.pf_login },
     };
     inline for (cases) |case| {
         var app = ReconciliationOriginApp{
@@ -11847,7 +11847,7 @@ test "ensureCachedSessionTitle derives from the first prompt and then freezes" {
     try std.testing.expect(Runtime(TestApp).cachedSessionTitle(&app) == null);
 
     try app.session.appendHistoryEntry(alloc, .{ .assistant = .{
-        .user = .{ .text = @constCast("add a session name display to the bottom status row in fx") },
+        .user = .{ .text = @constCast("add a session name display to the bottom status row in pf") },
         .assistant = @constCast("ok"),
         .execution = .{},
     } });
@@ -12157,11 +12157,11 @@ test "terminal title shows the session title once cached and falls back to build
 
     try std.testing.expectEqualStrings("", app.terminalTitleLabelText());
     Runtime(TestApp).syncTerminalTitle(&app);
-    try std.testing.expectEqualStrings("fx v" ++ build_options.app_version ++ " | workspace", app.terminalTitleLabelText());
+    try std.testing.expectEqualStrings("pf v" ++ build_options.app_version ++ " | workspace", app.terminalTitleLabelText());
 
     try app.selected_model.appendSlice(alloc, "zai/glm-5.2");
     Runtime(TestApp).syncTerminalTitle(&app);
-    try std.testing.expectEqualStrings("fx v" ++ build_options.app_version ++ " | workspace", app.terminalTitleLabelText());
+    try std.testing.expectEqualStrings("pf v" ++ build_options.app_version ++ " | workspace", app.terminalTitleLabelText());
 
     try app.session.appendHistoryEntry(alloc, .{ .assistant = .{
         .user = .{ .text = @constCast("wire the release notes generator") },
@@ -12182,7 +12182,7 @@ test "terminal title shows the session title once cached and falls back to build
 
     Runtime(TestApp).clearCachedSessionTitle(&app);
     try std.testing.expect(Runtime(TestApp).cachedSessionTitle(&app) == null);
-    try std.testing.expectEqualStrings("fx v" ++ build_options.app_version ++ " | workspace", app.terminalTitleLabelText());
+    try std.testing.expectEqualStrings("pf v" ++ build_options.app_version ++ " | workspace", app.terminalTitleLabelText());
 }
 
 test "cached session title drops control bytes before they reach the terminal" {
@@ -12209,8 +12209,8 @@ test "cached session title drops control bytes before they reach the terminal" {
 
 test "terminal title uses the workspace basename and handles unnamed roots" {
     const cases = [_]struct { path: []const u8, folder: []const u8 }{
-        .{ .path = "/projects/fx", .folder = "fx" },
-        .{ .path = "/projects/fx/", .folder = "fx" },
+        .{ .path = "/projects/pf", .folder = "pf" },
+        .{ .path = "/projects/pf/", .folder = "pf" },
         .{ .path = "/projects/my project é", .folder = "my project é" },
         .{ .path = "/", .folder = "workspace" },
         .{ .path = "", .folder = "workspace" },
@@ -12220,7 +12220,7 @@ test "terminal title uses the workspace basename and handles unnamed roots" {
         defer app.deinit();
         Runtime(TestApp).syncTerminalTitle(&app);
         var expected_buffer: [128]u8 = undefined;
-        const expected = try std.fmt.bufPrint(&expected_buffer, "fx v{s} | {s}", .{ build_options.app_version, case.folder });
+        const expected = try std.fmt.bufPrint(&expected_buffer, "pf v{s} | {s}", .{ build_options.app_version, case.folder });
         try std.testing.expectEqualStrings(expected, app.terminalTitleLabelText());
     }
 }
@@ -12412,7 +12412,7 @@ test "remembered selection write failure leaves pending user work durable and wa
     try configureTestPreferences(&app);
     try Runtime(TestApp).initializePersistence(&app, true);
     try Runtime(TestApp).beginFreshPersistedSession(&app);
-    var obstruction = try tmp.dir.createFile(io_mod.getIo(), "home/.fx/continue", .{});
+    var obstruction = try tmp.dir.createFile(io_mod.getIo(), "home/.pf/continue", .{});
     obstruction.close(io_mod.getIo());
     try Runtime(TestApp).setRecoveryCheckpoint(&app, .{
         .turn_id = 1,

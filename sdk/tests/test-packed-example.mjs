@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const backend = process.argv[3] || "native";
 const format = process.argv[4] || "esm";
 if (process.argv[2] !== "--installed") {
-  const temp = await mkdtemp(resolve(tmpdir(), "libfx-packed-"));
+  const temp = await mkdtemp(resolve(tmpdir(), "libpf-packed-"));
   function run(command, args, cwd) {
     const result = spawnSync(command, args, { cwd, encoding: "utf8", timeout: 120_000 });
     if (result.error) throw result.error;
@@ -32,9 +32,9 @@ if (process.argv[2] !== "--installed") {
     await rm(temp, { recursive: true, force: true });
   }
 } else {
-  const { createFxAgent, createFxTerminal, getBackendInfo } = format === "cjs" ? createRequire(import.meta.url)("libfx") : await import("libfx");
-  const { createMcpAdapter } = await import("libfx/mcp");
-  const { createSkillsAdapter } = await import("libfx/skills");
+  const { createPfAgent, createPfTerminal, getBackendInfo } = format === "cjs" ? createRequire(import.meta.url)("libpf") : await import("libpf");
+  const { createMcpAdapter } = await import("libpf/mcp");
+  const { createSkillsAdapter } = await import("libpf/skills");
   assert.equal(typeof createMcpAdapter, "function");
   assert.equal(typeof createSkillsAdapter, "function");
 
@@ -47,8 +47,8 @@ if (process.argv[2] !== "--installed") {
       await assert.rejects(getBackendInfo(makeOptions("backend", invalid)), TypeError);
       await assert.rejects(getBackendInfo(makeOptions("surface", invalid)), TypeError);
       const backendError = { name: "TypeError", message: 'backend must be "auto", "native", or "wasm"' };
-      await assert.rejects(createFxAgent(makeOptions("backend", invalid)), backendError);
-      await assert.rejects(createFxTerminal(makeOptions("backend", invalid)), backendError);
+      await assert.rejects(createPfAgent(makeOptions("backend", invalid)), backendError);
+      await assert.rejects(createPfTerminal(makeOptions("backend", invalid)), backendError);
     }
     for (const value of [undefined, "auto", "native", "wasm"]) {
       assert.deepEqual(await getBackendInfo(makeOptions("backend", value)), await getBackendInfo({ backend: value }));
@@ -58,7 +58,7 @@ if (process.argv[2] !== "--installed") {
   }
   assert.deepEqual(await getBackendInfo({ backend: undefined, surface: undefined }), await getBackendInfo());
   assert.deepEqual(await getBackendInfo({ backend: "auto", surface: "agent" }), await getBackendInfo());
-  for (const select of [getBackendInfo, createFxAgent, createFxTerminal]) {
+  for (const select of [getBackendInfo, createPfAgent, createPfTerminal]) {
     let reads = 0;
     const options = { backend: "native", get nativeAddon() { reads++; this.backend = null; } };
     await assert.rejects(select(options), { name: "TypeError", message: 'backend must be "auto", "native", or "wasm"' });
@@ -83,7 +83,7 @@ if (process.argv[2] !== "--installed") {
   });
   await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
 
-  const agent = await createFxAgent({
+  const agent = await createPfAgent({
     backend,
     fetch(input, init) {
       const origin = `http://127.0.0.1:${server.address().port}`;
@@ -106,7 +106,7 @@ if (process.argv[2] !== "--installed") {
     assert.equal(requestedModel, "packed/model");
     assert.ok((await agent.checkpoint()).length > 48);
     await agent.close();
-    console.log(`${format} ${backend} packed libfx example passed`);
+    console.log(`${format} ${backend} packed libpf example passed`);
   } finally {
     await agent.close().catch(() => {});
     server.closeAllConnections();

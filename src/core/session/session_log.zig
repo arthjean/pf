@@ -4601,7 +4601,7 @@ test "root init rejects symlinked durable and sessions roots" {
         tmp.dir.symLink(
             io_mod.getIo(),
             "../outside",
-            "home/.fx",
+            "home/.pf",
             .{ .is_directory = true },
         ) catch |err| switch (err) {
             error.AccessDenied => return error.SkipZigTest,
@@ -4619,12 +4619,12 @@ test "root init rejects symlinked durable and sessions roots" {
     {
         var tmp = std.testing.tmpDir(.{});
         defer tmp.cleanup();
-        try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+        try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
         try tmp.dir.createDirPath(io_mod.getIo(), "outside");
         tmp.dir.symLink(
             io_mod.getIo(),
             "../../outside",
-            "home/.fx/sessions",
+            "home/.pf/sessions",
             .{ .is_directory = true },
         ) catch |err| switch (err) {
             error.AccessDenied => return error.SkipZigTest,
@@ -4643,8 +4643,8 @@ test "root init rejects symlinked durable and sessions roots" {
 fn testState(alloc: Allocator, id: []const u8, updated_at_ms: i64) !session_codec.DurableSessionState {
     return .{
         .id = try alloc.dupe(u8, id),
-        .origin_workspace_root = try alloc.dupe(u8, "/tmp/fx-plan-03"),
-        .workspace_root = try alloc.dupe(u8, "/tmp/fx-plan-03"),
+        .origin_workspace_root = try alloc.dupe(u8, "/tmp/pf-plan-03"),
+        .workspace_root = try alloc.dupe(u8, "/tmp/pf-plan-03"),
         .created_at_ms = 10,
         .updated_at_ms = updated_at_ms,
         .conversation_language = session.ConversationLanguage.literal("en"),
@@ -4969,7 +4969,7 @@ test "first commit never persists the fallback placeholder as a title" {
             .conversation_language = .literal("en"),
             .total_input_tokens = 0,
             .total_output_tokens = 0,
-            .turn = .{ .interrupted = .{ .user = .{ .text = @constCast("/tmp/fx-trace.md") } } },
+            .turn = .{ .interrupted = .{ .user = .{ .text = @constCast("/tmp/pf-trace.md") } } },
         } }, 20);
         const title = try loaded.conversationTitle(alloc);
         defer if (title) |value| alloc.free(value);
@@ -5195,7 +5195,7 @@ test "conversation writer flattens a canonical history turn" {
         .stored_output_bytes = 4,
         .permission_feedback = &feedback,
         .command_output_replay = .{ .available = .{
-            .handle = @constCast("fx-command-replay-test.bin"),
+            .handle = @constCast("pf-command-replay-test.bin"),
             .framed_bytes = 42,
         } },
     }};
@@ -7062,7 +7062,7 @@ test "recovery checkpoint spill failure keeps the result inline" {
     defer loaded.deinit(alloc);
 
     // Block the result store: tool-results exists as a regular file.
-    const session_path = try std.fs.path.join(alloc, &.{ temp.home, ".fx", "sessions", initial.id });
+    const session_path = try std.fs.path.join(alloc, &.{ temp.home, ".pf", "sessions", initial.id });
     defer alloc.free(session_path);
     var session_dir = try std.Io.Dir.openDirAbsolute(io_mod.getIo(), session_path, .{});
     defer session_dir.close(io_mod.getIo());
@@ -7891,7 +7891,7 @@ test "cache-free resume rebuilds tool calls and external result references" {
             .lifecycle_id = .{ .turn_id = 7, .call_id = "call-shell" },
         },
         .command_output_replay = .{ .available = .{
-            .handle = @constCast("fx-command-replay-test.bin"),
+            .handle = @constCast("pf-command-replay-test.bin"),
             .framed_bytes = 42,
         } },
         .command_process_presentation = .{ .exit_code = 7 },
@@ -7985,7 +7985,7 @@ test "cache-free resume rebuilds tool calls and external result references" {
     switch (replay) {
         .available => |descriptor| {
             try std.testing.expectEqualStrings(
-                "fx-command-replay-test.bin",
+                "pf-command-replay-test.bin",
                 descriptor.handle,
             );
             try std.testing.expectEqual(@as(usize, 42), descriptor.framed_bytes);

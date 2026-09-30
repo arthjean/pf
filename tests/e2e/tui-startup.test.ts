@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, HAS_API_KEY } from "../evals/eval-helpers";
+import { PF_BIN, HAS_API_KEY } from "../evals/eval-helpers";
 import {
   FAKE_GATEWAY_MODEL,
   fakeGatewayFinalText,
@@ -32,7 +32,7 @@ afterEach(async () => {
 
 describe.skipIf(SKIP)("tui: startup and exit", () => {
   test(
-    "fx launches and shows prompt",
+    "pf launches and shows prompt",
     async () => {
       session = await TmuxSession.create();
       const pane = await session.waitForComposer(10_000);
@@ -73,7 +73,7 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "statusline hides the workspace identity by default",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-statusline-default-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-statusline-default-")));
       const home = join(root, "home");
       const workspace = join(root, "workspace-default-hidden");
       const stderrPath = join(root, "stderr.log");
@@ -89,9 +89,9 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
             HOME: home,
             AI_GATEWAY_API_KEY: undefined,
             VERCEL_OIDC_TOKEN: undefined,
-            FX_AUTO_UPGRADE: "0",
-            FX_DISABLE_KEYCHAIN: "1",
-            FX_SKIP_ONBOARDING: "1",
+            PF_AUTO_UPGRADE: "0",
+            PF_DISABLE_KEYCHAIN: "1",
+            PF_SKIP_ONBOARDING: "1",
           },
           stderrPath,
           width: 100,
@@ -116,7 +116,7 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "/help keeps command descriptions close after a wide-to-narrow resize",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-help-columns-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-help-columns-")));
       const home = join(root, "home");
       const stderrPath = join(root, "stderr.log");
       mkdirSync(home, { recursive: true });
@@ -127,7 +127,7 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
           cwd: root,
           env: {
             HOME: home,
-            FX_AUTO_UPGRADE: "0",
+            PF_AUTO_UPGRADE: "0",
           },
           stderrPath,
           width: 160,
@@ -174,18 +174,18 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "statusline refreshes the working directory and Git branch",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-statusline-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-statusline-")));
       const home = join(root, "home");
       const repository = join(root, "repository");
       const workspace = join(repository, "packages", "status-root");
       const headPath = join(repository, ".git", "HEAD");
       const stderrPath = join(root, "stderr.log");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
       mkdirSync(join(repository, ".git"), { recursive: true });
       mkdirSync(workspace, { recursive: true });
       writeFileSync(headPath, "ref: refs/heads/initial-branch\n");
       writeFileSync(
-        join(home, ".fx", "settings.json"),
+        join(home, ".pf", "settings.json"),
         `${JSON.stringify({ statusLine: { workspace: true }, fast_mode: false })}\n`,
       );
       writeFileSync(stderrPath, "");
@@ -197,9 +197,9 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
             HOME: home,
             AI_GATEWAY_API_KEY: undefined,
             VERCEL_OIDC_TOKEN: undefined,
-            FX_AUTO_UPGRADE: "0",
-            FX_DISABLE_KEYCHAIN: "1",
-            FX_SKIP_ONBOARDING: "1",
+            PF_AUTO_UPGRADE: "0",
+            PF_DISABLE_KEYCHAIN: "1",
+            PF_SKIP_ONBOARDING: "1",
           },
           stderrPath,
           width: 100,
@@ -248,21 +248,21 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "restore the launch header without retaining prior output",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-fresh-session-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-fresh-session-")));
       const home = join(root, "home");
       const stderrPath = join(root, "stderr.log");
       mkdirSync(home, { recursive: true });
       writeFileSync(stderrPath, "");
 
-      const version = execFileSync(FX_BIN, ["--version"], { encoding: "utf8" }).trim();
-      const banner = `𝒇x v${version} · Run /help for commands`;
+      const version = execFileSync(PF_BIN, ["--version"], { encoding: "utf8" }).trim();
+      const banner = `𝒑f v${version} · Run /help for commands`;
 
       try {
         session = await TmuxSession.create({
           cwd: root,
           env: {
             HOME: home,
-            FX_AUTO_UPGRADE: "0",
+            PF_AUTO_UPGRADE: "0",
           },
           stderrPath,
           width: 120,
@@ -308,24 +308,24 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "/new preserves the visible transcript in terminal scrollback",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-new-scrollback-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-new-scrollback-")));
       const home = join(root, "home");
       const stderrPath = join(root, "stderr.log");
-      const tapePath = join(root, "session.fxtape");
+      const tapePath = join(root, "session.pftape");
       mkdirSync(home, { recursive: true });
       writeFileSync(stderrPath, "");
-      const version = execFileSync(FX_BIN, ["--version"], { encoding: "utf8" }).trim();
-      const banner = `𝒇x v${version} · Run /help for commands`;
+      const version = execFileSync(PF_BIN, ["--version"], { encoding: "utf8" }).trim();
+      const banner = `𝒑f v${version} · Run /help for commands`;
 
       try {
         session = await TmuxSession.create({
           cwd: root,
           env: {
             HOME: home,
-            FX_AUTO_UPGRADE: "0",
-            FX_RECORD: tapePath,
-            FX_RECORD_INPUT: "1",
-            FX_DEBUG_RECORD_SILENT_BANNER: "1",
+            PF_AUTO_UPGRADE: "0",
+            PF_RECORD: tapePath,
+            PF_RECORD_INPUT: "1",
+            PF_DEBUG_RECORD_SILENT_BANNER: "1",
           },
           stderrPath,
           width: 80,
@@ -351,7 +351,7 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
         expect(priorStatus).not.toContain("Commands 1");
         expect(priorStatus).not.toContain("run /login ·");
         expect(await session.capturePane()).not.toContain("model=");
-        const replay = JSON.parse(execFileSync(FX_BIN, ["replay", tapePath, "--json"], { encoding: "utf8" }));
+        const replay = JSON.parse(execFileSync(PF_BIN, ["replay", tapePath, "--json"], { encoding: "utf8" }));
         expect(replay.frame_count).toBeGreaterThan(0);
         expect(readFileSync(stderrPath, "utf8")).toBe("");
       } finally {
@@ -368,27 +368,27 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "/new keeps a completed reply in scrollback and starts the next prompt fresh",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-new-reply-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-new-reply-")));
       const home = join(root, "home");
       const stderrPath = join(root, "stderr.log");
       mkdirSync(home, { recursive: true });
       writeFileSync(stderrPath, "");
       const gateway = startDynamicFakeGateway(() => fakeGatewayFinalText("FIXTURE_REPLY_OK"));
-      const version = execFileSync(FX_BIN, ["--version"], { encoding: "utf8" }).trim();
-      const banner = `𝒇x v${version} · Run /help for commands`;
+      const version = execFileSync(PF_BIN, ["--version"], { encoding: "utf8" }).trim();
+      const banner = `𝒑f v${version} · Run /help for commands`;
 
       try {
         session = await TmuxSession.create({
           cwd: root,
           env: {
             HOME: home,
-            FX_AUTO_UPGRADE: "0",
+            PF_AUTO_UPGRADE: "0",
             AI_GATEWAY_API_KEY: "new-fixture-key",
             VERCEL_OIDC_TOKEN: undefined,
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_MODEL: FAKE_GATEWAY_MODEL,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_MODEL: FAKE_GATEWAY_MODEL,
           },
           stderrPath,
           width: 100,
@@ -424,24 +424,24 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "/new waits for a resize before moving the old transcript into scrollback",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-new-resize-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-new-resize-")));
       const home = join(root, "home");
       const stderrPath = join(root, "stderr.log");
-      const tapePath = join(root, "resize.fxtape");
+      const tapePath = join(root, "resize.pftape");
       mkdirSync(home, { recursive: true });
       writeFileSync(stderrPath, "");
-      const version = execFileSync(FX_BIN, ["--version"], { encoding: "utf8" }).trim();
-      const banner = `𝒇x v${version} · Run /help for commands`;
+      const version = execFileSync(PF_BIN, ["--version"], { encoding: "utf8" }).trim();
+      const banner = `𝒑f v${version} · Run /help for commands`;
 
       try {
         session = await TmuxSession.create({
           cwd: root,
           env: {
             HOME: home,
-            FX_AUTO_UPGRADE: "0",
-            FX_RECORD: tapePath,
-            FX_RECORD_INPUT: "1",
-            FX_DEBUG_RECORD_SILENT_BANNER: "1",
+            PF_AUTO_UPGRADE: "0",
+            PF_RECORD: tapePath,
+            PF_RECORD_INPUT: "1",
+            PF_DEBUG_RECORD_SILENT_BANNER: "1",
           },
           stderrPath,
           width: 80,
@@ -477,7 +477,7 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
         await session.sendText("/status");
         await session.waitForPane((pane) => pane.includes("agent_step_limit=0") && hasEmptyComposer(pane), 5_000);
         expect(readFileSync(stderrPath, "utf8")).toBe("");
-        const replay = JSON.parse(execFileSync(FX_BIN, ["replay", tapePath, "--json"], { encoding: "utf8" }));
+        const replay = JSON.parse(execFileSync(PF_BIN, ["replay", tapePath, "--json"], { encoding: "utf8" }));
         expect(replay.frame_count).toBeGreaterThan(0);
       } finally {
         if (session) {
@@ -493,7 +493,7 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
   test(
     "/quit exits after a fresh-session handoff times out at an invalid terminal size",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-new-invalid-size-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-new-invalid-size-")));
       const home = join(root, "home");
       const stderrPath = join(root, "stderr.log");
       const tracePath = join(root, "trace.log");
@@ -503,7 +503,7 @@ describe.skipIf(SKIP_TMUX)("tui: fresh-session commands", () => {
       try {
         session = await TmuxSession.create({
           cwd: root,
-          env: { HOME: home, FX_AUTO_UPGRADE: "0", FX_TRACE_LOG: tracePath },
+          env: { HOME: home, PF_AUTO_UPGRADE: "0", PF_TRACE_LOG: tracePath },
           stderrPath,
           width: 80,
           height: 18,
@@ -543,9 +543,9 @@ describe.skipIf(SKIP_TMUX)("tui: MCP startup", () => {
   test(
     "unresponsive MCP discovery does not block startup or shutdown",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-mcp-startup-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-mcp-startup-")));
       const home = join(root, "home");
-      mkdirSync(join(home, ".fx"), { recursive: true });
+      mkdirSync(join(home, ".pf"), { recursive: true });
 
       let discoveryRequests = 0;
       const server = Bun.serve({
@@ -558,7 +558,7 @@ describe.skipIf(SKIP_TMUX)("tui: MCP startup", () => {
         },
       });
       writeFileSync(
-        join(home, ".fx", "mcp.json"),
+        join(home, ".pf", "mcp.json"),
         JSON.stringify({
           mcp: {
             pending: {
@@ -575,7 +575,7 @@ describe.skipIf(SKIP_TMUX)("tui: MCP startup", () => {
           cwd: root,
           env: {
             HOME: home,
-            FX_AUTO_UPGRADE: "0",
+            PF_AUTO_UPGRADE: "0",
           },
         });
         const pane = await session.waitForComposer(5_000);
@@ -620,15 +620,15 @@ describe.skipIf(SKIP_TMUX)("tui: credential onboarding", () => {
   test(
     "/setup opens the inline provider picker columns",
     async () => {
-      const home = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-direct-setup-")));
+      const home = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-direct-setup-")));
       session = await TmuxSession.create({
         env: {
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
           HOME: home,
-          FX_AUTO_UPGRADE: "0",
-          FX_DISABLE_KEYCHAIN: "1",
-          FX_SKIP_ONBOARDING: "0",
+          PF_AUTO_UPGRADE: "0",
+          PF_DISABLE_KEYCHAIN: "1",
+          PF_SKIP_ONBOARDING: "0",
         },
       });
 
@@ -666,21 +666,21 @@ describe.skipIf(SKIP_TMUX)("tui: credential onboarding", () => {
   test(
     "startup shows credential onboarding on the first frame and Escape remains session-only",
     async () => {
-      const home = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-login-onboarding-")));
+      const home = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-login-onboarding-")));
       const env = {
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
         HOME: home,
-        USER: "fx-e2e-login-onboarding",
-        FX_AUTO_UPGRADE: "0",
-        FX_DISABLE_KEYCHAIN: "1",
-        FX_NO_OPEN_BROWSER: "1",
-        FX_SKIP_ONBOARDING: "0",
+        USER: "pf-e2e-login-onboarding",
+        PF_AUTO_UPGRADE: "0",
+        PF_DISABLE_KEYCHAIN: "1",
+        PF_NO_OPEN_BROWSER: "1",
+        PF_SKIP_ONBOARDING: "0",
       };
 
       session = await TmuxSession.create({ env });
 
-      const initial = await session.waitForText("Welcome to fx", TIMEOUT);
+      const initial = await session.waitForText("Welcome to pf", TIMEOUT);
       expect(initial).toContain("Sign in with Vercel");
       expect(initial).toContain("Add an API key");
       expect(initial).toContain("esc to set up later");
@@ -690,14 +690,14 @@ describe.skipIf(SKIP_TMUX)("tui: credential onboarding", () => {
 
       await session.sendKeys("Escape");
       const skipped = await session.waitForPane(
-        (pane) => !pane.includes("Welcome to fx") && !pane.includes("Sign in with Vercel"),
+        (pane) => !pane.includes("Welcome to pf") && !pane.includes("Sign in with Vercel"),
         TIMEOUT,
       );
       expect(skipped).not.toContain("Add an API key");
 
       await session.kill();
       session = await TmuxSession.create({ env });
-      const restarted = await session.waitForText("Welcome to fx", TIMEOUT);
+      const restarted = await session.waitForText("Welcome to pf", TIMEOUT);
       expect(restarted).toContain("Sign in with Vercel");
       expect(restarted).toContain("Add an API key");
     },
@@ -709,17 +709,17 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   async function startThemedSession(
     root: string,
     themeFiles: Record<string, unknown>,
-    options: { fxTheme?: string; settingsTheme?: string; colorFgBg: string },
+    options: { pfTheme?: string; settingsTheme?: string; colorFgBg: string },
   ): Promise<{ pane: string; escapes: string; stderrPath: string }> {
     const home = join(root, "home");
     const stderrPath = join(root, "stderr.log");
-    mkdirSync(join(home, ".fx", "themes"), { recursive: true });
+    mkdirSync(join(home, ".pf", "themes"), { recursive: true });
     for (const [file, contents] of Object.entries(themeFiles)) {
-      writeFileSync(join(home, ".fx", "themes", file), JSON.stringify(contents));
+      writeFileSync(join(home, ".pf", "themes", file), JSON.stringify(contents));
     }
     if (options.settingsTheme) {
       writeFileSync(
-        join(home, ".fx", "settings.json"),
+        join(home, ".pf", "settings.json"),
         JSON.stringify({ theme: options.settingsTheme }),
       );
     }
@@ -731,10 +731,10 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
         HOME: home,
         AI_GATEWAY_API_KEY: undefined,
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_DISABLE_KEYCHAIN: "1",
-        FX_SKIP_ONBOARDING: "1",
-        FX_THEME: options.fxTheme,
+        PF_AUTO_UPGRADE: "0",
+        PF_DISABLE_KEYCHAIN: "1",
+        PF_SKIP_ONBOARDING: "1",
+        PF_THEME: options.pfTheme,
         COLORFGBG: options.colorFgBg,
         COLORTERM: undefined,
         TERM_PROGRAM: "Apple_Terminal",
@@ -749,14 +749,14 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   }
 
   test(
-    "FX_THEME loads a VS Code theme file from ~/.fx/themes",
+    "PF_THEME loads a VS Code theme file from ~/.pf/themes",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-theme-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-theme-")));
       const home = join(root, "home");
       const stderrPath = join(root, "stderr.log");
-      mkdirSync(join(home, ".fx", "themes"), { recursive: true });
+      mkdirSync(join(home, ".pf", "themes"), { recursive: true });
       writeFileSync(
-        join(home, ".fx", "themes", "e2e-accent.json"),
+        join(home, ".pf", "themes", "e2e-accent.json"),
         JSON.stringify({
           name: "E2E Accent",
           colors: { "editor.foreground": "#FF0000" },
@@ -771,10 +771,10 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
             HOME: home,
             AI_GATEWAY_API_KEY: undefined,
             VERCEL_OIDC_TOKEN: undefined,
-            FX_AUTO_UPGRADE: "0",
-            FX_DISABLE_KEYCHAIN: "1",
-            FX_SKIP_ONBOARDING: "1",
-            FX_THEME: "e2e-accent",
+            PF_AUTO_UPGRADE: "0",
+            PF_DISABLE_KEYCHAIN: "1",
+            PF_SKIP_ONBOARDING: "1",
+            PF_THEME: "e2e-accent",
             COLORFGBG: "15;0",
             COLORTERM: undefined,
             TERM_PROGRAM: "Apple_Terminal",
@@ -805,7 +805,7 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   test(
     "pinned theme swaps to its sibling variant on a mismatched terminal",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-theme-swap-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-theme-swap-")));
       try {
         const { pane, escapes, stderrPath } = await startThemedSession(
           root,
@@ -813,7 +813,7 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
             "e2e-pair-dark.json": { name: "Pair Dark", type: "dark", colors: { hint: "#0000FF" } },
             "e2e-pair-light.json": { name: "Pair Light", type: "light", colors: { hint: "#00FF00" } },
           },
-          { fxTheme: "e2e-pair-dark", colorFgBg: "0;15" }, // light terminal
+          { pfTheme: "e2e-pair-dark", colorFgBg: "0;15" }, // light terminal
         );
         expect(pane).toContain("Run /help for commands");
         // The light sibling's hint (#00FF00 -> xterm-256 46) applies, not the
@@ -835,17 +835,17 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   test(
     "pinned theme falls back to the builtin variant when no sibling exists",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-theme-fallback-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-theme-fallback-")));
       try {
         const { pane, escapes, stderrPath } = await startThemedSession(
           root,
           {
             "e2e-pair-dark.json": { name: "Pair Dark", type: "dark", colors: { hint: "#0000FF" } },
           },
-          { fxTheme: "e2e-pair-dark", colorFgBg: "0;15" }, // light terminal, no e2e-pair-light.json on disk
+          { pfTheme: "e2e-pair-dark", colorFgBg: "0;15" }, // light terminal, no e2e-pair-light.json on disk
         );
         expect(pane).toContain("Run /help for commands");
-        // Builtin fx-light hint, not the mismatched dark theme's blue.
+        // Builtin pf-light hint, not the mismatched dark theme's blue.
         expect(escapes).toContain("38;5;235");
         expect(escapes).not.toContain("38;5;21");
         expect(readFileSync(stderrPath, "utf8")).toBe("");
@@ -863,7 +863,7 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   test(
     "a sibling whose declared variant also mismatches falls back to builtin",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-theme-misdeclared-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-theme-misdeclared-")));
       try {
         const { pane, escapes, stderrPath } = await startThemedSession(
           root,
@@ -872,7 +872,7 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
             // Misdeclared: named -light but says dark, with a green marker.
             "e2e-pair-light.json": { name: "Pair Light", type: "dark", colors: { hint: "#00FF00" } },
           },
-          { fxTheme: "e2e-pair-dark", colorFgBg: "0;15" }, // light terminal
+          { pfTheme: "e2e-pair-dark", colorFgBg: "0;15" }, // light terminal
         );
         expect(pane).toContain("Run /help for commands");
         expect(escapes).toContain("38;5;235");
@@ -891,16 +891,16 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   );
 
   test(
-    "settings.json theme applies without FX_THEME",
+    "settings.json theme applies without PF_THEME",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-theme-settings-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-theme-settings-")));
       try {
         const { pane, escapes, stderrPath } = await startThemedSession(
           root,
           {
             "e2e-accent.json": { name: "E2E Accent", type: "dark", colors: { hint: "#FF0000" } },
           },
-          { settingsTheme: "e2e-accent", colorFgBg: "15;0" }, // dark terminal, no FX_THEME
+          { settingsTheme: "e2e-accent", colorFgBg: "15;0" }, // dark terminal, no PF_THEME
         );
         expect(pane).toContain("Run /help for commands");
         // The configured theme's hint (#FF0000 -> xterm-256 196) applies.
@@ -918,19 +918,19 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   );
 
   test(
-    "FX_THEME wins over the settings.json theme",
+    "PF_THEME wins over the settings.json theme",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-theme-precedence-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-theme-precedence-")));
       try {
         const { pane, escapes, stderrPath } = await startThemedSession(
           root,
           {
             "e2e-accent.json": { name: "E2E Accent", type: "dark", colors: { hint: "#FF0000" } },
           },
-          { settingsTheme: "e2e-accent", fxTheme: "dark", colorFgBg: "15;0" },
+          { settingsTheme: "e2e-accent", pfTheme: "dark", colorFgBg: "15;0" },
         );
         expect(pane).toContain("Run /help for commands");
-        // Builtin fx-dark hint (255), not the configured theme's red.
+        // Builtin pf-dark hint (255), not the configured theme's red.
         expect(escapes).toContain("38;5;255");
         expect(escapes).not.toContain("38;5;196");
         expect(readFileSync(stderrPath, "utf8")).toBe("");
@@ -948,7 +948,7 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
   test(
     "settings-pinned variant ignores live terminal mode flips",
     async () => {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-e2e-theme-pin-")));
+      const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-e2e-theme-pin-")));
       try {
         const { pane, escapes, stderrPath } = await startThemedSession(
           root,
@@ -956,8 +956,8 @@ describe.skipIf(SKIP_TMUX)("tui: custom themes", () => {
           { settingsTheme: "dark", colorFgBg: "15;0" }, // dark terminal, pinned dark
         );
         expect(pane).toContain("Run /help for commands");
-        expect(escapes).toContain("38;5;255"); // fx-dark hint
-        expect(escapes).not.toContain("38;5;235"); // fx-light hint
+        expect(escapes).toContain("38;5;255"); // pf-dark hint
+        expect(escapes).not.toContain("38;5;235"); // pf-light hint
 
         // The terminal reports a light-mode change mid-session (DEC 997);
         // a pinned variant must not follow it.

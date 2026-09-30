@@ -50,7 +50,7 @@ fn reviewGateway(
     input: permission_auto_classifier.ProviderInput,
     request: permission_auto_classifier.ReviewRequest,
 ) anyerror!permission_auto_classifier.ParseOutcome {
-    // The review_model setting (or FX_REVIEW_MODEL) overrides the reviewer
+    // The review_model setting (or PF_REVIEW_MODEL) overrides the reviewer
     // model. typesafeai/jev selects the TypeSafe System One reviewer; any
     // other value stays on this gateway chat path with that model id. Every
     // composition site selects this provider, so the override covers

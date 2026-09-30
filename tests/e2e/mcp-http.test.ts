@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runFx } from "../evals/eval-helpers";
+import { runPf } from "../evals/eval-helpers";
 import {
   startContentLengthMcpHttpFixture,
   type ContentLengthResponseType,
@@ -67,22 +67,22 @@ function createRoot(
   operationTimeoutMs = 5_000,
   required = false,
 ) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), `fx-mcp-http-${label}-`)));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), `pf-mcp-http-${label}-`)));
   cleanupRoot = root;
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({}),
   );
   writeFileSync(
-    join(home, ".fx", "mcp.json"),
+    join(home, ".pf", "mcp.json"),
     JSON.stringify({
       mcp: {
         fixture: {
-          type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+          type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
           url: activeFixture.url,
           headers: { "X-Workspace": "one" },
           ...(required ? { required: true } : {}),
@@ -92,19 +92,19 @@ function createRoot(
       },
     }),
   );
-  return { root, home, workspace, traceLogPath: join(root, "fx-trace.log") };
+  return { root, home, workspace, traceLogPath: join(root, "pf-trace.log") };
 }
 
 function createEmptyRoot(label: string) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), `fx-mcp-http-${label}-`)));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), `pf-mcp-http-${label}-`)));
   cleanupRoot = root;
   const home = join(root, "home");
   const workspace = join(root, "workspace");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
-  writeFileSync(join(home, ".fx", "settings.json"), JSON.stringify({}));
-  writeFileSync(join(home, ".fx", "mcp.json"), JSON.stringify({ mcp: {} }));
-  return { root, home, workspace, traceLogPath: join(root, "fx-trace.log") };
+  writeFileSync(join(home, ".pf", "settings.json"), JSON.stringify({}));
+  writeFileSync(join(home, ".pf", "mcp.json"), JSON.stringify({ mcp: {} }));
+  return { root, home, workspace, traceLogPath: join(root, "pf-trace.log") };
 }
 
 function fixtureEnv(
@@ -115,15 +115,15 @@ function fixtureEnv(
     HOME: root.home,
     AI_GATEWAY_API_KEY: "fake-mcp-http-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_AUTO_UPGRADE: "0",
-    FX_MCP_PROTOCOL_VERSION: "2026-07-28",
-    FX_PERMISSION_MODE: "auto",
-    FX_GATEWAY_BASE_URL: activeGateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: activeGateway.chatUrl,
-    FX_E2E_GATEWAY_CHAT_URL: activeGateway.chatUrl,
-    FX_MODEL: MODEL,
-    FX_TRACE_LOG: root.traceLogPath,
-    FX_TRACE_SCOPES: "mcp",
+    PF_AUTO_UPGRADE: "0",
+    PF_MCP_PROTOCOL_VERSION: "2026-07-28",
+    PF_PERMISSION_MODE: "auto",
+    PF_GATEWAY_BASE_URL: activeGateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: activeGateway.chatUrl,
+    PF_E2E_GATEWAY_CHAT_URL: activeGateway.chatUrl,
+    PF_MODEL: MODEL,
+    PF_TRACE_LOG: root.traceLogPath,
+    PF_TRACE_SCOPES: "mcp",
   };
 }
 
@@ -161,15 +161,15 @@ function toolResultText(
 function preserveHttpFailure(
   label: string,
   root: ReturnType<typeof createRoot>,
-  result: Awaited<ReturnType<typeof runFx>>,
+  result: Awaited<ReturnType<typeof runPf>>,
   activeFixture: ReturnType<typeof startModernMcpHttpFixture>,
   activeGateway: ReturnType<typeof startFakeGateway>,
   force = false,
 ): void {
   if (result.code === 0 && !force) return;
   cleanupRoot = null;
-  writeFileSync(join(root.root, "fx-stdout.log"), result.stdout);
-  writeFileSync(join(root.root, "fx-stderr.log"), result.stderr);
+  writeFileSync(join(root.root, "pf-stdout.log"), result.stdout);
+  writeFileSync(join(root.root, "pf-stderr.log"), result.stderr);
   writeFileSync(
     join(root.root, "failure.json"),
     JSON.stringify({
@@ -179,7 +179,7 @@ function preserveHttpFailure(
       gatewayRequests: activeGateway.requests.map((request) => request.body),
     }, null, 2),
   );
-  throw new Error(`fx ${label} failed; retained artifacts: ${root.root}`);
+  throw new Error(`pf ${label} failed; retained artifacts: ${root.root}`);
 }
 
 function assertModernWire(
@@ -223,10 +223,10 @@ describe("modern MCP Streamable HTTP", () => {
       },
     });
     const root = createRoot("oauth-server-failure", { url: `http://127.0.0.1:${failing.port}/mcp` });
-    writeFileSync(join(root.home, ".fx", "mcp.json"), JSON.stringify({
+    writeFileSync(join(root.home, ".pf", "mcp.json"), JSON.stringify({
       mcp: {
         fixture: {
-          type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+          type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
           url: `http://127.0.0.1:${failing.port}/mcp`,
           oauth: { client_id: "fixture-client" },
           startup_timeout_ms: 1_000,
@@ -238,19 +238,19 @@ describe("modern MCP Streamable HTTP", () => {
       fakeGatewayFinalText("Server failure observed."),
     ], { models: [{ id: MODEL, type: "language", tags: ["tool-use"] }] });
     try {
-      const result = await runFx(["ask", "--json", "--auto", "--no-save", "Find the fixture tools"], {
+      const result = await runPf(["ask", "--json", "--auto", "--no-save", "Find the fixture tools"], {
         cwd: root.workspace,
         env: {
           HOME: root.home,
-          FX_DISABLE_KEYCHAIN: "1",
-          FX_AUTO_UPGRADE: "0",
-          FX_SKIP_ONBOARDING: "1",
-          FX_SOUND: "0",
+          PF_DISABLE_KEYCHAIN: "1",
+          PF_AUTO_UPGRADE: "0",
+          PF_SKIP_ONBOARDING: "1",
+          PF_SOUND: "0",
           AI_GATEWAY_API_KEY: "local-fixture-key",
           VERCEL_OIDC_TOKEN: undefined,
-          FX_MODEL: MODEL,
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_MODEL: MODEL,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         timeoutMs: 15_000,
       });
@@ -267,7 +267,7 @@ describe("modern MCP Streamable HTTP", () => {
     fixture = startModernMcpHttpFixture("legacy_session_required");
     const root = createRoot("mongodb-legacy-fallback", fixture);
 
-    const result = await runFx(
+    const result = await runPf(
       ["mcp", "list", "--connect"],
       {
         cwd: root.workspace,
@@ -275,9 +275,9 @@ describe("modern MCP Streamable HTTP", () => {
           HOME: root.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_TRACE_LOG: root.traceLogPath,
-          FX_TRACE_SCOPES: "mcp",
+          PF_AUTO_UPGRADE: "0",
+          PF_TRACE_LOG: root.traceLogPath,
+          PF_TRACE_SCOPES: "mcp",
         },
         timeoutMs: 20_000,
       },
@@ -303,7 +303,7 @@ describe("modern MCP Streamable HTTP", () => {
     fixture = startModernMcpHttpFixture("legacy_plaintext_session_required");
     const root = createRoot("gitmcp-legacy-fallback", fixture);
 
-    const result = await runFx(
+    const result = await runPf(
       ["mcp", "list", "--connect"],
       {
         cwd: root.workspace,
@@ -311,9 +311,9 @@ describe("modern MCP Streamable HTTP", () => {
           HOME: root.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_TRACE_LOG: root.traceLogPath,
-          FX_TRACE_SCOPES: "mcp",
+          PF_AUTO_UPGRADE: "0",
+          PF_TRACE_LOG: root.traceLogPath,
+          PF_TRACE_SCOPES: "mcp",
         },
         timeoutMs: 20_000,
       },
@@ -335,11 +335,11 @@ describe("modern MCP Streamable HTTP", () => {
     ]);
   }, 25_000);
 
-  test("plain-text discovery auth rejection fails closed without aborting fx", async () => {
+  test("plain-text discovery auth rejection fails closed without aborting pf", async () => {
     fixture = startModernMcpHttpFixture("legacy_plaintext_auth_rejection");
     const root = createRoot("plaintext-auth-rejection", fixture);
 
-    const result = await runFx(
+    const result = await runPf(
       ["mcp", "list", "--connect"],
       {
         cwd: root.workspace,
@@ -347,9 +347,9 @@ describe("modern MCP Streamable HTTP", () => {
           HOME: root.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
-          FX_TRACE_LOG: root.traceLogPath,
-          FX_TRACE_SCOPES: "mcp",
+          PF_AUTO_UPGRADE: "0",
+          PF_TRACE_LOG: root.traceLogPath,
+          PF_TRACE_SCOPES: "mcp",
         },
         timeoutMs: 20_000,
       },
@@ -366,7 +366,7 @@ describe("modern MCP Streamable HTTP", () => {
   test("top-level mcp add persists HTTP and a later ask calls it", async () => {
     fixture = startModernMcpHttpFixture("json");
     const root = createEmptyRoot("top-level-add");
-    const added = await runFx(
+    const added = await runPf(
       ["mcp", "add", "--transport", "http", "fixture", fixture.url],
       {
         cwd: root.workspace,
@@ -374,7 +374,7 @@ describe("modern MCP Streamable HTTP", () => {
           HOME: root.home,
           AI_GATEWAY_API_KEY: undefined,
           VERCEL_OIDC_TOKEN: undefined,
-          FX_AUTO_UPGRADE: "0",
+          PF_AUTO_UPGRADE: "0",
         },
       },
     );
@@ -389,7 +389,7 @@ describe("modern MCP Streamable HTTP", () => {
     ], {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the HTTP MCP echo tool."],
       { cwd: root.workspace, env: fixtureEnv(root, gateway), timeoutMs: 20_000 },
     );
@@ -410,7 +410,7 @@ describe("modern MCP Streamable HTTP", () => {
       const root = createRoot(`content-length-${responseType}`, contentLengthFixture);
       gateway = startToolGateway(`Fixed-length ${responseType} complete.`);
 
-      const result = await runFx(
+      const result = await runPf(
         [
           "ask",
           "--json",
@@ -480,7 +480,7 @@ describe("modern MCP Streamable HTTP", () => {
       expect(details).toMatch(/Protocol\s+2026-07-28/);
 
       const profile = JSON.parse(
-        readFileSync(join(root.home, ".fx", "mcp.json"), "utf8"),
+        readFileSync(join(root.home, ".pf", "mcp.json"), "utf8"),
       );
       expect(profile.mcp.prisma).toMatchObject({
         type: "http",
@@ -518,7 +518,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Refresh after the MCP resource update storm."],
       {
         cwd: root.workspace,
@@ -564,7 +564,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Recover the failed MCP resource refresh."],
       {
         cwd: root.workspace,
@@ -602,7 +602,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Refresh the expired MCP resource catalog."],
       {
         cwd: root.workspace,
@@ -661,7 +661,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Try the removed MCP identities."],
       {
         cwd: root.workspace,
@@ -705,7 +705,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Reject the invalid MCP resource template match."],
       {
         cwd: root.workspace,
@@ -740,7 +740,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Read the deeply nested MCP catalog."],
       {
         cwd: root.workspace,
@@ -761,9 +761,9 @@ describe("modern MCP Streamable HTTP", () => {
     const second = startModernMcpHttpFixture("features", "SECOND_SERVER_RESOURCE");
     try {
       const root = createRoot("private-server-isolation", fixture);
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-      profile.mcp.fixture.bearer_token_env = "FX_TEST_SHARED_MCP_TOKEN";
+      profile.mcp.fixture.bearer_token_env = "PF_TEST_SHARED_MCP_TOKEN";
       profile.mcp.second = { ...profile.mcp.fixture, url: second.url };
       writeFileSync(profilePath, JSON.stringify(profile));
       const calls = [
@@ -782,9 +782,9 @@ describe("modern MCP Streamable HTTP", () => {
         })),
         fakeGatewayFinalText("Private resource caches stayed separate."),
       ], { models: [{ id: MODEL, type: "language", tags: ["tool-use"] }] });
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Read the same resource on both configured servers twice."],
-        { cwd: root.workspace, env: { ...fixtureEnv(root, gateway), FX_TEST_SHARED_MCP_TOKEN: "shared-fixture-token" }, timeoutMs: 25_000 },
+        { cwd: root.workspace, env: { ...fixtureEnv(root, gateway), PF_TEST_SHARED_MCP_TOKEN: "shared-fixture-token" }, timeoutMs: 25_000 },
       );
       preserveHttpFailure("private-server-isolation", root, result, fixture, gateway);
       expect(result.code).toBe(0);
@@ -855,7 +855,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the modern HTTP MCP resource and prompt features."],
       {
         cwd: root.workspace,
@@ -925,7 +925,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Read the stalled HTTP MCP resource."],
       {
         cwd: root.workspace,
@@ -973,7 +973,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Complete the stalled HTTP MCP prompt argument."],
       {
         cwd: root.workspace,
@@ -1012,7 +1012,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the live MCP tool."],
       {
         cwd: root.workspace,
@@ -1070,7 +1070,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use the stale MCP tool."],
       {
         cwd: root.workspace,
@@ -1122,7 +1122,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use TTL after the unsupported filter."],
       {
         cwd: root.workspace,
@@ -1160,7 +1160,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use TTL after server cancellation."],
       {
         cwd: root.workspace,
@@ -1201,7 +1201,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use TTL after the unexpected filter."],
       {
         cwd: root.workspace,
@@ -1248,7 +1248,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Do not send the invalidated tool."],
       {
         cwd: root.workspace,
@@ -1301,7 +1301,7 @@ describe("modern MCP Streamable HTTP", () => {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Search the MCP cache."],
         {
           cwd: root.workspace,
@@ -1341,7 +1341,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Search the delayed MCP catalog."],
       {
         cwd: root.workspace,
@@ -1386,7 +1386,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Search the empty-cursor MCP catalog."],
       {
         cwd: root.workspace,
@@ -1405,12 +1405,12 @@ describe("modern MCP Streamable HTTP", () => {
   }, 30_000);
 
   for (const mode of ["json", "sse"] as ModernHttpMode[]) {
-    test(`fresh fx ask calls the request-scoped ${mode.toUpperCase()} fixture`, async () => {
+    test(`fresh pf ask calls the request-scoped ${mode.toUpperCase()} fixture`, async () => {
       fixture = startModernMcpHttpFixture(mode);
       const root = createRoot(`ask-${mode}`, fixture);
       gateway = startToolGateway(`${mode} MCP HTTP complete.`);
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", `Call the ${mode} HTTP fixture.`],
         {
           cwd: root.workspace,
@@ -1430,12 +1430,12 @@ describe("modern MCP Streamable HTTP", () => {
     }, 30_000);
   }
 
-  test("fresh fx ask delegates unsupported input and output schema assertions", async () => {
+  test("fresh pf ask delegates unsupported input and output schema assertions", async () => {
     fixture = startModernMcpHttpFixture("server_authoritative_schema");
     const root = createRoot("server-authoritative-schema", fixture, 5_000, true);
     gateway = startToolGateway("Server-authoritative schema complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the schema fixture."],
       {
         cwd: root.workspace,
@@ -1528,7 +1528,7 @@ describe("modern MCP Streamable HTTP", () => {
     const root = createRoot("mixed-sse-delimiters", fixture, 1_000);
     gateway = startToolGateway("Mixed SSE delimiters complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the mixed SSE fixture."],
       {
         cwd: root.workspace,
@@ -1555,11 +1555,11 @@ describe("modern MCP Streamable HTTP", () => {
     fixture = startModernMcpHttpFixture("json");
     const root = createRoot("environment-headers", fixture);
     writeFileSync(
-      join(root.home, ".fx", "mcp.json"),
+      join(root.home, ".pf", "mcp.json"),
       JSON.stringify({
         mcp: {
           fixture: {
-            type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+            type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
             url: fixture.url,
             header_env: { "X-Workspace": "MCP_WORKSPACE" },
             bearer_token_env: "MCP_BEARER_TOKEN",
@@ -1569,7 +1569,7 @@ describe("modern MCP Streamable HTTP", () => {
     );
     gateway = startToolGateway("Environment-backed MCP complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the environment-backed fixture."],
       {
         cwd: root.workspace,
@@ -1592,7 +1592,7 @@ describe("modern MCP Streamable HTTP", () => {
     }
     expect(result.stdout).not.toContain("environment-bearer-secret");
     expect(result.stderr).not.toContain("environment-bearer-secret");
-    expect(readFileSync(join(root.home, ".fx", "mcp.json"), "utf8")).not
+    expect(readFileSync(join(root.home, ".pf", "mcp.json"), "utf8")).not
       .toContain("environment-bearer-secret");
   }, 30_000);
 
@@ -1600,7 +1600,7 @@ describe("modern MCP Streamable HTTP", () => {
     fixture = startModernMcpHttpFixture("json");
     const root = createRoot("workspace-expanded-headers", fixture);
     writeFileSync(
-      join(root.home, ".fx", "mcp.json"),
+      join(root.home, ".pf", "mcp.json"),
       JSON.stringify({ mcp: {} }),
     );
     writeFileSync(
@@ -1608,7 +1608,7 @@ describe("modern MCP Streamable HTTP", () => {
       JSON.stringify({
         mcpServers: {
           fixture: {
-            type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+            type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
             url: fixture.url,
             headers: {
               Authorization: "Bearer ${WORKSPACE_HTTP_TOKEN}",
@@ -1623,13 +1623,13 @@ describe("modern MCP Streamable HTTP", () => {
       ...fixtureEnv(root, gateway),
       WORKSPACE_HTTP_TOKEN: "workspace-http-secret",
     };
-    const trusted = await runFx(
+    const trusted = await runPf(
       ["mcp", "trust", "approve", "fixture"],
       { cwd: root.workspace, env },
     );
     expect(trusted.code).toBe(0);
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the workspace HTTP fixture."],
       {
         cwd: root.workspace,
@@ -1660,7 +1660,7 @@ describe("modern MCP Streamable HTTP", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Do not call the invalid tool."],
       {
         cwd: root.workspace,
@@ -1683,7 +1683,7 @@ describe("modern MCP Streamable HTTP", () => {
     const root = createRoot("held-open-final", fixture, 1_000);
     gateway = startToolGateway("Held-open SSE complete.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the held-open HTTP fixture."],
       {
         cwd: root.workspace,
@@ -1712,7 +1712,7 @@ describe("modern MCP Streamable HTTP", () => {
     const root = createRoot("timeout", fixture, 100);
     gateway = startToolGateway("HTTP timeout recovered.");
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Call the stalled HTTP fixture."],
       {
         cwd: root.workspace,

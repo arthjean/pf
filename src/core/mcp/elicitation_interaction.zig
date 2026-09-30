@@ -924,7 +924,7 @@ fn answerUrl(
     };
     const question = try std.fmt.allocPrint(
         alloc,
-        "MCP server {s} requests an external browser action. Target host: {s}\nComplete URL: {s}{s}\nOpen it? fx will not fetch this URL or see browser contents.",
+        "MCP server {s} requests an external browser action. Target host: {s}\nComplete URL: {s}{s}\nOpen it? pf will not fetch this URL or see browser contents.",
         .{ display_server_name, display_host, display_url, warning },
     );
     defer alloc.free(question);
@@ -956,7 +956,7 @@ fn answerUrl(
 
     const failure_question = try std.fmt.allocPrint(
         alloc,
-        "fx could not open the browser for {s}. The URL was not fetched. Continue manually, retry the browser, or cancel?",
+        "pf could not open the browser for {s}. The URL was not fetched. Continue manually, retry the browser, or cancel?",
         .{display_host},
     );
     defer alloc.free(failure_question);
@@ -1020,7 +1020,7 @@ fn answerLegacyUrlCompletion(
     defer alloc.free(display_server_name);
     const question = try std.fmt.allocPrint(
         alloc,
-        "Complete the browser flow requested by MCP server {s}. fx will continue automatically if the server confirms every URL request. Otherwise choose I completed it / Retry, or Cancel.",
+        "Complete the browser flow requested by MCP server {s}. pf will continue automatically if the server confirms every URL request. Otherwise choose I completed it / Retry, or Cancel.",
         .{display_server_name},
     );
     defer alloc.free(question);

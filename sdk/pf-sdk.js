@@ -42,7 +42,7 @@ function boundedString(value, name, maxBytes, required) {
     throw new TypeError(`${name} ${required ? "is required and " : ""}must be a non-empty string`);
   }
   if (encoder.encode(value).length > maxBytes) {
-    throw new RangeError(`${name} exceeds the ${maxBytes} byte libfx limit`);
+    throw new RangeError(`${name} exceeds the ${maxBytes} byte libpf limit`);
   }
   return value;
 }
@@ -86,11 +86,11 @@ function normalizeFast(value) {
 
 export function normalizeAgentOptions(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("createFxAgent() options must be an object");
+    throw new TypeError("createPfAgent() options must be an object");
   }
   const options = { ...value };
   if (Object.hasOwn(options, "env")) {
-    throw new TypeError("createFxAgent() does not accept env; pass apiKey and model directly");
+    throw new TypeError("createPfAgent() does not accept env; pass apiKey and model directly");
   }
   options.apiKey = boundedString(options.apiKey, "apiKey", maxApiKeyBytes, true);
   if (options.model !== null && typeof options.model === "object" && !Array.isArray(options.model)) {
@@ -118,19 +118,19 @@ export function normalizeAgentOptions(value) {
 function agentEnvironment(options) {
   return {
     AI_GATEWAY_API_KEY: options.apiKey,
-    ...(options.model === undefined ? {} : { FX_MODEL: options.model }),
-    ...(options.effort === undefined ? {} : { FX_EFFORT: options.effort }),
-    ...(options.fast === undefined ? {} : { FX_FAST: options.fast ? "true" : "false" }),
-    ...(options.gatewayChatUrl === undefined ? {} : { FX_GATEWAY_CHAT_URL: options.gatewayChatUrl }),
+    ...(options.model === undefined ? {} : { PF_MODEL: options.model }),
+    ...(options.effort === undefined ? {} : { PF_EFFORT: options.effort }),
+    ...(options.fast === undefined ? {} : { PF_FAST: options.fast ? "true" : "false" }),
+    ...(options.gatewayChatUrl === undefined ? {} : { PF_GATEWAY_CHAT_URL: options.gatewayChatUrl }),
   };
 }
 
 function agentRpcError(response) {
   const error = new Error(response.message);
   const data = response.data;
-  if (data && ["LIBFX_MODEL_UNSUPPORTED_EFFORT", "LIBFX_MODEL_UNSUPPORTED_FAST"].includes(data.code) &&
+  if (data && ["LIBPF_MODEL_UNSUPPORTED_EFFORT", "LIBPF_MODEL_UNSUPPORTED_FAST"].includes(data.code) &&
     typeof data.model === "string" &&
-    data.capability === (data.code === "LIBFX_MODEL_UNSUPPORTED_FAST" ? "fast" : "effort")) {
+    data.capability === (data.code === "LIBPF_MODEL_UNSUPPORTED_FAST" ? "fast" : "effort")) {
     error.code = data.code;
     error.model = data.model;
     error.capability = data.capability;
@@ -148,11 +148,11 @@ async function readBoundedResponseText(response, limit) {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > limit) {
     await cancelResponseBody(response);
-    throw new RangeError(`model catalog exceeds the ${limit} byte libfx limit`);
+    throw new RangeError(`model catalog exceeds the ${limit} byte libpf limit`);
   }
   if (!response.body) {
     const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length > limit) throw new RangeError(`model catalog exceeds the ${limit} byte libfx limit`);
+    if (bytes.length > limit) throw new RangeError(`model catalog exceeds the ${limit} byte libpf limit`);
     return strictDecoder.decode(bytes);
   }
 
@@ -168,7 +168,7 @@ async function readBoundedResponseText(response, limit) {
       try {
         await reader.cancel();
       } catch {}
-      throw new RangeError(`model catalog exceeds the ${limit} byte libfx limit`);
+      throw new RangeError(`model catalog exceeds the ${limit} byte libpf limit`);
     }
     chunks.push(value);
   }
@@ -208,7 +208,7 @@ export async function listModels(options = {}) {
     throw new TypeError("model catalog response is malformed");
   }
   if (catalog.data.length > maxModelCatalogEntries) {
-    throw new RangeError(`model catalog exceeds the ${maxModelCatalogEntries} entry libfx limit`);
+    throw new RangeError(`model catalog exceeds the ${maxModelCatalogEntries} entry libpf limit`);
   }
 
   const ids = new Set();
@@ -266,7 +266,7 @@ function utf8Prefix(value, limit) {
   return value.subarray(0, end);
 }
 
-export const fxSdkApiVersion = 2;
+export const pfSdkApiVersion = 2;
 
 export function supportsJspi() {
   return typeof WebAssembly.Suspending === "function" &&
@@ -389,7 +389,7 @@ class ByteQueue {
   closed = false;
 
   push(bytes) {
-    if (this.closed) throw new Error("fx runtime stdin is closed");
+    if (this.closed) throw new Error("pf runtime stdin is closed");
     if (!bytes.length) return;
     this.chunks.push(bytes);
     this.wake();
@@ -467,7 +467,7 @@ function createRuntime(options) {
   let steeringOpen = false;
   const workspaceExecs = new Set();
   const workspace = prepareWorkspaceAdapter(options.workspace);
-  const args = ["fx", ...(options.args || [])];
+  const args = ["pf", ...(options.args || [])];
   const env = Object.entries(options.env || {}).map(([key, value]) => `${key}=${value}`);
   let instance;
   let nextHandle = 1;
@@ -741,7 +741,7 @@ function createRuntime(options) {
     const value = encoder.encode(text);
     if (value.length === 0) throw new TypeError("steering text cannot be empty");
     if (value.length > maxSteeringMessageBytes) {
-      throw new RangeError(`steering text exceeds the ${maxSteeringMessageBytes} byte libfx limit`);
+      throw new RangeError(`steering text exceeds the ${maxSteeringMessageBytes} byte libpf limit`);
     }
     if (steering.length >= maxSteeringMessages || value.length > maxSteeringQueueBytes - steeringBytes) {
       throw new Error("steering queue is full");
@@ -765,11 +765,11 @@ function createRuntime(options) {
   function hostToolCall(namePtr, nameLen, argumentsPtr, argumentsLen, outputPtr, outputCap, statusPtr) {
     pendingHostToolResult = null;
     if (typeof options.hostToolExecutor !== "function") return -1;
-    if (options.traceWasi) console.error("fx host tool call start");
+    if (options.traceWasi) console.error("pf host tool call start");
     let input;
     try { input = JSON.parse(text(argumentsPtr, argumentsLen)); } catch { return -1; }
     return Promise.resolve(options.hostToolExecutor(text(namePtr, nameLen), input)).then((result) => {
-      if (options.traceWasi) console.error("fx host tool call settled", result.cancelled, result.isError);
+      if (options.traceWasi) console.error("pf host tool call settled", result.cancelled, result.isError);
       if (result.cancelled) return -2;
       const output = encoder.encode(result.content);
       bytes(statusPtr, 1)[0] = (result.isError ? 1 : 0) + (result.rich ? 2 : 0);
@@ -832,7 +832,7 @@ function createRuntime(options) {
       bytes(revisionPtr, revision.length).set(revision);
       writeU32(revisionLenOut, revision.length);
       return 0;
-    }).catch((error) => error?.code === "FX_OAUTH_SESSION_REVISION_CONFLICT" ? -2 : -1);
+    }).catch((error) => error?.code === "PF_OAUTH_SESSION_REVISION_CONFLICT" ? -2 : -1);
   }
 
   function oauthSessionRemove(expectedPtr, expectedLen) {
@@ -840,7 +840,7 @@ function createRuntime(options) {
     const expectedRevision = expectedLen ? text(expectedPtr, expectedLen) : undefined;
     return Promise.resolve().then(() => options.oauthSessionStore.remove(expectedRevision)).then((result) =>
       result === false || result === "missing" ? 1 : 0
-    ).catch((error) => error?.code === "FX_OAUTH_SESSION_REVISION_CONFLICT" ? -2 : -1);
+    ).catch((error) => error?.code === "PF_OAUTH_SESSION_REVISION_CONFLICT" ? -2 : -1);
   }
 
   function configGet(idPtr, idLen, outPtr, outCap) {
@@ -942,7 +942,7 @@ function createRuntime(options) {
       bytes(revisionPtr, revision.length).set(revision);
       writeU32(revisionLenOut, revision.length);
       return 0;
-    }).catch((error) => error?.code === "FX_SESSION_REVISION_CONFLICT" ? -2 : -1);
+    }).catch((error) => error?.code === "PF_SESSION_REVISION_CONFLICT" ? -2 : -1);
   }
 
   function sessionList(outPtr, outCap) {
@@ -1110,42 +1110,42 @@ function createRuntime(options) {
     proc_exit(code) { if (options.traceWasi) console.error("wasi proc_exit", code); markExited(code); throw new WebAssembly.RuntimeError(`proc_exit(${code})`); },
   };
 
-  const fx = {
-    fx_term_poll_input: new WebAssembly.Suspending(termPollInput),
-    fx_clipboard_copy: new WebAssembly.Suspending(clipboardCopy),
-    fx_prompt_history_available() { return options.promptHistoryStore ? 1 : 0; },
-    fx_workspace_available() { return workspace.present ? 1 : 0; },
-    fx_workspace_info: workspaceInfo,
-    fx_workspace_exec: new WebAssembly.Suspending(workspaceExec),
-    fx_http_stream_open: streamOpen,
-    fx_http_stream_status: new WebAssembly.Suspending(streamStatus),
-    fx_http_stream_next: new WebAssembly.Suspending(streamNext),
-    fx_http_stream_close(handle) { const state = streams.get(handle); state?.controller.abort(abortReason); streams.delete(handle); },
-    fx_http_request: new WebAssembly.Suspending(httpRequest),
-    fx_host_tool_call: new WebAssembly.Suspending(hostToolCall),
-    fx_host_tool_result_read(offset, ptr, cap) {
+  const pf = {
+    pf_term_poll_input: new WebAssembly.Suspending(termPollInput),
+    pf_clipboard_copy: new WebAssembly.Suspending(clipboardCopy),
+    pf_prompt_history_available() { return options.promptHistoryStore ? 1 : 0; },
+    pf_workspace_available() { return workspace.present ? 1 : 0; },
+    pf_workspace_info: workspaceInfo,
+    pf_workspace_exec: new WebAssembly.Suspending(workspaceExec),
+    pf_http_stream_open: streamOpen,
+    pf_http_stream_status: new WebAssembly.Suspending(streamStatus),
+    pf_http_stream_next: new WebAssembly.Suspending(streamNext),
+    pf_http_stream_close(handle) { const state = streams.get(handle); state?.controller.abort(abortReason); streams.delete(handle); },
+    pf_http_request: new WebAssembly.Suspending(httpRequest),
+    pf_host_tool_call: new WebAssembly.Suspending(hostToolCall),
+    pf_host_tool_result_read(offset, ptr, cap) {
       if (!pendingHostToolResult || offset < 0 || offset > pendingHostToolResult.length) return -1;
       const chunk = pendingHostToolResult.subarray(offset, offset + cap);
       bytes(ptr, chunk.length).set(chunk);
       return chunk.length;
     },
-    fx_host_tool_result_release() { pendingHostToolResult = null; },
-    fx_steering_take: steeringTake,
-    fx_steering_close() { steeringOpen = false; clearSteering(); },
-    fx_open_url: new WebAssembly.Suspending(openUrl),
-    fx_oauth_session_load: new WebAssembly.Suspending(oauthSessionLoad),
-    fx_oauth_session_commit: new WebAssembly.Suspending(oauthSessionCommit),
-    fx_oauth_session_remove: new WebAssembly.Suspending(oauthSessionRemove),
-    fx_config_get: new WebAssembly.Suspending(configGet),
-    fx_config_set: new WebAssembly.Suspending(configSet),
-    fx_prompt_history_load: new WebAssembly.Suspending(promptHistoryLoad),
-    fx_prompt_history_append: new WebAssembly.Suspending(promptHistoryAppend),
-    fx_prompt_history_clear: new WebAssembly.Suspending(promptHistoryClear),
-    fx_session_load: new WebAssembly.Suspending(sessionLoad),
-    fx_session_commit: new WebAssembly.Suspending(sessionCommit),
-    fx_session_list: new WebAssembly.Suspending(sessionList),
-    fx_session_remove: new WebAssembly.Suspending(sessionRemove),
-    fx_term_size(cols, rows) {
+    pf_host_tool_result_release() { pendingHostToolResult = null; },
+    pf_steering_take: steeringTake,
+    pf_steering_close() { steeringOpen = false; clearSteering(); },
+    pf_open_url: new WebAssembly.Suspending(openUrl),
+    pf_oauth_session_load: new WebAssembly.Suspending(oauthSessionLoad),
+    pf_oauth_session_commit: new WebAssembly.Suspending(oauthSessionCommit),
+    pf_oauth_session_remove: new WebAssembly.Suspending(oauthSessionRemove),
+    pf_config_get: new WebAssembly.Suspending(configGet),
+    pf_config_set: new WebAssembly.Suspending(configSet),
+    pf_prompt_history_load: new WebAssembly.Suspending(promptHistoryLoad),
+    pf_prompt_history_append: new WebAssembly.Suspending(promptHistoryAppend),
+    pf_prompt_history_clear: new WebAssembly.Suspending(promptHistoryClear),
+    pf_session_load: new WebAssembly.Suspending(sessionLoad),
+    pf_session_commit: new WebAssembly.Suspending(sessionCommit),
+    pf_session_list: new WebAssembly.Suspending(sessionList),
+    pf_session_remove: new WebAssembly.Suspending(sessionRemove),
+    pf_term_size(cols, rows) {
       const width = options.terminal?.cols || 80;
       const height = options.terminal?.rows || 24;
       new DataView(memory().buffer).setUint16(cols, width, true);
@@ -1155,7 +1155,7 @@ function createRuntime(options) {
   };
 
   return {
-    imports: { wasi_snapshot_preview1: wasi, fx }, exited,
+    imports: { wasi_snapshot_preview1: wasi, pf }, exited,
     setInstance(value) { instance = value; },
     write(data) { stdin.push(typeof data === "string" ? encoder.encode(data) : data); },
     wake() { stdin.wake(); },
@@ -1185,7 +1185,7 @@ function createRuntime(options) {
 }
 
 async function instantiate(options) {
-  if (!supportsJspi()) throw new Error("fx WebAssembly requires JSPI (Chrome or Edge 137+)");
+  if (!supportsJspi()) throw new Error("pf WebAssembly requires JSPI (Chrome or Edge 137+)");
   const runtime = createRuntime({ fetch: globalThis.fetch.bind(globalThis), ...options });
   const module = await loadModule(options.wasm);
   const instance = await WebAssembly.instantiate(module, runtime.imports);
@@ -1212,7 +1212,7 @@ async function instantiate(options) {
   return runtime;
 }
 
-export async function createFxTerminal(options) {
+export async function createPfTerminal(options) {
   if (!options?.terminal) throw new TypeError("terminal is required");
   const emit = (type, detail = {}) => {
     try { options.onEvent?.({ type, timestamp: performance.now(), ...detail }); } catch {}
@@ -1240,7 +1240,7 @@ export async function createFxTerminal(options) {
   emit("runtime.start", { surface: "terminal" });
   const runtime = await instantiate({ ...options, emit, stdout, onTerminalPoll });
   runtime.exited.then((code) => {
-    if (!interactiveScheduled) rejectInteractive(new Error(`fx terminal exited with code ${code} before becoming interactive`));
+    if (!interactiveScheduled) rejectInteractive(new Error(`pf terminal exited with code ${code} before becoming interactive`));
   });
   emit("runtime.ready", { surface: "terminal" });
   const interruptKey = options.interruptKey ?? "\x03";
@@ -1324,7 +1324,7 @@ function normalizePromptInput(input) {
       }
       const encodedLength = blob ? Math.ceil(size / 3) * 4 : block.data.length;
       if (encodedLength > maxPromptImageDataBytes) {
-        throw new RangeError(`image prompt block ${index} exceeds the ${maxPromptImageDataBytes} byte per-image libfx limit`);
+        throw new RangeError(`image prompt block ${index} exceeds the ${maxPromptImageDataBytes} byte per-image libpf limit`);
       }
       imageCount += 1;
       if (imageCount > maxPromptImages) {
@@ -1332,7 +1332,7 @@ function normalizePromptInput(input) {
       }
       imageBytes += encodedLength;
       if (imageBytes > maxPromptImagesBytes) {
-        throw new RangeError(`prompt images exceed the ${maxPromptImagesBytes} byte libfx frame limit`);
+        throw new RangeError(`prompt images exceed the ${maxPromptImagesBytes} byte libpf frame limit`);
       }
       return { type: "image", data: block.data, mimeType };
     }
@@ -1374,7 +1374,7 @@ async function materializePromptBlobs(blocks, isCancelled) {
     if (typeof block.data === "string") {
       imageBytes += block.data.length;
       if (imageBytes > maxPromptImagesBytes) {
-        throw new RangeError(`prompt images exceed the ${maxPromptImagesBytes} byte libfx frame limit`);
+        throw new RangeError(`prompt images exceed the ${maxPromptImagesBytes} byte libpf frame limit`);
       }
       encoded.push(block);
       continue;
@@ -1383,11 +1383,11 @@ async function materializePromptBlobs(blocks, isCancelled) {
     if (isCancelled()) return null;
     const encodedLength = Math.ceil(bytes.length / 3) * 4;
     if (encodedLength > maxPromptImageDataBytes) {
-      throw new RangeError(`image prompt block ${index} exceeds the ${maxPromptImageDataBytes} byte per-image libfx limit`);
+      throw new RangeError(`image prompt block ${index} exceeds the ${maxPromptImageDataBytes} byte per-image libpf limit`);
     }
     imageBytes += encodedLength;
     if (imageBytes > maxPromptImagesBytes) {
-      throw new RangeError(`prompt images exceed the ${maxPromptImagesBytes} byte libfx frame limit`);
+      throw new RangeError(`prompt images exceed the ${maxPromptImagesBytes} byte libpf frame limit`);
     }
     encoded.push({ type: "image", data: bytesToBase64(bytes), mimeType: block.mimeType });
   }
@@ -1402,7 +1402,7 @@ function normalizeSteeringInput(input) {
   const text = blocks.map((block) => block.text).join("\n");
   if (text.length === 0) throw new TypeError("steering text cannot be empty");
   if (encoder.encode(text).length > maxSteeringMessageBytes) {
-    throw new RangeError(`steering text exceeds the ${maxSteeringMessageBytes} byte libfx limit`);
+    throw new RangeError(`steering text exceeds the ${maxSteeringMessageBytes} byte libpf limit`);
   }
   return text;
 }
@@ -1456,13 +1456,13 @@ function normalizeInstructions(value) {
     throw new TypeError("instructions must be a string or an array of strings");
   }
   if (encoder.encode(instructions).length > maxInstructionsBytes) {
-    throw new RangeError(`instructions exceed the ${maxInstructionsBytes} byte libfx limit`);
+    throw new RangeError(`instructions exceed the ${maxInstructionsBytes} byte libpf limit`);
   }
   return instructions;
 }
 
 function hostToolContent(value) {
-  if (value?.type === "libfx.tool-result") {
+  if (value?.type === "libpf.tool-result") {
     if (typeof value.text !== "string" || !Array.isArray(value.images) || value.images.length > 8) {
       throw new TypeError("invalid typed tool result");
     }
@@ -1510,7 +1510,7 @@ function base64ToBytes(value) {
   return bytes;
 }
 
-export async function createFxAgent(options = {}) {
+export async function createPfAgent(options = {}) {
   options = normalizeAgentOptions(options);
   const hostTools = normalizeHostTools(options.tools);
   const instructions = normalizeInstructions(options.instructions);
@@ -1605,7 +1605,7 @@ export async function createFxAgent(options = {}) {
       }
     } catch (error) {
       isError = true;
-      if (error?.toolResult?.type === "libfx.tool-result") {
+      if (error?.toolResult?.type === "libpf.tool-result") {
         try {
           const normalized = hostToolContent(error.toolResult);
           content = normalized.content;
@@ -1648,7 +1648,7 @@ export async function createFxAgent(options = {}) {
     : await instantiate(runtimeOptions);
   emit("runtime.ready");
   const send = (message) => {
-    if (closing) throw new Error("fx agent is closing");
+    if (closing) throw new Error("pf agent is closing");
     emit("acp.send", { message });
     if (message.method === "session/prompt" && activeTurn?.cancelled) throw new Error("Cancelled");
     runtime.write(`${JSON.stringify(message)}\n`);
@@ -1661,7 +1661,7 @@ export async function createFxAgent(options = {}) {
   });
   runtime.exited.then((code) => {
     closing = true;
-    const error = runtime.error ?? new Error(`fx-core exited with code ${code} before completing the ACP request`);
+    const error = runtime.error ?? new Error(`pf-core exited with code ${code} before completing the ACP request`);
     coreExitError = error;
     activeTurn?.failPendingBlob(error);
     for (const waiter of pending.values()) waiter.reject(error);
@@ -1690,7 +1690,7 @@ export async function createFxAgent(options = {}) {
       send({ jsonrpc: "2.0", id: message.id, result: optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } } });
       return;
     }
-    if (message.method === "libfx/tool_call") {
+    if (message.method === "libpf/tool_call") {
       const { content, isError, rich, cancelled } = await executeHostTool(
         message.params?.name,
         message.params?.input,
@@ -1712,15 +1712,15 @@ export async function createFxAgent(options = {}) {
       protocolVersion: 1,
       clientCapabilities: {
         ...(hostTools.descriptors.length || instructions
-          ? { libfx: { tools: hostTools.descriptors, instructions } }
+          ? { libpf: { tools: hostTools.descriptors, instructions } }
           : {}),
       },
     });
 
-    const sessionResult = await request("libfx/new");
+    const sessionResult = await request("libpf/new");
     sessionId = sessionResult.sessionId;
     if (initialCheckpoint) {
-      await request("libfx/restore", {
+      await request("libpf/restore", {
         sessionId,
         checkpoint: bytesToBase64(initialCheckpoint),
       });
@@ -1735,15 +1735,15 @@ export async function createFxAgent(options = {}) {
 
   const agent = {
     prompt(input, promptOptions = {}) {
-      if (closing) throw new Error("fx agent is closed");
+      if (closing) throw new Error("pf agent is closed");
       if (activeTurn) throw new Error("a prompt is already in progress for this session");
       return normalizeTurn(startTurn(input, promptOptions));
     },
     async checkpoint() {
-      if (closing) throw new Error("fx agent is closed");
+      if (closing) throw new Error("pf agent is closed");
       if (activeTurn) throw new Error("cannot checkpoint while a prompt is active");
-      const response = await request("libfx/checkpoint", { sessionId });
-      if (typeof response?.checkpoint !== "string") throw new Error("fx returned an invalid checkpoint");
+      const response = await request("libpf/checkpoint", { sessionId });
+      if (typeof response?.checkpoint !== "string") throw new Error("pf returned an invalid checkpoint");
       return base64ToBytes(response.checkpoint);
     },
     async close() {
@@ -1849,7 +1849,7 @@ export async function createFxAgent(options = {}) {
     const prompt = normalizePromptInput(input);
     const hasBlobs = prompt.some((block) => block.type === "image" && typeof block.data !== "string");
     if (promptFrameSize(prompt) > maxPromptFrameBytes) {
-      throw new RangeError(`prompt exceeds the ${maxPromptFrameBytes} byte libfx frame limit`);
+      throw new RangeError(`prompt exceeds the ${maxPromptFrameBytes} byte libpf frame limit`);
     }
     const signal = promptOptions.signal;
     if (signal !== undefined && (typeof signal?.addEventListener !== "function" || typeof signal?.removeEventListener !== "function")) throw new TypeError("prompt signal must be an AbortSignal");
@@ -1904,12 +1904,12 @@ export async function createFxAgent(options = {}) {
         if (finished || cancelled || activeTurn !== turn) {
           return Promise.reject(new Error("no prompt is running"));
         }
-        if (closing) return Promise.reject(coreExitError ?? new Error("fx agent is closing"));
+        if (closing) return Promise.reject(coreExitError ?? new Error("pf agent is closing"));
         const apply = () => {
           if (finished || cancelled || activeTurn !== turn) {
             return Promise.reject(new Error("no prompt is running"));
           }
-          if (closing) return Promise.reject(coreExitError ?? new Error("fx agent is closing"));
+          if (closing) return Promise.reject(coreExitError ?? new Error("pf agent is closing"));
           try {
             if (typeof runtime.steer === "function") {
               runtime.steer(text);
@@ -1919,7 +1919,7 @@ export async function createFxAgent(options = {}) {
               });
               return Promise.resolve();
             }
-            return request("libfx/steer", { sessionId, text });
+            return request("libpf/steer", { sessionId, text });
           } catch (error) {
             return Promise.reject(error);
           }
@@ -2000,7 +2000,7 @@ export async function createFxAgent(options = {}) {
           return { stopReason: "cancelled" };
         }
         if (promptFrameSize(encodedPrompt) > maxPromptFrameBytes) {
-          throw new RangeError(`prompt exceeds the ${maxPromptFrameBytes} byte libfx frame limit`);
+          throw new RangeError(`prompt exceeds the ${maxPromptFrameBytes} byte libpf frame limit`);
         }
         return request("session/prompt", { sessionId, prompt: encodedPrompt });
       })

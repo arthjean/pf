@@ -78,7 +78,7 @@ fn tmuxAbnormalExitHandler(sig: std.posix.SIG) callconv(.c) void {
 }
 
 /// Install handlers for SIGTERM and SIGHUP so an externally-terminated
-/// fx restores terminal state before dying. SIGINT is not included
+/// pf restores terminal state before dying. SIGINT is not included
 /// because raw mode disables terminal-generated SIGINT.
 pub fn installAbnormalExitHandlers(tmux: ?[]const u8) void {
     if (!shell_runtime.supports_resize_signal) return;
@@ -124,7 +124,7 @@ pub const StartupState = struct {
     credential_source_preference: ?credentials.Source = null,
     credential_onboarding_skipped: bool = false,
     stored_key_status: credentials.StoredKeyReadStatus = .not_attempted,
-    fx_login_status: credentials.FxLoginReadStatus = .not_attempted,
+    pf_login_status: credentials.PfLoginReadStatus = .not_attempted,
     configured_providers: @import("../config/configured_provider.zig").Registry = .{},
     model_requests_blocked: bool = false,
     provider: model_provider.ProviderId = .gateway,
@@ -234,7 +234,7 @@ pub const StartupState = struct {
         return value;
     }
 
-    /// Applies an interactive launch `--model` override. Like FX_MODEL, it
+    /// Applies an interactive launch `--model` override. Like PF_MODEL, it
     /// marks a process override and drops compiled-default fast mode; an
     /// explicit --fast restores fast separately in applyLaunchTurnOverrides.
     pub fn applyLaunchModelOverride(self: *StartupState, alloc: Allocator, model: []const u8) !void {
@@ -299,7 +299,7 @@ pub const StartupState = struct {
     }
 };
 
-/// Where `fx status` found the selected model.
+/// Where `pf status` found the selected model.
 pub const ModelOrigin = enum {
     env,
     settings,
@@ -307,7 +307,7 @@ pub const ModelOrigin = enum {
 
     pub fn label(self: ModelOrigin) []const u8 {
         return switch (self) {
-            .env => "FX_MODEL",
+            .env => "PF_MODEL",
             .settings => "settings",
             .default => "default",
         };
@@ -363,7 +363,7 @@ pub const BootstrapConfig = struct {
     secret_store: host.SecretStore,
     auth_mode: credentials.AuthMode = .local,
     resize_handler: ResizeHandler,
-    fx_version: []const u8 = "",
+    pf_version: []const u8 = "",
     /// Interactive launch `--provider` override; null keeps the configured provider.
     provider_override: ?model_provider.ProviderId = null,
     /// Interactive launch `--model`; stands in for a provider without a saved model.
@@ -442,7 +442,7 @@ pub fn loadEmbeddedStartupState(
     );
 }
 
-pub fn loadLibfxStartupState(
+pub fn loadLibpfStartupState(
     alloc: Allocator,
     workspace_root: []const u8,
     model: []const u8,
@@ -622,7 +622,7 @@ fn loadStartupStateFromOwnedWorkspace(
     try skill_runtime.setConfiguredSymlinkAuthorities(settings.skill_symlink_authorities orelse &.{});
 
     // A launch --provider override must bind configured provider names against
-    // the registry just like the settings and FX_PROVIDER paths do.
+    // the registry just like the settings and PF_PROVIDER paths do.
     const bound_override = if (provider_override) |override|
         try override.bind(settings.providers orelse .{})
     else
@@ -657,7 +657,7 @@ fn loadStartupStateFromOwnedWorkspace(
             state.credential = resolution.credential;
             state.credential_load_failure = resolution.failure;
             state.stored_key_status = resolution.stored_key_status;
-            state.fx_login_status = resolution.fx_login_status;
+            state.pf_login_status = resolution.pf_login_status;
         }
     }
     state.permission_mode = loadPermissionMode(settings.permission_mode);
@@ -776,7 +776,7 @@ pub fn bootstrapInteractiveApp(cfg: BootstrapConfig) !StartupState {
         cfg.alloc,
         cfg.shell.layout.cols,
         cfg.shell.layout.rows,
-        cfg.fx_version,
+        cfg.pf_version,
     ) catch |err| {
         debug_trace.logf("record", "startup recording failed err={s}", .{@errorName(err)});
         return error.RecordingStartFailed;
@@ -791,12 +791,12 @@ pub fn bootstrapInteractiveApp(cfg: BootstrapConfig) !StartupState {
         io_mod.getenv("TERM_PROGRAM"),
     );
     ui_render.setTruecolorSupport(truecolor);
-    // Theme selection: FX_THEME wins over the settings "theme" key; an empty
-    // FX_THEME counts as unset per the codebase convention. light/dark pin the
+    // Theme selection: PF_THEME wins over the settings "theme" key; an empty
+    // PF_THEME counts as unset per the codebase convention. light/dark pin the
     // builtin variant and skip the OSC 11 probe; any other value names a theme
-    // file under ~/.fx/themes.
+    // file under ~/.pf/themes.
     var configured_theme: ?[]const u8 = state.theme;
-    if (io_mod.getenv("FX_THEME")) |value| {
+    if (io_mod.getenv("PF_THEME")) |value| {
         if (value.len > 0) configured_theme = value;
     }
     if (if (configured_theme) |value| shared_theme.classifyValue(value) else null) |choice| {
@@ -924,7 +924,7 @@ pub fn shutdownInteractiveShell(
 
 /// Stage timing for interactive shutdown. Each mark logs the delta since the
 /// previous stage plus the total, so a slow exit names its stage in
-/// FX_TRACE_LOG under the "shutdown" scope. Stages are also recorded in
+/// PF_TRACE_LOG under the "shutdown" scope. Stages are also recorded in
 /// memory and persisted at exit, so the next session's /trace report shows
 /// the last shutdown breakdown without any flag.
 pub const ShutdownStageTrace = struct {
@@ -1002,9 +1002,9 @@ fn writeLastShutdownReportInner(alloc: Allocator, trace: *const ShutdownStageTra
         .dir = try std.Io.Dir.openDirAbsolute(io_mod.getIo(), home, .{ .iterate = true }),
     };
     defer home_dir.close();
-    var fx_dir = try io_mod.openOrCreateVerifiedPrivateDir(&home_dir, profile_paths.root_dir_name);
-    defer fx_dir.close();
-    var diagnostics = try io_mod.openOrCreateVerifiedPrivateDir(&fx_dir, profile_paths.diagnostics_dir_name);
+    var pf_dir = try io_mod.openOrCreateVerifiedPrivateDir(&home_dir, profile_paths.root_dir_name);
+    defer pf_dir.close();
+    var diagnostics = try io_mod.openOrCreateVerifiedPrivateDir(&pf_dir, profile_paths.diagnostics_dir_name);
     defer diagnostics.close();
     try io_mod.durableReplaceVerified(
         alloc,
@@ -1445,7 +1445,7 @@ fn shutdownCleanupRow(shell: *const TranscriptRuntime) u16 {
 
 fn loadPermissionMode(configured: ?PermissionMode) PermissionMode {
     const fallback = configured orelse default_permission_mode;
-    const mode = io_mod.getenv("FX_PERMISSION_MODE") orelse return fallback;
+    const mode = io_mod.getenv("PF_PERMISSION_MODE") orelse return fallback;
     return config_runtime.parsePermissionMode(mode) orelse fallback;
 }
 
@@ -1453,7 +1453,7 @@ fn loadAgentStepLimit(fallback: usize, configured: ?usize) usize {
     return agent_steps.resolveMaxAgentStepsWithOverride(
         configured,
         fallback,
-        io_mod.getenv("FX_MAX_AGENT_STEPS"),
+        io_mod.getenv("PF_MAX_AGENT_STEPS"),
     );
 }
 
@@ -1461,10 +1461,10 @@ fn initialModelId(default_model: []const u8, configured: ?[]const u8) []const u8
     return config_runtime.modelEnvOverride() orelse configured orelse default_model;
 }
 
-test "loadStartupState starts Codex from FX_PROVIDER and FX_MODEL without a saved model" {
+test "loadStartupState starts Codex from PF_PROVIDER and PF_MODEL without a saved model" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
     defer std.testing.allocator.free(home_root);
@@ -1473,8 +1473,8 @@ test "loadStartupState starts Codex from FX_PROVIDER and FX_MODEL without a save
 
     var env = try TestEnv.install(std.testing.allocator, &.{
         .{ .key = "HOME", .value = home_root },
-        .{ .key = "FX_PROVIDER", .value = "codex" },
-        .{ .key = "FX_MODEL", .value = "  gpt-env  " },
+        .{ .key = "PF_PROVIDER", .value = "codex" },
+        .{ .key = "PF_MODEL", .value = "  gpt-env  " },
     });
     defer env.deinit();
 
@@ -1485,11 +1485,11 @@ test "loadStartupState starts Codex from FX_PROVIDER and FX_MODEL without a save
     try std.testing.expectEqualStrings("gpt-env", state.configured_model);
     try std.testing.expectEqual(config_runtime.ModelSource.process_override, state.model_source);
 
-    // A blank FX_MODEL is no model at all, so the setup error still surfaces.
+    // A blank PF_MODEL is no model at all, so the setup error still surfaces.
     var blank_env = try TestEnv.install(std.testing.allocator, &.{
         .{ .key = "HOME", .value = home_root },
-        .{ .key = "FX_PROVIDER", .value = "codex" },
-        .{ .key = "FX_MODEL", .value = " \t " },
+        .{ .key = "PF_PROVIDER", .value = "codex" },
+        .{ .key = "PF_MODEL", .value = " \t " },
     });
     defer blank_env.deinit();
     try std.testing.expectError(
@@ -1502,7 +1502,7 @@ test "loadStartupState seeds a provider without a saved model from the launch --
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home_root);
@@ -1511,12 +1511,12 @@ test "loadStartupState seeds a provider without a saved model from the launch --
 
     var env = try TestEnv.install(alloc, &.{
         .{ .key = "HOME", .value = home_root },
-        .{ .key = "FX_MODEL", .value = "gpt-env" },
+        .{ .key = "PF_MODEL", .value = "gpt-env" },
     });
     defer env.deinit();
 
-    // fx --provider codex --model gpt-flag from a Gateway-only profile: the
-    // flag outranks FX_MODEL as the seeded preference; callers apply it last.
+    // pf --provider codex --model gpt-flag from a Gateway-only profile: the
+    // flag outranks PF_MODEL as the seeded preference; callers apply it last.
     var state = try loadStartupStateFromOwnedWorkspace(
         alloc,
         oauth_transport.unavailable_provider,
@@ -1539,15 +1539,15 @@ test "loadStartupStatus reports where the selected model came from" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     const home_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home_root);
 
     {
         var env = try TestEnv.install(alloc, &.{
             .{ .key = "HOME", .value = home_root },
-            .{ .key = "FX_PROVIDER", .value = "codex" },
-            .{ .key = "FX_MODEL", .value = "gpt-env" },
+            .{ .key = "PF_PROVIDER", .value = "codex" },
+            .{ .key = "PF_MODEL", .value = "gpt-env" },
         });
         defer env.deinit();
         var status = try loadStartupStatusWithAuthMode(alloc, host.unavailable_secret_store, "default/model", 25, .host_managed);
@@ -1559,7 +1559,7 @@ test "loadStartupStatus reports where the selected model came from" {
     {
         var env = try TestEnv.install(alloc, &.{
             .{ .key = "HOME", .value = home_root },
-            .{ .key = "FX_PROVIDER", .value = "codex" },
+            .{ .key = "PF_PROVIDER", .value = "codex" },
         });
         defer env.deinit();
         try std.testing.expectError(
@@ -1575,7 +1575,7 @@ test "loadStartupStatus reports where the selected model came from" {
         try std.testing.expectEqualStrings("default/model", status.selected_model);
         try std.testing.expectEqual(ModelOrigin.default, status.model_origin);
     }
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"provider\":\"codex\",\"models\":{\"codex\":\"gpt-saved\"}}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"provider\":\"codex\",\"models\":{\"codex\":\"gpt-saved\"}}\n");
     {
         var env = try TestEnv.install(alloc, &.{.{ .key = "HOME", .value = home_root }});
         defer env.deinit();
@@ -1600,7 +1600,7 @@ fn loadStartupStatusModel(alloc: Allocator, default_model: []const u8, configure
 }
 
 fn credentialOnboardingDisabled() bool {
-    const value = io_mod.getenv("FX_SKIP_ONBOARDING") orelse return false;
+    const value = io_mod.getenv("PF_SKIP_ONBOARDING") orelse return false;
     const trimmed = std.mem.trim(u8, value, " \t\r\n");
     if (trimmed.len == 0) return false;
     return !std.mem.eql(u8, trimmed, "0") and !std.ascii.eqlIgnoreCase(trimmed, "false");
@@ -1609,7 +1609,7 @@ fn credentialOnboardingDisabled() bool {
 const SoundEnvLevel = enum { off, on, max };
 
 fn soundEnvOverride() ?SoundEnvLevel {
-    const value = io_mod.getenv("FX_SOUND") orelse return null;
+    const value = io_mod.getenv("PF_SOUND") orelse return null;
     const trimmed = std.mem.trim(u8, value, " \t\r\n");
     if (trimmed.len == 0) return null;
     if (std.ascii.eqlIgnoreCase(trimmed, "max")) return .max;
@@ -1687,7 +1687,7 @@ test "permission mode loader defaults to auto" {
 
 test "permission mode environment accepts yolo without changing fallback" {
     var env = try TestEnv.install(std.testing.allocator, &.{
-        .{ .key = "FX_PERMISSION_MODE", .value = "yolo" },
+        .{ .key = "PF_PERMISSION_MODE", .value = "yolo" },
     });
     defer env.deinit();
 
@@ -2343,10 +2343,10 @@ test "startup credential modes select a refresh policy, never a narrower source 
 
 test "loadStartupState applies core env overrides" {
     var env = try TestEnv.install(std.testing.allocator, &.{
-        .{ .key = "FX_MODEL", .value = "  env-model  " },
+        .{ .key = "PF_MODEL", .value = "  env-model  " },
         .{ .key = "AI_GATEWAY_API_KEY", .value = "gateway-key" },
-        .{ .key = "FX_PERMISSION_MODE", .value = "auto" },
-        .{ .key = "FX_MAX_AGENT_STEPS", .value = "37" },
+        .{ .key = "PF_PERMISSION_MODE", .value = "auto" },
+        .{ .key = "PF_MAX_AGENT_STEPS", .value = "37" },
     });
     defer env.deinit();
 
@@ -2396,7 +2396,7 @@ test "loadStartupState defaults fast mode off and requires bound explicit prefer
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "absent");
     try tmp.dir.createDirPath(io_mod.getIo(), "configured");
     try tmp.dir.createDirPath(io_mod.getIo(), "disabled");
@@ -2425,7 +2425,7 @@ test "loadStartupState defaults fast mode off and requires bound explicit prefer
         .{ configured_root, disabled_root, legacy_fast_root, bound_fast_root, codex_root },
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     var env = try TestEnv.install(std.testing.allocator, &.{.{ .key = "HOME", .value = home_root }});
     defer env.deinit();
@@ -2472,7 +2472,7 @@ test "loadStartupState resolves startup scrollback default and explicit false" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "absent");
     try tmp.dir.createDirPath(io_mod.getIo(), "disabled");
 
@@ -2489,7 +2489,7 @@ test "loadStartupState resolves startup scrollback default and explicit false" {
         .{disabled_root},
     );
     defer std.testing.allocator.free(fixture);
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", fixture);
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
 
     var env = try TestEnv.install(std.testing.allocator, &.{.{ .key = "HOME", .value = home_root }});
     defer env.deinit();
@@ -2507,7 +2507,7 @@ test "loadStartupState resolves slash menu categories default and explicit false
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2522,7 +2522,7 @@ test "loadStartupState resolves slash menu categories default and explicit false
     defer initial.deinit(std.testing.allocator);
     try std.testing.expect(initial.slash_menu_categories);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"slash_menu_categories\":false}\n");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"slash_menu_categories\":false}\n");
     var hidden = try loadStartupStateForWorkspace(std.testing.allocator, workspace_root, "default-model", 25);
     defer hidden.deinit(std.testing.allocator);
     try std.testing.expect(!hidden.slash_menu_categories);
@@ -2538,8 +2538,8 @@ test "loadStartupState resolves max_agent_steps default zero and positive values
     try tmp.dir.createDirPath(io_mod.getIo(), "absent");
     try tmp.dir.createDirPath(io_mod.getIo(), "zero");
     try tmp.dir.createDirPath(io_mod.getIo(), "positive");
-    try writeFixtureFile(tmp.dir, "zero/.fx.json", "{\"max_agent_steps\":0}");
-    try writeFixtureFile(tmp.dir, "positive/.fx.json", "{\"max_agent_steps\":50}");
+    try writeFixtureFile(tmp.dir, "zero/.pf.json", "{\"max_agent_steps\":0}");
+    try writeFixtureFile(tmp.dir, "positive/.pf.json", "{\"max_agent_steps\":50}");
 
     const absent_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "absent");
     defer std.testing.allocator.free(absent_root);
@@ -2570,7 +2570,7 @@ test "loadStartupState resolves max_tool_result_bytes default and explicit value
 
     try tmp.dir.createDirPath(io_mod.getIo(), "absent");
     try tmp.dir.createDirPath(io_mod.getIo(), "explicit");
-    try writeFixtureFile(tmp.dir, "explicit/.fx.json", "{\"max_tool_result_bytes\":131072}");
+    try writeFixtureFile(tmp.dir, "explicit/.pf.json", "{\"max_tool_result_bytes\":131072}");
 
     const absent_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "absent");
     defer std.testing.allocator.free(absent_root);
@@ -2594,7 +2594,7 @@ test "loadStartupState falls back to auto for invalid first_call_tool_choice" {
     defer tmp.cleanup();
 
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
-    try writeFixtureFile(tmp.dir, "workspace/.fx.json", "{\"first_call_tool_choice\":\"required\"}");
+    try writeFixtureFile(tmp.dir, "workspace/.pf.json", "{\"first_call_tool_choice\":\"required\"}");
 
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
     defer std.testing.allocator.free(workspace_root);
@@ -2608,7 +2608,7 @@ test "loadStartupState falls back to auto for invalid first_call_tool_choice" {
 test "loadStartupState diagnoses the retired fuzzy skill setting" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
 
     const home_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "home");
@@ -2616,7 +2616,7 @@ test "loadStartupState diagnoses the retired fuzzy skill setting" {
     const workspace_root = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "workspace");
     defer std.testing.allocator.free(workspace_root);
 
-    try writeFixtureFile(tmp.dir, "home/.fx/settings.json", "{\"skill_match_fuzzy\":true}");
+    try writeFixtureFile(tmp.dir, "home/.pf/settings.json", "{\"skill_match_fuzzy\":true}");
 
     var env = try TestEnv.install(std.testing.allocator, &.{.{ .key = "HOME", .value = home_root }});
     defer env.deinit();
@@ -2629,8 +2629,8 @@ test "loadStartupState diagnoses the retired fuzzy skill setting" {
 
 test "credential onboarding can be skipped independently from Keychain" {
     var env = try TestEnv.install(std.testing.allocator, &.{
-        .{ .key = "FX_SKIP_ONBOARDING", .value = "1" },
-        .{ .key = "FX_DISABLE_KEYCHAIN", .value = "1" },
+        .{ .key = "PF_SKIP_ONBOARDING", .value = "1" },
+        .{ .key = "PF_DISABLE_KEYCHAIN", .value = "1" },
     });
     defer env.deinit();
 

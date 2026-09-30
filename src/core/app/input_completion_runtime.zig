@@ -1671,7 +1671,7 @@ test "root slash completion follows multiline and command argument ownership" {
         .name = "resume-helper",
         .description = "resume a workflow",
         .path = "/tmp/resume-helper/SKILL.md",
-        .source = .global_fx,
+        .source = .global_pf,
     }};
     var app = InlineCompletionTestApp{
         .alloc = alloc,
@@ -1694,7 +1694,7 @@ test "inline skill completion stays inactive when its suffix cannot render" {
         .name = "managed-menu",
         .description = "",
         .path = "/tmp/managed-menu/SKILL.md",
-        .source = .global_fx,
+        .source = .global_pf,
     }};
     var app = InlineCompletionTestApp{
         .alloc = alloc,
@@ -1728,7 +1728,7 @@ test "model picker ownership suppresses inline skill completion" {
         .name = "managed-menu",
         .description = "",
         .path = "/tmp/managed-menu/SKILL.md",
-        .source = .global_fx,
+        .source = .global_pf,
     }};
     var app = InlineCompletionTestApp{
         .alloc = alloc,
@@ -1756,7 +1756,7 @@ test "dedicated catalog ownership suppresses inline skill completion" {
         .name = "managed-menu",
         .description = "",
         .path = "/tmp/managed-menu/SKILL.md",
-        .source = .global_fx,
+        .source = .global_pf,
     }};
     var app = InlineCompletionTestApp{
         .alloc = alloc,

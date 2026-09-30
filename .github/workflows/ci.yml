@@ -87,7 +87,7 @@ jobs:
       - name: Test Node + WASM
         run: npm run --prefix sdk test:node-wasm
 
-      - name: Test libfx Wasm integrations
+      - name: Test libpf Wasm integrations
         run: |
           node --experimental-wasm-jspi sdk/tests/test-host-tools.mjs wasm
           node --experimental-wasm-jspi sdk/tests/test-host-tool-cancel.mjs wasm
@@ -147,7 +147,7 @@ jobs:
 
       - name: Build SDK artifacts
         run: |
-          zig build libfx-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-gnu.2.34 -Dcpu=baseline
+          zig build libpf-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-gnu.2.34 -Dcpu=baseline
           zig build -Dwasm-surface=core -Doptimize=ReleaseSmall
           zig build -Dwasm-surface=term -Doptimize=ReleaseSmall
 
@@ -161,7 +161,7 @@ jobs:
         run: bun sdk/tests/test-node-wasm.mjs
 
       - name: Test Bun benchmark path
-        run: bun sdk/tests/test-libfx-benchmark.mjs
+        run: bun sdk/tests/test-libpf-benchmark.mjs
 
       - name: Test Bun cross-backend integrations
         run: |
@@ -180,7 +180,7 @@ jobs:
       - name: Check Linux addon compatibility
         run: |
           python3 sdk/tests/test-linux-abi.py
-          python3 sdk/scripts/check-linux-abi.py zig-out/lib/libfx.node
+          python3 sdk/scripts/check-linux-abi.py zig-out/lib/libpf.node
           docker run --rm --network none --entrypoint /bin/bash \
             --volume "$PWD:/workspace:ro" --workdir /workspace \
             public.ecr.aws/lambda/nodejs@sha256:2472f0273d8848d8b2aa6528f5526b8a514b70703596199efe5a4b84d3d59b0b -euc '
@@ -192,16 +192,16 @@ jobs:
       - name: Build foreign addons for package qualification
         run: |
           mkdir -p native-addons
-          cp zig-out/lib/libfx.node native-addons/libfx.linux-x64.node
-          prefix="$(mktemp -d "$RUNNER_TEMP/libfx-linux-arm64.XXXXXX")"
-          zig build libfx-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-gnu.2.34 -Dcpu=baseline --prefix "$prefix"
-          cp "$prefix/lib/libfx.node" native-addons/libfx.linux-arm64.node
-          prefix="$(mktemp -d "$RUNNER_TEMP/libfx-darwin-x64.XXXXXX")"
-          zig build libfx-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=x86_64-macos -Dcpu=baseline --prefix "$prefix"
-          cp "$prefix/lib/libfx.node" native-addons/libfx.darwin-x64.node
-          prefix="$(mktemp -d "$RUNNER_TEMP/libfx-darwin-arm64.XXXXXX")"
-          zig build libfx-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=aarch64-macos -Dcpu=baseline --prefix "$prefix"
-          cp "$prefix/lib/libfx.node" native-addons/libfx.darwin-arm64.node
+          cp zig-out/lib/libpf.node native-addons/libpf.linux-x64.node
+          prefix="$(mktemp -d "$RUNNER_TEMP/libpf-linux-arm64.XXXXXX")"
+          zig build libpf-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-gnu.2.34 -Dcpu=baseline --prefix "$prefix"
+          cp "$prefix/lib/libpf.node" native-addons/libpf.linux-arm64.node
+          prefix="$(mktemp -d "$RUNNER_TEMP/libpf-darwin-x64.XXXXXX")"
+          zig build libpf-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=x86_64-macos -Dcpu=baseline --prefix "$prefix"
+          cp "$prefix/lib/libpf.node" native-addons/libpf.darwin-x64.node
+          prefix="$(mktemp -d "$RUNNER_TEMP/libpf-darwin-arm64.XXXXXX")"
+          zig build libpf-napi -Dnapi-surface=core -Doptimize=ReleaseSafe -Dtarget=aarch64-macos -Dcpu=baseline --prefix "$prefix"
+          cp "$prefix/lib/libpf.node" native-addons/libpf.darwin-arm64.node
 
       - name: Test Node package and backend diagnostics
         run: |
@@ -209,43 +209,43 @@ jobs:
           node --experimental-wasm-jspi sdk/tests/test-node-bundled-assets.mjs
           node sdk/tests/test-node-package.mjs
           node sdk/tests/test-term-demo-package.mjs
-          node sdk/scripts/package-libfx.mjs sdk/dist/libfx native-addons/libfx.linux-x64.node native-addons/libfx.linux-arm64.node native-addons/libfx.darwin-x64.node native-addons/libfx.darwin-arm64.node
-          node --experimental-wasm-jspi sdk/tests/test-node-async-assets.mjs sdk/dist/libfx
-          npm pack ./sdk/dist/libfx --ignore-scripts --json > /tmp/libfx-pack.json
-          mv "$(node -p 'require("/tmp/libfx-pack.json")[0].filename')" /tmp/libfx-package.tgz
-          node sdk/tests/test-packed-example.mjs /tmp/libfx-package.tgz native esm
-          node --no-experimental-require-module sdk/tests/test-packed-example.mjs /tmp/libfx-package.tgz native cjs
-          node --experimental-wasm-jspi sdk/tests/test-packed-example.mjs /tmp/libfx-package.tgz wasm esm
-          node --experimental-wasm-jspi --no-experimental-require-module sdk/tests/test-packed-example.mjs /tmp/libfx-package.tgz wasm cjs
+          node sdk/scripts/package-libpf.mjs sdk/dist/libpf native-addons/libpf.linux-x64.node native-addons/libpf.linux-arm64.node native-addons/libpf.darwin-x64.node native-addons/libpf.darwin-arm64.node
+          node --experimental-wasm-jspi sdk/tests/test-node-async-assets.mjs sdk/dist/libpf
+          npm pack ./sdk/dist/libpf --ignore-scripts --json > /tmp/libpf-pack.json
+          mv "$(node -p 'require("/tmp/libpf-pack.json")[0].filename')" /tmp/libpf-package.tgz
+          node sdk/tests/test-packed-example.mjs /tmp/libpf-package.tgz native esm
+          node --no-experimental-require-module sdk/tests/test-packed-example.mjs /tmp/libpf-package.tgz native cjs
+          node --experimental-wasm-jspi sdk/tests/test-packed-example.mjs /tmp/libpf-package.tgz wasm esm
+          node --experimental-wasm-jspi --no-experimental-require-module sdk/tests/test-packed-example.mjs /tmp/libpf-package.tgz wasm cjs
 
       - name: Test package recovery and lifecycle boundaries
         run: |
-          node sdk/tests/test-package-resilience.mjs --package /tmp/libfx-package.tgz \
+          node sdk/tests/test-package-resilience.mjs --package /tmp/libpf-package.tgz \
             --cheap-cycles 100 --tool-workflows 20 --duration-ms 5000 --concurrency 4 \
-            --json-out "${{ runner.temp }}/libfx-package-evidence/resilience.json"
+            --json-out "${{ runner.temp }}/libpf-package-evidence/resilience.json"
 
       - name: Install Next fixture package manager
         run: npm install --global pnpm@11.1.1
 
       - name: Test installed package through Next
         env:
-          LIBFX_TEST_ARTIFACT_ROOT: ${{ runner.temp }}/libfx-package-evidence
+          LIBPF_TEST_ARTIFACT_ROOT: ${{ runner.temp }}/libpf-package-evidence
         run: |
-          node sdk/tests/test-next-package.mjs /tmp/libfx-package.tgz
-          node sdk/tests/test-next-package.mjs /tmp/libfx-package.tgz --webpack
-          node sdk/tests/test-next-package.mjs /tmp/libfx-package.tgz --next15
+          node sdk/tests/test-next-package.mjs /tmp/libpf-package.tgz
+          node sdk/tests/test-next-package.mjs /tmp/libpf-package.tgz --webpack
+          node sdk/tests/test-next-package.mjs /tmp/libpf-package.tgz --next15
 
       - name: Retain package qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: libfx-next-package-evidence
+          name: libpf-next-package-evidence
           path: |
-            ${{ runner.temp }}/libfx-package-evidence/resilience.json
-            ${{ runner.temp }}/libfx-package-evidence/libfx-next-*/*.log
-            ${{ runner.temp }}/libfx-package-evidence/libfx-next-*/results.json
-            ${{ runner.temp }}/libfx-package-evidence/libfx-trace-*/*.log
-            ${{ runner.temp }}/libfx-package-evidence/libfx-trace-*/results.json
+            ${{ runner.temp }}/libpf-package-evidence/resilience.json
+            ${{ runner.temp }}/libpf-package-evidence/libpf-next-*/*.log
+            ${{ runner.temp }}/libpf-package-evidence/libpf-next-*/results.json
+            ${{ runner.temp }}/libpf-package-evidence/libpf-trace-*/*.log
+            ${{ runner.temp }}/libpf-package-evidence/libpf-trace-*/results.json
           if-no-files-found: ignore
 
   sdk-browser-wasm:
@@ -350,7 +350,7 @@ jobs:
         run: npm test
         working-directory: tests/e2e/conformance
         env:
-          FX_SOUND: "0"
+          PF_SOUND: "0"
 
       - name: Run persistence tests
         run: bun test config-persistence.test.ts session-recovery.test.ts prompt-history.test.ts
@@ -366,12 +366,12 @@ jobs:
         env:
           AI_GATEWAY_API_KEY: ""
           VERCEL_OIDC_TOKEN: ""
-          FX_REQUIRE_TMUX: "1"
+          PF_REQUIRE_TMUX: "1"
 
       - name: Run Vision route and headless SIGINT regressions
         run: |
           bun test vision-route-fake-gateway.test.ts
-          bun test ./tui-command-permissions.test.ts --test-name-pattern "fx ask SIGINT during classifier wait terminates before decision or execution"
+          bun test ./tui-command-permissions.test.ts --test-name-pattern "pf ask SIGINT during classifier wait terminates before decision or execution"
         working-directory: tests/e2e
         env:
           AI_GATEWAY_API_KEY: ""
@@ -385,7 +385,7 @@ jobs:
         env:
           AI_GATEWAY_API_KEY: ""
           VERCEL_OIDC_TOKEN: ""
-          FX_REQUIRE_TMUX: "1"
+          PF_REQUIRE_TMUX: "1"
 
       - name: Run multiline input navigation TUI tests
         run: |
@@ -395,7 +395,7 @@ jobs:
         env:
           AI_GATEWAY_API_KEY: ""
           VERCEL_OIDC_TOKEN: ""
-          FX_REQUIRE_TMUX: "1"
+          PF_REQUIRE_TMUX: "1"
 
       - name: Run valid question recovery TUI regression
         run: |
@@ -405,7 +405,7 @@ jobs:
         env:
           AI_GATEWAY_API_KEY: ""
           VERCEL_OIDC_TOKEN: ""
-          FX_REQUIRE_TMUX: "1"
+          PF_REQUIRE_TMUX: "1"
 
       - name: Run streamed lifecycle, direct-write, and command scrollback regressions
         run: |
@@ -416,7 +416,7 @@ jobs:
         env:
           AI_GATEWAY_API_KEY: ""
           VERCEL_OIDC_TOKEN: ""
-          FX_REQUIRE_TMUX: "1"
+          PF_REQUIRE_TMUX: "1"
 
   e2e:
     name: E2E (deterministic)
@@ -458,7 +458,7 @@ jobs:
 
       - name: Report binary size
         run: |
-          bytes=$(stat -c%s zig-out/bin/fx)
+          bytes=$(stat -c%s zig-out/bin/pf)
           mib=$(awk -v b="$bytes" 'BEGIN { printf "%.2f", b / 1048576 }')
           echo "${{ matrix.name }}: $bytes bytes ($mib MiB)"
           echo "${{ matrix.name }}: $bytes bytes ($mib MiB)" >> "$GITHUB_STEP_SUMMARY"
@@ -469,7 +469,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Shellcheck Fx scripts
+      - name: Shellcheck Pf scripts
         run: |
           scripts=(
             benchmarks/startup.sh

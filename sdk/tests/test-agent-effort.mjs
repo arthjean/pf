@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
+import { createPfAgent, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const backend = process.argv[2] || "native";
@@ -54,11 +54,11 @@ const baseOptions = {
   backend,
   apiKey: "sdk-effort-test-key",
   ...(backend === "native"
-    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node") }
-    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }),
+    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node") }
+    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }),
 };
 const createAgent = (gateway, overrides) =>
-  createFxAgent({ ...baseOptions, fetch: gateway.fetch, ...overrides });
+  createPfAgent({ ...baseOptions, fetch: gateway.fetch, ...overrides });
 
 async function runPrompt(agent) {
   const turn = agent.prompt("say ok");
@@ -84,7 +84,7 @@ async function runPrompt(agent) {
   await assert.rejects(
     createAgent(gateway, { model: "sdk/core-model", effort: "max" }),
     (error) => {
-      assert.equal(error.code, "LIBFX_MODEL_UNSUPPORTED_EFFORT");
+      assert.equal(error.code, "LIBPF_MODEL_UNSUPPORTED_EFFORT");
       assert.equal(error.model, "sdk/core-model");
       assert.equal(error.capability, "effort");
       assert.match(error.message, /"max"/);
@@ -102,7 +102,7 @@ async function runPrompt(agent) {
   await assert.rejects(
     createAgent(gateway, { model: "sdk/plain-model", effort: "high" }),
     (error) => {
-      assert.equal(error.code, "LIBFX_MODEL_UNSUPPORTED_EFFORT");
+      assert.equal(error.code, "LIBPF_MODEL_UNSUPPORTED_EFFORT");
       assert.equal(error.model, "sdk/plain-model");
       assert.equal(error.capability, "effort");
       assert.match(error.message, /unavailable for the active model/);

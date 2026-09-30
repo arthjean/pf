@@ -7,7 +7,7 @@ const status = ref('')
 const busy = ref(false)
 const ready = ref(false)
 onMounted(() => { ready.value = true })
-useHead({ title: 'Nuxt agent · fx examples', htmlAttrs: { lang: 'en' } })
+useHead({ title: 'Nuxt agent · pf examples', htmlAttrs: { lang: 'en' } })
 
 async function send() {
   busy.value = true
@@ -32,7 +32,7 @@ async function send() {
 <template>
   <main>
     <h1>Nuxt agent</h1>
-    <p>A native libfx agent in a Nitro route. Each request starts a new conversation.</p>
+    <p>A native libpf agent in a Nitro route. Each request starts a new conversation.</p>
     <form @submit.prevent="send">
       <label for="prompt">Prompt</label><br>
       <textarea id="prompt" v-model="prompt" name="prompt" rows="3" cols="30" required maxlength="2000" /><br>

@@ -108,7 +108,7 @@ fn setupChoiceValue(view: auth_runtime.PickerView, choice: auth_runtime.Choice) 
             .action => |action| switch (action) {
                 .connections => if (view.available_sources.count() > 0) "connected" else "not connected",
                 .switch_provider => view.choiceLabel(.{ .provider = view.active_provider }),
-                .change_team => if (!view.fx_login_session_available)
+                .change_team => if (!view.pf_login_session_available)
                     "sign in to manage"
                 else if (view.current_team != null)
                     "selected"
@@ -124,7 +124,7 @@ fn setupChoiceValue(view: auth_runtime.PickerView, choice: auth_runtime.Choice) 
         },
         .connections => switch (choice) {
             .action => |action| switch (action) {
-                .login => if (view.fx_login_session_available) "connected" else "not connected",
+                .login => if (view.pf_login_session_available) "connected" else "not connected",
                 .chatgpt_login => if (view.available_sources.contains(.chatgpt_subscription)) "connected" else "not connected",
                 .grok_login => if (view.available_sources.contains(.grok_subscription)) "connected" else "not connected",
                 .setup => if (view.available_sources.contains(.stored_key))
@@ -347,8 +347,8 @@ fn prioritizedRowIndex(
     return source_row_count -| 1;
 }
 
-const onboarding_note = "   ⚠︎ Note: fx is experimental and defaults to auto mode.";
-const onboarding_note_link = onboarding_note ++ " \x1b]8;id=fx-onboarding;https://fx.sh/docs/stability\x1b\\\x1b[4mLearn more\x1b[24m\x1b]8;;\x1b\\";
+const onboarding_note = "   ⚠︎ Note: pf is experimental and defaults to auto mode.";
+const onboarding_note_link = onboarding_note ++ " \x1b]8;id=pf-onboarding;https://paneflow.dev/agent/docs/stability\x1b\\\x1b[4mLearn more\x1b[24m\x1b]8;;\x1b\\";
 
 fn onboardingProjectedRowIndex(view: auth_runtime.PickerView, row_index: u16, row_count: u16) u16 {
     if (row_count >= 18) return row_index;
@@ -404,9 +404,9 @@ fn composeOnboardingPickerRow(
 
     try row.appendSlice(alloc, ui_render.hint_style);
     const label = switch (source_row_index) {
-        0 => "   Welcome to fx",
+        0 => "   Welcome to pf",
         1 => "",
-        2 => "   fx can access AI models with an account, subscription, or API key.",
+        2 => "   pf can access AI models with an account, subscription, or API key.",
         3 => "   Choose a sign-in option below, or add your own API key.",
         4 => "",
         5 => "   You can change this anytime with /setup.",
@@ -481,9 +481,9 @@ fn composeSignInPickerRow(
             try row.appendSlice(
                 alloc,
                 if (source == .chatgpt_subscription)
-                    "\x1b]8;id=fx-codex-auth;"
+                    "\x1b]8;id=pf-codex-auth;"
                 else
-                    "\x1b]8;id=fx-grok-auth;",
+                    "\x1b]8;id=pf-grok-auth;",
             );
             try row.appendSlice(alloc, snapshot.verification_uri);
             try row.appendSlice(alloc, "\x1b\\\x1b[4m");
@@ -1513,7 +1513,7 @@ const picker_test_slash_specs = [_]command_specs.SlashSpec{
     .{ .kind = .mcp, .command = "/mcp", .help_entry = "/mcp [list|resource|prompt|add|remove]", .completion_description = "manage MCP servers, resources, and prompts", .presentation_category = .extensions, .has_args = true },
     .{ .kind = .permissions, .command = "/permissions", .help_entry = "/permissions [ask|auto|remember|revoke|full-access|reset]", .completion_description = "choose permission behavior", .presentation_category = .security, .has_args = true },
     .{ .kind = .credits, .command = "/credits", .aliases = &.{"/balance"}, .help_entry = "/credits (/balance)", .completion_description = "show gateway credits balance", .presentation_category = .account },
-    .{ .kind = .settings, .command = "/settings", .help_entry = "/settings", .completion_description = "configure fx", .presentation_category = .general },
+    .{ .kind = .settings, .command = "/settings", .help_entry = "/settings", .completion_description = "configure pf", .presentation_category = .general },
 };
 const picker_test_slash_registry = command_specs.SlashRegistry{ .commands = picker_test_slash_specs[0..] };
 
@@ -1629,14 +1629,14 @@ test "slash menu hides metadata for commands and skills" {
     try std.testing.expect(std.mem.find(u8, command.items, "Model") == null);
 
     const skills = [_]skill_runtime.Skill{.{
-        .name = "fx-test-strategy",
+        .name = "pf-test-strategy",
         .description = "choose focused regression coverage",
-        .path = "/tmp/.codex/skills/fx-test-strategy",
+        .path = "/tmp/.codex/skills/pf-test-strategy",
         .source = .global_codex,
     }};
-    const skill_layout = slashMenuLayout(picker_test_slash_registry, "/fx-test", &skills, 0, 0, 24, 0, 0).?;
-    const skill_widths = mixedSlashMenuColumnWidths(picker_test_slash_registry, "/fx-test", &skills, skill_layout.window, false);
-    var skill = try composeSlashMenuOptionRow(std.testing.allocator, picker_test_slash_registry, "/fx-test", &skills, 0, true, skill_widths, 64, false);
+    const skill_layout = slashMenuLayout(picker_test_slash_registry, "/pf-test", &skills, 0, 0, 24, 0, 0).?;
+    const skill_widths = mixedSlashMenuColumnWidths(picker_test_slash_registry, "/pf-test", &skills, skill_layout.window, false);
+    var skill = try composeSlashMenuOptionRow(std.testing.allocator, picker_test_slash_registry, "/pf-test", &skills, 0, true, skill_widths, 64, false);
     defer skill.deinit(std.testing.allocator);
     try std.testing.expect(std.mem.find(u8, skill.items, "choose focused regression coverage") != null);
     try std.testing.expect(std.mem.find(u8, skill.items, "codex") == null);
@@ -1644,23 +1644,23 @@ test "slash menu hides metadata for commands and skills" {
 
 test "slash menu keeps matching skill source labels" {
     const skills = [_]skill_runtime.Skill{.{
-        .name = "fx-test-strategy",
-        .description = "choose focused regression coverage for the affected fx behavior",
-        .path = "/tmp/.codex/skills/fx-test-strategy",
+        .name = "pf-test-strategy",
+        .description = "choose focused regression coverage for the affected pf behavior",
+        .path = "/tmp/.codex/skills/pf-test-strategy",
         .source = .global_codex,
     }};
-    const layout = slashMenuLayout(picker_test_slash_registry, "/fx-test", &skills, 0, 0, 24, 0, 0).?;
+    const layout = slashMenuLayout(picker_test_slash_registry, "/pf-test", &skills, 0, 0, 24, 0, 0).?;
     try std.testing.expectEqual(@as(usize, 0), layout.command_count);
     try std.testing.expectEqual(@as(usize, 1), layout.result_count);
 
-    var header = try composeSlashMenuHeaderRow(std.testing.allocator, "/fx-test", layout, 80);
+    var header = try composeSlashMenuHeaderRow(std.testing.allocator, "/pf-test", layout, 80);
     defer header.deinit(std.testing.allocator);
     try std.testing.expect(std.mem.find(u8, header.items, "Results 1") != null);
 
-    const column_widths = mixedSlashMenuColumnWidths(picker_test_slash_registry, "/fx-test", &skills, layout.window, true);
-    var row = try composeSlashMenuOptionRow(std.testing.allocator, picker_test_slash_registry, "/fx-test", &skills, 0, true, column_widths, 64, true);
+    const column_widths = mixedSlashMenuColumnWidths(picker_test_slash_registry, "/pf-test", &skills, layout.window, true);
+    var row = try composeSlashMenuOptionRow(std.testing.allocator, picker_test_slash_registry, "/pf-test", &skills, 0, true, column_widths, 64, true);
     defer row.deinit(std.testing.allocator);
-    try std.testing.expect(std.mem.find(u8, row.items, "fx-test-strategy") != null);
+    try std.testing.expect(std.mem.find(u8, row.items, "pf-test-strategy") != null);
     try std.testing.expect(std.mem.find(u8, row.items, "choose focused") != null);
     try std.testing.expect(std.mem.find(u8, row.items, "…") != null);
     try std.testing.expect(std.mem.find(u8, row.items, "codex") != null);
@@ -1693,19 +1693,19 @@ test "slash completion option row aligns argument labels without command prefix"
 test "mixed slash completion includes matching skills with source labels" {
     const alloc = std.testing.allocator;
     const skills = [_]skill_runtime.Skill{.{
-        .name = "fx-test-strategy",
+        .name = "pf-test-strategy",
         .description = "coverage help",
-        .path = "/tmp/.codex/skills/fx-test-strategy",
+        .path = "/tmp/.codex/skills/pf-test-strategy",
         .source = .global_codex,
     }};
 
-    try std.testing.expect(mixedSlashCompletionCount(picker_test_slash_registry, "/fx-test", &skills) > 0);
-    const skill = nthMixedSlashCompletionSkill(picker_test_slash_registry, "/fx-test", &skills, 0) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqualStrings("fx-test-strategy", skill.name);
+    try std.testing.expect(mixedSlashCompletionCount(picker_test_slash_registry, "/pf-test", &skills) > 0);
+    const skill = nthMixedSlashCompletionSkill(picker_test_slash_registry, "/pf-test", &skills, 0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("pf-test-strategy", skill.name);
 
-    var row = try composeMixedSlashCompletionOptionRow(alloc, picker_test_slash_registry, "/fx-test", &skills, 0, true, 1, 8, 50);
+    var row = try composeMixedSlashCompletionOptionRow(alloc, picker_test_slash_registry, "/pf-test", &skills, 0, true, 1, 8, 50);
     defer row.deinit(alloc);
-    try std.testing.expect(std.mem.find(u8, row.items, "fx-test-strategy") != null);
+    try std.testing.expect(std.mem.find(u8, row.items, "pf-test-strategy") != null);
     try std.testing.expect(std.mem.find(u8, row.items, "codex") != null);
     try std.testing.expect(display_width.visibleWidthIgnoringAnsi(row.items) <= 50);
 }
@@ -1715,8 +1715,8 @@ test "mixed slash completion uses skill relevance order" {
         .{
             .name = "metadata-first",
             .description = "zig workflow",
-            .path = "/tmp/.fx/skills/metadata-first",
-            .source = .global_fx,
+            .path = "/tmp/.pf/skills/metadata-first",
+            .source = .global_pf,
         },
         .{
             .name = "zig-best-practices",
@@ -2145,10 +2145,10 @@ test "auth onboarding composes the welcome copy and setup choices" {
         try screen.append(alloc, '\n');
     }
 
-    try std.testing.expect(std.mem.find(u8, screen.items, "Welcome to fx") != null);
-    try std.testing.expect(std.mem.find(u8, screen.items, "fx can access AI models with an account, subscription, or API key") != null);
+    try std.testing.expect(std.mem.find(u8, screen.items, "Welcome to pf") != null);
+    try std.testing.expect(std.mem.find(u8, screen.items, "pf can access AI models with an account, subscription, or API key") != null);
     try std.testing.expect(std.mem.find(u8, screen.items, "You can change this anytime with /setup.") != null);
-    try std.testing.expect(std.mem.find(u8, screen.items, "⚠︎ Note: fx is experimental and defaults to auto mode. \x1b]8;id=fx-onboarding;https://fx.sh/docs/stability\x1b\\\x1b[4mLearn more\x1b[24m\x1b]8;;\x1b\\") != null);
+    try std.testing.expect(std.mem.find(u8, screen.items, "⚠︎ Note: pf is experimental and defaults to auto mode. \x1b]8;id=pf-onboarding;https://paneflow.dev/agent/docs/stability\x1b\\\x1b[4mLearn more\x1b[24m\x1b]8;;\x1b\\") != null);
     try std.testing.expect(std.mem.find(u8, screen.items, "Learn more: https://") == null);
     try std.testing.expect(std.mem.find(u8, screen.items, "Sign in with Vercel") != null);
     try std.testing.expect(std.mem.find(u8, screen.items, "Add an API key") != null);
@@ -2156,7 +2156,7 @@ test "auth onboarding composes the welcome copy and setup choices" {
 
     var body_row = try composeAuthPickerRow(alloc, view, 2, authPickerRowCount(view), 100);
     defer body_row.deinit(alloc);
-    try std.testing.expect(std.mem.find(u8, body_row.items, "fx can access AI models") != null);
+    try std.testing.expect(std.mem.find(u8, body_row.items, "pf can access AI models") != null);
 
     var spacer_row = try composeAuthPickerRow(alloc, view, 6, authPickerRowCount(view), 100);
     defer spacer_row.deinit(alloc);
@@ -2180,7 +2180,7 @@ test "auth onboarding composes the welcome copy and setup choices" {
 
     var narrow_note = try composeAuthPickerRow(alloc, view, 12, authPickerRowCount(view), 58);
     defer narrow_note.deinit(alloc);
-    try std.testing.expect(std.mem.find(u8, narrow_note.items, "https://fx.sh/docs/stability") == null);
+    try std.testing.expect(std.mem.find(u8, narrow_note.items, "https://paneflow.dev/agent/docs/stability") == null);
 
     var compact_screen: std.ArrayList(u8) = .empty;
     defer compact_screen.deinit(alloc);
@@ -2284,7 +2284,7 @@ test "compact auth picker keeps the selected hub action visible" {
     const alloc = std.testing.allocator;
     const view = auth_runtime.PickerView{
         .active = true,
-        .available_sources = auth_runtime.SourceSet.initMany(&.{ .ai_gateway_api_key, .fx_login }),
+        .available_sources = auth_runtime.SourceSet.initMany(&.{ .ai_gateway_api_key, .pf_login }),
         .selected_choice = .{ .action = .switch_credential },
         .active_source = .ai_gateway_api_key,
         .include_skip = false,
@@ -2411,7 +2411,7 @@ test "api key stage renders only a bounded mask and the configured backend label
     var field = try composeAuthPickerRow(alloc, view, 1, 4, 80);
     defer field.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 9), std.mem.count(u8, field.items, "•"));
-    try std.testing.expect(std.mem.find(u8, field.items, "FX_API_KEY_RENDER_SENTINEL") == null);
+    try std.testing.expect(std.mem.find(u8, field.items, "PF_API_KEY_RENDER_SENTINEL") == null);
 
     var backend = try composeAuthPickerRow(alloc, view, 3, 4, 80);
     defer backend.deinit(alloc);
@@ -2724,7 +2724,7 @@ test "partially visible auth picker shows a source window without duplicates" {
     const view = auth_runtime.PickerView{
         .active = true,
         .available_sources = auth_runtime.SourceSet.full,
-        .selected_choice = .{ .source = .fx_login },
+        .selected_choice = .{ .source = .pf_login },
         .active_source = .vercel_oidc_token,
         .include_skip = false,
         .stage = .switch_credential,
@@ -2733,17 +2733,17 @@ test "partially visible auth picker shows a source window without duplicates" {
     var first_source = try composeAuthPickerRow(alloc, view, 2, 4, 80);
     defer first_source.deinit(alloc);
     try std.testing.expect(std.mem.find(u8, first_source.items, "AI_GATEWAY_API_KEY") != null);
-    try std.testing.expect(std.mem.find(u8, first_source.items, "fx login") == null);
+    try std.testing.expect(std.mem.find(u8, first_source.items, "pf login") == null);
 
     var selected_source = try composeAuthPickerRow(alloc, view, 3, 4, 80);
     defer selected_source.deinit(alloc);
-    try std.testing.expect(std.mem.find(u8, selected_source.items, "fx login") != null);
+    try std.testing.expect(std.mem.find(u8, selected_source.items, "pf login") != null);
 
     var scrolled_view = view;
     scrolled_view.selected_choice = .{ .source = .stored_key };
     var scrolled_first = try composeAuthPickerRow(alloc, scrolled_view, 2, 4, 80);
     defer scrolled_first.deinit(alloc);
-    try std.testing.expect(std.mem.find(u8, scrolled_first.items, "fx login") != null);
+    try std.testing.expect(std.mem.find(u8, scrolled_first.items, "pf login") != null);
 
     var scrolled_selected = try composeAuthPickerRow(alloc, scrolled_view, 3, 4, 80);
     defer scrolled_selected.deinit(alloc);

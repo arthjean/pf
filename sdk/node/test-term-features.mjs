@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import xtermHeadless from "@xterm/headless";
-import { createFxTerminal, supportsJspi, xtermAdapter } from "../node.js";
+import { createPfTerminal, supportsJspi, xtermAdapter } from "../node.js";
 
 const { Terminal } = xtermHeadless;
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
-const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/fx-term.wasm"));
+const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/pf-term.wasm"));
 if (!supportsJspi()) process.exit(2);
 
 const terminal = new Terminal({ cols: 100, rows: 34, allowProposedApi: true, scrollback: 2000 });
@@ -42,14 +42,14 @@ const fetch = async (url, init = {}) => {
 };
 const stderrDecoder = new TextDecoder();
 let stderrText = "";
-const runtime = await createFxTerminal({
+const runtime = await createPfTerminal({
   backend: "wasm",
   wasm: await readFile(wasmPath),
   terminal: xtermAdapter(terminal),
   env: {
     AI_GATEWAY_API_KEY: "feature-key",
-    FX_TRACE_STDERR: "1",
-    FX_TRACE_SCOPES: "full_transcript,full_transcript_cache,frame_schedule",
+    PF_TRACE_STDERR: "1",
+    PF_TRACE_SCOPES: "full_transcript,full_transcript_cache,frame_schedule",
   },
   fetch,
   clipboard: { writeText(value) { clipboardWrites.push(value); } },
@@ -78,7 +78,7 @@ async function command(text, expected) {
   await waitFor(() => grid().includes(expected), expected);
 }
 
-await waitFor(() => grid().includes("𝒇x"), "startup");
+await waitFor(() => grid().includes("𝒑f"), "startup");
 runtime.write("clipboard draft");
 runtime.write("\x1b[97;9u\x1b[99;9u");
 await waitFor(() => clipboardWrites.length === 1, "composer copy");
@@ -125,5 +125,5 @@ await waitFor(() => !grid().includes("tab provider"), "model catalog close");
 
 runtime.write("/exit\r");
 const code = await Promise.race([runtime.exited, new Promise((_, reject) => setTimeout(() => reject(new Error("exit timeout")), 5000))]);
-if (code !== 0) throw new Error(`fx-term exited with ${code}`);
+if (code !== 0) throw new Error(`pf-term exited with ${code}`);
 console.log("headless features passed: clipboard, history, transcript, catalog, and host degradation");

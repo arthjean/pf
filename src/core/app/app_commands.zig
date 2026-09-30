@@ -149,13 +149,13 @@ fn formatMcpIssuerMismatch(
             try std.json.Stringify.value(returned.bytes, .{}, &out.writer);
             try out.writer.writeAll(". Add \"oauth\":{\"issuer\":");
             try std.json.Stringify.value(returned.bytes, .{}, &out.writer);
-            try out.writer.writeAll("} to this server's entry in ~/.fx/mcp.json and retry.");
+            try out.writer.writeAll("} to this server's entry in ~/.pf/mcp.json and retry.");
         },
         .authorization_response => {
             try out.writer.writeAll(" but the authorization response returned issuer ");
             try std.json.Stringify.value(returned.bytes, .{}, &out.writer);
             try out.writer.writeAll(
-                ". fx stopped before token exchange. Contact the MCP server provider; changing oauth.issuer is not a safe workaround.",
+                ". pf stopped before token exchange. Contact the MCP server provider; changing oauth.issuer is not a safe workaround.",
             );
         },
     }
@@ -577,14 +577,14 @@ pub fn Handlers(comptime App: type) type {
                 try app.writeDomainNotice(.{
                     .topic = "",
                     .tone = .neutral,
-                    .body = "Opened https://fx.sh/feedback.",
+                    .body = "Opened https://paneflow.dev/agent/feedback.",
                 }, true);
                 return;
             }
             try app.writeDomainNotice(.{
                 .topic = "",
                 .tone = .@"error",
-                .body = "Could not open https://fx.sh/feedback. Open it manually.",
+                .body = "Could not open https://paneflow.dev/agent/feedback. Open it manually.",
             }, true);
         }
 
@@ -2116,7 +2116,7 @@ fn writeTraceReportFile(alloc: std.mem.Allocator, contents: []const u8) ![]u8 {
         var random_bytes: [6]u8 = undefined;
         io_mod.getIo().random(&random_bytes);
         const random_hex = std.fmt.bytesToHex(random_bytes, .lower);
-        const path = try std.fmt.allocPrint(alloc, "{s}/fx-trace-{d}-{d:0>2}-{d:0>2}-{d:0>2}{d:0>2}{d:0>2}-{s}.md", .{
+        const path = try std.fmt.allocPrint(alloc, "{s}/pf-trace-{d}-{d:0>2}-{d:0>2}-{d:0>2}{d:0>2}{d:0>2}-{s}.md", .{
             trimmed,
             year_day.year,
             month_day.month.numeric(),
@@ -2155,7 +2155,7 @@ fn buildTraceReport(app: anytype) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(app.alloc);
     defer out.deinit();
 
-    try out.writer.writeAll("# fx trace\n\n");
+    try out.writer.writeAll("# pf trace\n\n");
     try out.writer.writeAll("Private diagnostic report. It may include prompts, file paths, command output, and file snippets.\n\n");
 
     try out.writer.writeAll("## Summary\n");
@@ -2206,7 +2206,7 @@ fn buildTraceReport(app: anytype) ![]u8 {
         try out.writer.writeAll("\n## Transcript Timeline\n(empty)\n");
     }
 
-    const trace_path: ?[]const u8 = debug_trace.activeLogPath() orelse io_mod.getenv("FX_TRACE_LOG");
+    const trace_path: ?[]const u8 = debug_trace.activeLogPath() orelse io_mod.getenv("PF_TRACE_LOG");
     if (trace_path) |path| {
         try writeTraceLogTail(&out.writer, app.alloc, path);
     }
@@ -2419,8 +2419,8 @@ fn processMemorySnapshot(alloc: std.mem.Allocator, pid: std.c.pid_t) ![]u8 {
 }
 
 fn writeDebugEnvSummary(writer: *std.Io.Writer, alloc: std.mem.Allocator) !void {
-    try writer.print("FX_TRACE: {s}\n", .{if (envTruthy("FX_TRACE")) "on" else "off"});
-    if (debug_trace.activeLogPath() orelse io_mod.getenv("FX_TRACE_LOG")) |path| {
+    try writer.print("PF_TRACE: {s}\n", .{if (envTruthy("PF_TRACE")) "on" else "off"});
+    if (debug_trace.activeLogPath() orelse io_mod.getenv("PF_TRACE_LOG")) |path| {
         try writer.writeAll("trace_log: ");
         try writeMaskedInline(writer, alloc, path);
         try writer.writeByte('\n');
@@ -2646,7 +2646,7 @@ fn writeModelCatalogProblems(writer: *std.Io.Writer) !usize {
 const trace_compaction_max_events: usize = 24;
 
 /// Renders the always-on compaction decision and failure trail so a shared
-/// trace explains what the compaction pipeline did even when FX_TRACE was off.
+/// trace explains what the compaction pipeline did even when PF_TRACE was off.
 fn writeCompactionSummary(writer: *std.Io.Writer, alloc: std.mem.Allocator) !void {
     var buf: [diagnostics.compaction_ring_capacity]diagnostics.CompactionEvent = undefined;
     const total = diagnostics.snapshotCompactionEvents(&buf);
@@ -2664,7 +2664,7 @@ fn writeCompactionSummary(writer: *std.Io.Writer, alloc: std.mem.Allocator) !voi
     // Events evicted by the bounded ring are reported, not silently dropped.
     const overwritten = buf[0].sequence -| 1;
     if (overwritten > 0) try writer.print(" overwritten_before={d}", .{overwritten});
-    try writer.writeAll(" (always recorded; does not require FX_TRACE)\n");
+    try writer.writeAll(" (always recorded; does not require PF_TRACE)\n");
 
     const start = if (total > trace_compaction_max_events) total - trace_compaction_max_events else 0;
     if (start > 0) try writer.print("... ({d} older events omitted)\n", .{start});
@@ -2699,7 +2699,7 @@ fn writeCompactionSummary(writer: *std.Io.Writer, alloc: std.mem.Allocator) !voi
 }
 
 /// Renders the retained session title generation outcome so a shared trace can
-/// explain why a session has no generated title even when FX_TRACE was off.
+/// explain why a session has no generated title even when PF_TRACE was off.
 fn writeSessionTitleSummary(writer: *std.Io.Writer, app: anytype, alloc: std.mem.Allocator) !void {
     const App = @TypeOf(app.*);
     if (comptime !@hasField(App, "session_persistence")) return;
@@ -2967,7 +2967,7 @@ fn writeNetworkSessionTotals(writer: *std.Io.Writer, window: []const diagnostics
             .{ window.len, lifetime.total_calls },
         );
         try writeTraceTimestampUtc(writer, window[0].started_at_ms);
-        try writer.writeAll("; run with FX_TRACE_LOG for a complete transport record\n");
+        try writer.writeAll("; run with PF_TRACE_LOG for a complete transport record\n");
     } else {
         try writer.writeAll("coverage: complete (window holds every recorded call)\n");
     }
@@ -3033,7 +3033,7 @@ fn writeModelCatalogSummary(writer: *std.Io.Writer, app: anytype) !void {
         try writer.writeAll("(no catalog events recorded)\n");
         return;
     }
-    try writer.print("events={d} (always recorded; does not require FX_TRACE)\n", .{total});
+    try writer.print("events={d} (always recorded; does not require PF_TRACE)\n", .{total});
     for (buf[0..total]) |*event| {
         try writeTraceTimestampUtc(writer, event.timestamp_ms);
         try writer.print(" seq={d} {s}", .{ event.sequence, event.name() });
@@ -4238,7 +4238,7 @@ const McpCommandFakeApp = struct {
             .display = .{
                 .line = try alloc.dupe(
                     u8,
-                    "Waiting for MCP authentication for 'fixture'. You can continue using fx while the browser flow completes.",
+                    "Waiting for MCP authentication for 'fixture'. You can continue using pf while the browser flow completes.",
                 ),
             },
         };
@@ -4570,7 +4570,7 @@ test "trace compaction summary renders recorded events without file tracing" {
     var out: std.Io.Writer.Allocating = .init(alloc);
     defer out.deinit();
     try writeCompactionSummary(&out.writer, alloc);
-    try std.testing.expect(std.mem.find(u8, out.written(), "last=2 failed=1 (always recorded; does not require FX_TRACE)\n") != null);
+    try std.testing.expect(std.mem.find(u8, out.written(), "last=2 failed=1 (always recorded; does not require PF_TRACE)\n") != null);
     try std.testing.expect(std.mem.find(u8, out.written(), "event=decision turn_id=10 step_id=176 decision=compact estimated_tokens=279466\n") != null);
     try std.testing.expect(std.mem.find(u8, out.written(), "event=retention_exhausted turn_id=10 failed estimated_tokens=59000\n") != null);
 
@@ -4605,7 +4605,7 @@ test "trace model catalog summary and problems render recorded events" {
     var out: std.Io.Writer.Allocating = .init(alloc);
     defer out.deinit();
     try writeModelCatalogSummary(&out.writer, &stub);
-    try std.testing.expect(std.mem.find(u8, out.written(), "events=4 (always recorded; does not require FX_TRACE)\n") != null);
+    try std.testing.expect(std.mem.find(u8, out.written(), "events=4 (always recorded; does not require PF_TRACE)\n") != null);
     try std.testing.expect(std.mem.find(u8, out.written(), "load failed outcome=failed category=transport status=503\n") != null);
     try std.testing.expect(std.mem.find(u8, out.written(), "lookup failed outcome=cache_failed model=moonshotai/kimi-k3\n") != null);
     try std.testing.expect(std.mem.find(u8, out.written(), "image_gate failed model=moonshotai/kimi-k3 image_support=unknown err=ModelImageCapabilityUnavailable\n") != null);
@@ -4678,7 +4678,7 @@ test "trace report file uses private randomized markdown path" {
     defer alloc.free(path);
     defer std.Io.Dir.deleteFileAbsolute(std.testing.io, path) catch {};
 
-    try std.testing.expect(std.mem.find(u8, path, "fx-trace-") != null);
+    try std.testing.expect(std.mem.find(u8, path, "pf-trace-") != null);
     try std.testing.expect(std.mem.endsWith(u8, path, ".md"));
 
     var file = try std.Io.Dir.openFileAbsolute(std.testing.io, path, .{});
@@ -4705,7 +4705,7 @@ test "trace auth summary preserves missing and loaded status text" {
 
     var credential = credentials.Credential{
         .token = try alloc.dupe(u8, "token"),
-        .source = .fx_login,
+        .source = .pf_login,
     };
     defer credential.deinit(alloc);
     _ = app.auth.adoptCredential(alloc, &credential);
@@ -4713,7 +4713,7 @@ test "trace auth summary preserves missing and loaded status text" {
     defer loaded.deinit();
     try writeAuthStateSummary(&loaded.writer, &app);
     try std.testing.expectEqualStrings(
-        "auth: source=fx login refreshable=true gateway_team=unset\n",
+        "auth: source=pf login refreshable=true gateway_team=unset\n",
         loaded.written(),
     );
 }
@@ -4823,7 +4823,7 @@ test "trace successful tool calls use compact result previews" {
     var call: diagnostics.ToolCallMetric = .{ .started_at_ms = 3000, .duration_ms = 1, .outcome = .succeeded };
     call.setName("read_file");
     call.setArgs("{\"path\":\"README.md\"}");
-    call.setResult("<path>README.md</path>\n<content>\n# fx\n\nlong body line\n</content>");
+    call.setResult("<path>README.md</path>\n<content>\n# pf\n\nlong body line\n</content>");
     diagnostics.recordToolCall(call);
 
     var out: std.Io.Writer.Allocating = .init(alloc);
@@ -4832,7 +4832,7 @@ test "trace successful tool calls use compact result previews" {
     const text = out.written();
 
     try std.testing.expect(std.mem.find(u8, text, "recent successes (compact):") != null);
-    try std.testing.expect(std.mem.find(u8, text, "result_preview: # fx") != null);
+    try std.testing.expect(std.mem.find(u8, text, "result_preview: # pf") != null);
     try std.testing.expect(std.mem.find(u8, text, "<path>README.md</path>") == null);
     try std.testing.expect(std.mem.find(u8, text, "long body line") == null);
 }
@@ -4890,7 +4890,7 @@ test "trace web search calls hide provider names and payloads" {
             .id = "call_local",
             .name = "read_file",
             .arguments_json = "{}",
-            .provenance = .fx_local,
+            .provenance = .pf_local,
         },
     };
     var results = [_]types.PersistedToolResult{
@@ -5405,7 +5405,7 @@ test "skills list opens menu without transcript inventory" {
             .name = "managed",
             .description = "managed skill",
             .path = "/tmp/managed/SKILL.md",
-            .source = .global_fx,
+            .source = .global_pf,
         },
         .{
             .name = "workspace",
@@ -5467,7 +5467,7 @@ test "skills show focuses matching menu row without transcript body" {
             .name = "managed",
             .description = "managed skill",
             .path = "/tmp/managed/SKILL.md",
-            .source = .global_fx,
+            .source = .global_pf,
         },
         .{
             .name = "workspace",
@@ -5497,7 +5497,7 @@ test "skills show exposes duplicate rows without focusing a precedence winner" {
             .name = "review",
             .description = "managed review",
             .path = "/tmp/managed/review",
-            .source = .global_fx,
+            .source = .global_pf,
         },
         .{
             .name = "review",
@@ -5528,12 +5528,12 @@ test "skills remove prefers a managed match after a workspace duplicate" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try writeTempSkillFile(&tmp, "home/.fx/skills/review/SKILL.md", "---\nname: review\n---\nmanaged body\n");
+    try writeTempSkillFile(&tmp, "home/.pf/skills/review/SKILL.md", "---\nname: review\n---\nmanaged body\n");
     try writeTempSkillFile(&tmp, "home/workspace/.agents/skills/review/SKILL.md", "---\nname: review\n---\nworkspace body\n");
 
-    const managed_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.fx/skills");
+    const managed_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.pf/skills");
     defer alloc.free(managed_root);
-    const managed_skill = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.fx/skills/review");
+    const managed_skill = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.pf/skills/review");
     defer alloc.free(managed_skill);
     const workspace_skill = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/workspace/.agents/skills/review");
     defer alloc.free(workspace_skill);
@@ -5548,7 +5548,7 @@ test "skills remove prefers a managed match after a workspace duplicate" {
             .name = "review",
             .description = "managed review",
             .path = managed_skill,
-            .source = .global_fx,
+            .source = .global_pf,
         },
     };
     var app = SkillsInstallReplayApp{
@@ -5565,7 +5565,7 @@ test "skills remove prefers a managed match after a workspace duplicate" {
     try std.testing.expectEqual(@as(usize, 1), app.reload_count);
     try std.testing.expectError(
         error.FileNotFound,
-        tmp.dir.access(io_mod.getIo(), "home/.fx/skills/review", .{}),
+        tmp.dir.access(io_mod.getIo(), "home/.pf/skills/review", .{}),
     );
     try tmp.dir.access(io_mod.getIo(), "home/workspace/.agents/skills/review/SKILL.md", .{});
 }
@@ -5576,7 +5576,7 @@ test "skills show missing name keeps not found notice" {
         .name = "managed",
         .description = "managed skill",
         .path = "/tmp/managed/SKILL.md",
-        .source = .global_fx,
+        .source = .global_pf,
     }};
     var app = SkillsInstallReplayApp{ .alloc = alloc, .skills = .{ .items = @constCast(&skills) } };
     defer app.deinit();

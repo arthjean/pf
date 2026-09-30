@@ -9,7 +9,7 @@ pub const legacy_2025_03_protocol_version = "2025-03-26";
 pub const legacy_2025_06_protocol_version = "2025-06-18";
 pub const legacy_2025_11_protocol_version = "2025-11-25";
 pub const modern_protocol_version = "2026-07-28";
-pub const protocol_version_environment = "FX_MCP_PROTOCOL_VERSION";
+pub const protocol_version_environment = "PF_MCP_PROTOCOL_VERSION";
 
 pub fn startupMode(server_environment: []const mcp_contract.McpEnvVar, inherited_version: ?[]const u8) !Protocol {
     const requested = for (server_environment) |entry| {

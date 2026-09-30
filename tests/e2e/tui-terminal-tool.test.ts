@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import {
   FAKE_GATEWAY_MODEL,
   fakeGatewayFinalText,
@@ -40,10 +40,10 @@ function createFixture(prefix: string) {
   const workspace = join(root, "workspace");
   const tracePath = join(root, "trace.log");
   const stderrPath = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace);
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({
       permission_mode: "yolo",
       sandbox: "os",
@@ -67,7 +67,7 @@ function createFixture(prefix: string) {
 async function launch(
   fixture: ReturnType<typeof createFixture>,
   gateway: ReturnType<typeof startFakeGateway>,
-  cmd = FX_BIN,
+  cmd = PF_BIN,
 ) {
   const session = await TmuxSession.create({
     isolated: true,
@@ -78,14 +78,14 @@ async function launch(
       SHELL: terminalFixtureShell(),
       AI_GATEWAY_API_KEY: "fake-shell-tool-key",
       VERCEL_OIDC_TOKEN: undefined,
-      FX_AUTO_UPGRADE: "0",
-      FX_PERMISSION_MODE: "yolo",
-      FX_MODEL: FAKE_GATEWAY_MODEL,
-      FX_GATEWAY_BASE_URL: gateway.baseUrl,
-      FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-      FX_TRACE_LOG: fixture.tracePath,
-      FX_TRACE_SCOPES: "shell,terminal,terminal_client,terminal_host,tool,agent",
-      FX_TERMINAL_HOST_IDLE_MS: "500",
+      PF_AUTO_UPGRADE: "0",
+      PF_PERMISSION_MODE: "yolo",
+      PF_MODEL: FAKE_GATEWAY_MODEL,
+      PF_GATEWAY_BASE_URL: gateway.baseUrl,
+      PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+      PF_TRACE_LOG: fixture.tracePath,
+      PF_TRACE_SCOPES: "shell,terminal,terminal_client,terminal_host,tool,agent",
+      PF_TERMINAL_HOST_IDLE_MS: "500",
     },
     width: 120,
     height: 32,
@@ -148,7 +148,7 @@ function schemaFromRequest(body: string): Record<string, unknown> {
 }
 
 function terminalRecords(home: string): Array<Record<string, unknown>> {
-  const sessionsRoot = join(home, ".fx", "sessions");
+  const sessionsRoot = join(home, ".pf", "sessions");
   if (!existsSync(sessionsRoot)) return [];
   return readdirSync(sessionsRoot).flatMap((sessionId) => {
     const terminalRoot = join(sessionsRoot, sessionId, "terminal", "state");
@@ -162,7 +162,7 @@ function terminalRecords(home: string): Array<Record<string, unknown>> {
 }
 
 async function cleanupTerminalHost(home: string): Promise<void> {
-  const identityPath = join(home, ".fx", "terminal-host-v7", "host.json");
+  const identityPath = join(home, ".pf", "terminal-host-v7", "host.json");
   const deadline = Date.now() + 3_000;
   while (Date.now() < deadline) {
     if (!existsSync(identityPath)) return;
@@ -189,7 +189,7 @@ async function waitForFile(path: string): Promise<void> {
 test.skipIf(!tmuxAvailable())(
   "shell captured empty observation floors short waits without respawn",
   async () => {
-    const fixture = createFixture("fx-shell-captured-");
+    const fixture = createFixture("pf-shell-captured-");
     let sessionId = "";
     const gateway = startFakeGateway([
       fakeGatewayToolCall("shell_run", "shell", {
@@ -254,7 +254,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "running shell survives a model-completed turn without handoff policy",
   async () => {
-    const fixture = createFixture("fx-shell-cross-turn-");
+    const fixture = createFixture("pf-shell-cross-turn-");
     let sessionId = "";
     const gateway = startFakeGateway([
       fakeGatewayToolCall("shell_cross_turn_run", "shell", {
@@ -311,7 +311,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "force stop settles a stubborn captured command and permits later work",
   async () => {
-    const fixture = createFixture("fx-shell-force-stop-");
+    const fixture = createFixture("pf-shell-force-stop-");
     const pidPath = join(fixture.workspace, "stubborn.pid");
     let sessionId = "";
     const gateway = startFakeGateway([
@@ -381,7 +381,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "reused provider call ids start distinct captured commands",
   async () => {
-    const fixture = createFixture("fx-shell-reused-call-id-");
+    const fixture = createFixture("pf-shell-reused-call-id-");
     const firstMarker = join(fixture.workspace, "first-command.txt");
     const secondMarker = join(fixture.workspace, "second-command.txt");
     const gateway = startFakeGateway([
@@ -433,7 +433,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "overlapping captured shell handles keep lifecycle output isolated",
   async () => {
-    const fixture = createFixture("fx-shell-overlap-");
+    const fixture = createFixture("pf-shell-overlap-");
     let firstSessionId = "";
     let secondSessionId = "";
     const gateway = startFakeGateway([
@@ -504,7 +504,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "shell TTY execution writes atomically drains final output and closes host state",
   async () => {
-    const fixture = createFixture("fx-shell-tty-");
+    const fixture = createFixture("pf-shell-tty-");
     let sessionId = "";
     const gateway = startFakeGateway([
       fakeGatewayToolCall("shell_tty_run", "shell", {
@@ -556,7 +556,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "session command statuses reclip to the live width instead of the activity cap",
   async () => {
-    const fixture = createFixture("fx-shell-session-width-");
+    const fixture = createFixture("pf-shell-session-width-");
     const launchCommand = `echo ${"f".repeat(100)} >/dev/null; sleep 60`;
     let sessionId = "";
     const gateway = startFakeGateway([
@@ -593,14 +593,14 @@ test.skipIf(!tmuxAvailable())(
         SHELL: terminalFixtureShell(),
         AI_GATEWAY_API_KEY: "fake-shell-tool-key",
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_PERMISSION_MODE: "yolo",
-        FX_MODEL: FAKE_GATEWAY_MODEL,
-        FX_GATEWAY_BASE_URL: gateway.baseUrl,
-        FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-        FX_TRACE_LOG: fixture.tracePath,
-        FX_TRACE_SCOPES: "shell,terminal,terminal_client,terminal_host,tool,agent",
-        FX_TERMINAL_HOST_IDLE_MS: "500",
+        PF_AUTO_UPGRADE: "0",
+        PF_PERMISSION_MODE: "yolo",
+        PF_MODEL: FAKE_GATEWAY_MODEL,
+        PF_GATEWAY_BASE_URL: gateway.baseUrl,
+        PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+        PF_TRACE_LOG: fixture.tracePath,
+        PF_TRACE_SCOPES: "shell,terminal,terminal_client,terminal_host,tool,agent",
+        PF_TERMINAL_HOST_IDLE_MS: "500",
       },
       width: 160,
       height: 32,
@@ -629,7 +629,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "resumed session rows reclip to the live width from recorded launch commands",
   async () => {
-    const fixture = createFixture("fx-shell-resume-width-");
+    const fixture = createFixture("pf-shell-resume-width-");
     const launchCommand = `echo ${"r".repeat(100)} >/dev/null; sleep 60`;
     let sessionId = "";
     const gateway = startFakeGateway([
@@ -667,14 +667,14 @@ test.skipIf(!tmuxAvailable())(
         SHELL: terminalFixtureShell(),
         AI_GATEWAY_API_KEY: "fake-shell-tool-key",
         VERCEL_OIDC_TOKEN: undefined,
-        FX_AUTO_UPGRADE: "0",
-        FX_PERMISSION_MODE: "yolo",
-        FX_MODEL: FAKE_GATEWAY_MODEL,
-        FX_GATEWAY_BASE_URL: gateway.baseUrl,
-        FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-        FX_TRACE_LOG: fixture.tracePath,
-        FX_TRACE_SCOPES: "shell,terminal,terminal_client,terminal_host,tool,agent",
-        FX_TERMINAL_HOST_IDLE_MS: "500",
+        PF_AUTO_UPGRADE: "0",
+        PF_PERMISSION_MODE: "yolo",
+        PF_MODEL: FAKE_GATEWAY_MODEL,
+        PF_GATEWAY_BASE_URL: gateway.baseUrl,
+        PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+        PF_TRACE_LOG: fixture.tracePath,
+        PF_TRACE_SCOPES: "shell,terminal,terminal_client,terminal_host,tool,agent",
+        PF_TERMINAL_HOST_IDLE_MS: "500",
         PS1: "RESUME_SHELL> ",
       },
       width: 160,
@@ -682,20 +682,20 @@ test.skipIf(!tmuxAvailable())(
     });
     sessions.push(session);
     await session.waitForText("RESUME_SHELL>", TIMEOUT);
-    await session.sendText(`${FX_BIN} 2>${fixture.stderrPath}`);
+    await session.sendText(`${PF_BIN} 2>${fixture.stderrPath}`);
     await session.waitForStableComposer(TIMEOUT);
     await session.sendText("Run and observe the session.");
     await session.waitForText("RESUME_WIDTH_DONE", TIMEOUT);
     await session.sendText("/quit");
     await session.waitForText("RESUME_SHELL>", TIMEOUT);
 
-    const sessionsRoot = join(fixture.home, ".fx", "sessions");
-    const fxSessionIds = readdirSync(sessionsRoot, { withFileTypes: true })
+    const sessionsRoot = join(fixture.home, ".pf", "sessions");
+    const pfSessionIds = readdirSync(sessionsRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && entry.name !== "latest")
       .map((entry) => entry.name);
-    expect(fxSessionIds).toHaveLength(1);
+    expect(pfSessionIds).toHaveLength(1);
 
-    await session.sendText(`${FX_BIN} --resume ${fxSessionIds[0]} 2>>${fixture.stderrPath}`);
+    await session.sendText(`${PF_BIN} --resume ${pfSessionIds[0]} 2>>${fixture.stderrPath}`);
     await session.waitForText("session resumed", TIMEOUT);
     await session.waitForStableComposer(TIMEOUT);
 
@@ -716,7 +716,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "shell TTY writes advance one runtime-owned cursor without duplicate output",
   async () => {
-    const fixture = createFixture("fx-shell-tty-cursor-");
+    const fixture = createFixture("pf-shell-tty-cursor-");
     let sessionId = "";
     const gateway = startFakeGateway([
       fakeGatewayToolCall("shell_tty_cursor_run", "shell", {
@@ -776,7 +776,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "shell interact sends exact control characters",
   async () => {
-    const fixture = createFixture("fx-shell-tty-control-");
+    const fixture = createFixture("pf-shell-tty-control-");
     let sessionId = "";
     const gateway = startFakeGateway([
       fakeGatewayToolCall("shell_tty_control_run", "shell", {
@@ -837,7 +837,7 @@ test.skipIf(!tmuxAvailable())(
 test.skipIf(!tmuxAvailable())(
   "shell TTY timeout stops the owned process and reports the deadline",
   async () => {
-    const fixture = createFixture("fx-shell-tty-timeout-");
+    const fixture = createFixture("pf-shell-tty-timeout-");
     let sessionId = "";
     const gateway = startFakeGateway([
       fakeGatewayToolCall("shell_tty_timeout_run", "shell", {
@@ -887,9 +887,9 @@ test.skipIf(!tmuxAvailable())(
 );
 
 test.skipIf(!tmuxAvailable())(
-  "resumed fx reindexes and stops its durable managed TTY",
+  "resumed pf reindexes and stops its durable managed TTY",
   async () => {
-    const fixture = createFixture("fx-shell-tty-resume-");
+    const fixture = createFixture("pf-shell-tty-resume-");
     let sessionId = "";
     const gateway = startFakeGateway([
       fakeGatewayToolCall("shell_tty_resume_run", "shell", {
@@ -927,7 +927,7 @@ test.skipIf(!tmuxAvailable())(
     const resumed = await launch(
       fixture,
       gateway,
-      `${FX_BIN} --resume-last`,
+      `${PF_BIN} --resume-last`,
     );
     await resumed.sendText("Force-stop the exact retained managed TTY.");
     await resumed.waitForText("SHELL_TTY_RESUME_OK", TIMEOUT);

@@ -23,7 +23,7 @@ fn setRecvTimeout(conn: *std.http.Client.Connection) void {
 pub const cdn_base: ?[]const u8 = null;
 
 pub fn resolveCdnBase() ?[]const u8 {
-    if (io_mod.getenv("FX_E2E_UPGRADE_BASE_URL")) |url| {
+    if (io_mod.getenv("PF_E2E_UPGRADE_BASE_URL")) |url| {
         if (isLoopbackE2eUpgradeBase(url)) return url;
     }
     return cdn_base;
@@ -455,7 +455,7 @@ test "production upgrade base is unset until pf has a release channel" {
 }
 
 test "extractChecksumHex parses sha256sum format" {
-    const with_filename = "abc123def456  fx-macos-aarch64.tar.gz\n";
+    const with_filename = "abc123def456  pf-macos-aarch64.tar.gz\n";
     const hex = extractChecksumHex(with_filename).?;
     try std.testing.expectEqualStrings("abc123def456", hex);
 }
@@ -482,13 +482,13 @@ test "replaceBinary moves replacement over target path" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try writeTempFile(tmp.dir, "fx-old", "old");
-    try writeTempFile(tmp.dir, "fx-new", "new");
+    try writeTempFile(tmp.dir, "pf-old", "old");
+    try writeTempFile(tmp.dir, "pf-new", "new");
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const new_path = try std.fs.path.join(alloc, &.{ root, "fx-new" });
+    const new_path = try std.fs.path.join(alloc, &.{ root, "pf-new" });
     defer alloc.free(new_path);
-    const target_path = try std.fs.path.join(alloc, &.{ root, "fx-old" });
+    const target_path = try std.fs.path.join(alloc, &.{ root, "pf-old" });
     defer alloc.free(target_path);
 
     try replaceBinary(new_path, target_path);

@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 let modelRequests = 0;
@@ -54,9 +54,9 @@ async function exerciseLateSettlement(closeBeforeSettle) {
 
   let agent;
   try {
-    agent = await createFxAgent({
+    agent = await createPfAgent({
       backend: "native",
-      nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
+      nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
       fetch(input, init) {
         const url = init.method === "GET" ? `http://127.0.0.1:${server.address().port}/models` : input;
         assert.equal(new URL(url).origin, `http://127.0.0.1:${server.address().port}`);

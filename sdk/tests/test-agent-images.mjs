@@ -3,8 +3,8 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent, supportsJspi } from "../node.js";
-import { createFxAgent as createSharedAgent } from "../fx-sdk.js";
+import { createPfAgent, supportsJspi } from "../node.js";
+import { createPfAgent as createSharedAgent } from "../pf-sdk.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const backend = process.argv[2] || "native";
@@ -59,11 +59,11 @@ const baseOptions = {
   backend,
   apiKey: "sdk-images-test-key",
   ...(backend === "native"
-    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node") }
-    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm")) }),
+    ? { nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node") }
+    : { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) }),
 };
 const createAgent = (gateway, overrides) =>
-  createFxAgent({ ...baseOptions, fetch: gateway.fetch, ...overrides });
+  createPfAgent({ ...baseOptions, fetch: gateway.fetch, ...overrides });
 
 async function runPrompt(agent, input) {
   const turn = agent.prompt(input);
@@ -207,7 +207,7 @@ function fileParts(body) {
   }
   assert.throws(
     () => agent.prompt([{ type: "image", data: new OversizedBlob([Buffer.alloc(4 * 1024 * 1024)], { type: "image/png" }) }]),
-    (error) => error instanceof RangeError && /per-image libfx limit/.test(error.message),
+    (error) => error instanceof RangeError && /per-image libpf limit/.test(error.message),
   );
   assert.equal(readOversized, false);
   const budgetBlob = new Blob([Buffer.alloc(3.5 * 1024 * 1024)], { type: "image/png" });
@@ -219,7 +219,7 @@ function fileParts(body) {
   const overSized = pngWithEncodedLength(5 * 1024 * 1024 + 4);
   assert.throws(
     () => agent.prompt([{ type: "image", data: overSized, mimeType: "image/png" }]),
-    (error) => error instanceof RangeError && /per-image libfx limit/.test(error.message),
+    (error) => error instanceof RangeError && /per-image libpf limit/.test(error.message),
   );
 
   const nine = Array.from({ length: 9 }, () => ({ type: "image", data: pngData, mimeType: "image/png" }));
@@ -282,7 +282,7 @@ function fileParts(body) {
     async arrayBuffer() { return new ArrayBuffer(4 * 1024 * 1024); }
   }
   const actualOverflow = agent.prompt([{ type: "image", data: new LyingBlob(["x"], { type: "image/png" }) }]);
-  await assert.rejects(actualOverflow.result, (error) => error instanceof RangeError && /per-image libfx limit/.test(error.message));
+  await assert.rejects(actualOverflow.result, (error) => error instanceof RangeError && /per-image libpf limit/.test(error.message));
 
   assert.equal(gateway.state.catalogFetches, 0);
   assert.equal(gateway.state.chatBodies.length, 0);
@@ -454,11 +454,11 @@ for (const timing of ["during-read", "after-read"]) {
     write(line) {
       const request = JSON.parse(line);
       sentMethods.push(request.method);
-      if (request.method === "initialize" || request.method === "libfx/new") {
+      if (request.method === "initialize" || request.method === "libpf/new") {
         queueMicrotask(() => onLine({
           jsonrpc: "2.0",
           id: request.id,
-          result: request.method === "libfx/new" ? { sessionId: "image-exit-test" } : {},
+          result: request.method === "libpf/new" ? { sessionId: "image-exit-test" } : {},
         }));
       }
     },
@@ -478,8 +478,8 @@ for (const timing of ["during-read", "after-read"]) {
   }
   const turn = agent.prompt([{ type: "image", data: new SlowBlob(["bytes"], { type: "image/png" }) }], { signal: controller.signal });
   const settled = Promise.all([
-    assert.rejects(turn.result, /fx-core exited with code 1/),
-    assert.rejects(turn[Symbol.asyncIterator]().next(), /fx-core exited with code 1/),
+    assert.rejects(turn.result, /pf-core exited with code 1/),
+    assert.rejects(turn[Symbol.asyncIterator]().next(), /pf-core exited with code 1/),
   ]);
   let timer;
   try {
@@ -516,11 +516,11 @@ for (const failure of ["write", "exit"]) {
         finishRuntime(1);
         return;
       }
-      if (request.method === "initialize" || request.method === "libfx/new") {
+      if (request.method === "initialize" || request.method === "libpf/new") {
         queueMicrotask(() => onLine({
           jsonrpc: "2.0",
           id: request.id,
-          result: request.method === "libfx/new" ? { sessionId: "image-write-test" } : {},
+          result: request.method === "libpf/new" ? { sessionId: "image-write-test" } : {},
         }));
       }
     },
@@ -536,7 +536,7 @@ for (const failure of ["write", "exit"]) {
   const steering = turn.steer("queued guidance");
   await Promise.resolve();
   finishRead(Buffer.from(pngData, "base64"));
-  const expectedError = failure === "write" ? /prompt write failed/ : /fx-core exited with code 1/;
+  const expectedError = failure === "write" ? /prompt write failed/ : /pf-core exited with code 1/;
   await assert.rejects(turn.result, expectedError);
   await assert.rejects(steering, expectedError);
   assert.equal(sentMethods.includes("steer:queued guidance"), false);

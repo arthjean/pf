@@ -14,8 +14,8 @@ import unittest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "sign-and-notarize-macos.sh"
 RELEASE_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "release.yml"
-PUBLISH_LIBFX_WORKFLOW_PATH = (
-    REPO_ROOT / ".github" / "workflows" / "publish-libfx.yml"
+PUBLISH_LIBPF_WORKFLOW_PATH = (
+    REPO_ROOT / ".github" / "workflows" / "publish-libpf.yml"
 )
 PGSO_WORKFLOW_PATH = (
     REPO_ROOT / ".github" / "workflows" / "pgso-macos-arm64.yml"
@@ -76,10 +76,10 @@ import pathlib
 import sys
 
 args = sys.argv[1:]
-event_log = pathlib.Path(os.environ["FX_SIGNING_TEST_LOG"])
+event_log = pathlib.Path(os.environ["PF_SIGNING_TEST_LOG"])
 with event_log.open("a") as log:
     log.write("security " + " ".join(args) + "\\n")
-if args and args[0] == os.environ.get("FX_SIGNING_TEST_SECURITY_FAIL_COMMAND"):
+if args and args[0] == os.environ.get("PF_SIGNING_TEST_SECURITY_FAIL_COMMAND"):
     print("injected security failure", file=sys.stderr)
     raise SystemExit(1)
 if args and args[0] == "set-key-partition-list":
@@ -118,17 +118,17 @@ import pathlib
 import sys
 
 args = sys.argv[1:]
-with pathlib.Path(os.environ["FX_SIGNING_TEST_LOG"]).open("a") as log:
+with pathlib.Path(os.environ["PF_SIGNING_TEST_LOG"]).open("a") as log:
     log.write("codesign " + " ".join(args) + "\\n")
-if os.environ.get("FX_SIGNING_TEST_CODESIGN_FAIL_STAGE") == "sign" and "--force" in args:
+if os.environ.get("PF_SIGNING_TEST_CODESIGN_FAIL_STAGE") == "sign" and "--force" in args:
     print("injected codesign failure", file=sys.stderr)
     raise SystemExit(1)
 if "--force" in args:
     binary = pathlib.Path(args[-1])
     binary.write_bytes(binary.read_bytes() + b"signed\\n")
 if "--display" in args:
-    identifier = os.environ.get("FX_SIGNING_TEST_IDENTIFIER", "com.vercel.fx")
-    team_id = os.environ.get("FX_SIGNING_TEST_TEAM_ID", "JW6Y669B67")
+    identifier = os.environ.get("PF_SIGNING_TEST_IDENTIFIER", "com.vercel.fx")
+    team_id = os.environ.get("PF_SIGNING_TEST_TEAM_ID", "JW6Y669B67")
     print(f"Identifier={{identifier}}", file=sys.stderr)
     print(f"TeamIdentifier={{team_id}}", file=sys.stderr)
     print("CDHash={TEST_CDHASH}", file=sys.stderr)
@@ -143,7 +143,7 @@ import pathlib
 import sys
 
 args = sys.argv[1:]
-with pathlib.Path(os.environ["FX_SIGNING_TEST_LOG"]).open("a") as log:
+with pathlib.Path(os.environ["PF_SIGNING_TEST_LOG"]).open("a") as log:
     log.write("ditto " + " ".join(args) + "\n")
 pathlib.Path(args[-1]).write_bytes(b"notary archive")
 ''',
@@ -158,19 +158,19 @@ import pathlib
 import sys
 
 args = sys.argv[1:]
-with pathlib.Path(os.environ["FX_SIGNING_TEST_LOG"]).open("a") as log:
+with pathlib.Path(os.environ["PF_SIGNING_TEST_LOG"]).open("a") as log:
     log.write("xcrun " + " ".join(args[:2]) + "\\n")
-if len(args) > 1 and args[1] == os.environ.get("FX_SIGNING_TEST_XCRUN_FAIL_COMMAND"):
+if len(args) > 1 and args[1] == os.environ.get("PF_SIGNING_TEST_XCRUN_FAIL_COMMAND"):
     print("injected xcrun failure", file=sys.stderr)
     raise SystemExit(1)
 if args[:2] == ["lipo", "-archs"]:
-    print(os.environ.get("FX_SIGNING_TEST_ARCHS", "arm64"))
+    print(os.environ.get("PF_SIGNING_TEST_ARCHS", "arm64"))
 elif args[:2] == ["notarytool", "submit"]:
-    status = os.environ.get("FX_SIGNING_TEST_SUBMISSION_STATUS", "Accepted")
+    status = os.environ.get("PF_SIGNING_TEST_SUBMISSION_STATUS", "Accepted")
     print(json.dumps({{"id": "test-submission", "status": status}}))
 elif args[:2] == ["notarytool", "log"]:
-    issues = json.loads(os.environ.get("FX_SIGNING_TEST_NOTARY_ISSUES", "null"))
-    ticket_cdhash = os.environ.get("FX_SIGNING_TEST_TICKET_CDHASH", "{TEST_CDHASH}")
+    issues = json.loads(os.environ.get("PF_SIGNING_TEST_NOTARY_ISSUES", "null"))
+    ticket_cdhash = os.environ.get("PF_SIGNING_TEST_TICKET_CDHASH", "{TEST_CDHASH}")
     pathlib.Path(args[-1]).write_text(json.dumps({{
         "status": "Accepted",
         "statusSummary": "Ready for distribution",
@@ -183,11 +183,11 @@ else:
 ''',
         )
         return {
-            "FX_SIGNING_OPENSSL_BIN": openssl,
-            "FX_SIGNING_SECURITY_BIN": security,
-            "FX_SIGNING_CODESIGN_BIN": codesign,
-            "FX_SIGNING_DITTO_BIN": ditto,
-            "FX_SIGNING_XCRUN_BIN": xcrun,
+            "PF_SIGNING_OPENSSL_BIN": openssl,
+            "PF_SIGNING_SECURITY_BIN": security,
+            "PF_SIGNING_CODESIGN_BIN": codesign,
+            "PF_SIGNING_DITTO_BIN": ditto,
+            "PF_SIGNING_XCRUN_BIN": xcrun,
         }
 
     def run_script(
@@ -199,7 +199,7 @@ else:
         runner_temp = root / "runner-temp"
         runner_temp.mkdir()
         tool_paths = self.make_tools(root)
-        binary = root / "fx"
+        binary = root / "pf"
         binary.write_bytes(b"unsigned\n")
         binary.chmod(0o755)
         event_log = root / "events.log"
@@ -207,7 +207,7 @@ else:
         env.update(
             {
                 "RUNNER_TEMP": str(runner_temp),
-                "FX_SIGNING_TEST_LOG": str(event_log),
+                "PF_SIGNING_TEST_LOG": str(event_log),
                 "APPLE_DEVELOPER_ID_P12_BASE64": base64.b64encode(
                     b"p12-private-material"
                 ).decode(),
@@ -244,10 +244,10 @@ else:
             ("arm64", "16384", "16384"),
         ):
             with self.subTest(arch=arch, page_size=page_size):
-                with tempfile.TemporaryDirectory(prefix="fx-signing-pages-") as tmp:
+                with tempfile.TemporaryDirectory(prefix="pf-signing-pages-") as tmp:
                     result, _, runner_temp, event_log = self.run_script(
                         pathlib.Path(tmp),
-                        {"FX_SIGNING_TEST_ARCHS": arch},
+                        {"PF_SIGNING_TEST_ARCHS": arch},
                         page_size,
                     )
                     self.assertEqual(0, result.returncode, result.stdout + result.stderr)
@@ -266,10 +266,10 @@ else:
             ("", "16384"),
         ):
             with self.subTest(arch=arch, page_size=page_size):
-                with tempfile.TemporaryDirectory(prefix="fx-signing-pages-") as tmp:
+                with tempfile.TemporaryDirectory(prefix="pf-signing-pages-") as tmp:
                     result, binary, runner_temp, event_log = self.run_script(
                         pathlib.Path(tmp),
-                        {"FX_SIGNING_TEST_ARCHS": arch},
+                        {"PF_SIGNING_TEST_ARCHS": arch},
                         page_size,
                     )
                     self.assertNotEqual(0, result.returncode)
@@ -282,7 +282,7 @@ else:
         self,
     ) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
             p12_secret = "p12-private-material"
             p8_secret = "p8-private-material"
@@ -309,7 +309,7 @@ else:
 
     def test_imports_pkcs12_private_key_for_codesign_and_security(self) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
             result, _, _, event_log = self.run_script(root)
 
@@ -354,38 +354,38 @@ else:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
         cases = (
             (
-                {"FX_SIGNING_TEST_XCRUN_FAIL_COMMAND": "-archs"},
+                {"PF_SIGNING_TEST_XCRUN_FAIL_COMMAND": "-archs"},
                 "architecture inspection",
             ),
             (
-                {"FX_SIGNING_TEST_SECURITY_FAIL_COMMAND": "import"},
+                {"PF_SIGNING_TEST_SECURITY_FAIL_COMMAND": "import"},
                 "PKCS#12 import",
             ),
             (
-                {"FX_SIGNING_TEST_SECURITY_FAIL_COMMAND": "list-keychains"},
+                {"PF_SIGNING_TEST_SECURITY_FAIL_COMMAND": "list-keychains"},
                 "keychain search configuration",
             ),
             (
-                {"FX_SIGNING_TEST_SECURITY_FAIL_COMMAND": "set-key-partition-list"},
+                {"PF_SIGNING_TEST_SECURITY_FAIL_COMMAND": "set-key-partition-list"},
                 "private-key ACL configuration",
             ),
             (
-                {"FX_SIGNING_TEST_SECURITY_FAIL_COMMAND": "find-identity"},
+                {"PF_SIGNING_TEST_SECURITY_FAIL_COMMAND": "find-identity"},
                 "signing identity lookup",
             ),
             (
-                {"FX_SIGNING_TEST_CODESIGN_FAIL_STAGE": "sign"},
+                {"PF_SIGNING_TEST_CODESIGN_FAIL_STAGE": "sign"},
                 "code signing",
             ),
             (
-                {"FX_SIGNING_TEST_XCRUN_FAIL_COMMAND": "submit"},
+                {"PF_SIGNING_TEST_XCRUN_FAIL_COMMAND": "submit"},
                 "notarization submission",
             ),
         )
         for extra_env, stage in cases:
             with self.subTest(stage=stage):
                 with tempfile.TemporaryDirectory(
-                    prefix="fx-macos-signing-test-"
+                    prefix="pf-macos-signing-test-"
                 ) as tmp:
                     root = pathlib.Path(tmp)
                     result, _, _, _ = self.run_script(root, extra_env)
@@ -398,7 +398,7 @@ else:
 
     def test_rejects_notarization_log_issues_and_cleans_credentials(self) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
             issues = json.dumps(
                 [
@@ -411,7 +411,7 @@ else:
 
             result, _, runner_temp, event_log = self.run_script(
                 root,
-                {"FX_SIGNING_TEST_NOTARY_ISSUES": issues},
+                {"PF_SIGNING_TEST_NOTARY_ISSUES": issues},
             )
 
             output = result.stdout + result.stderr
@@ -425,7 +425,7 @@ else:
 
     def test_rejects_empty_secret_without_echoing_credential_material(self) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
 
             result, _, runner_temp, _ = self.run_script(
@@ -446,12 +446,12 @@ else:
 
     def test_rejects_a_signature_from_the_wrong_apple_team(self) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
 
             result, _, runner_temp, _ = self.run_script(
                 root,
-                {"FX_SIGNING_TEST_TEAM_ID": "WRONGTEAM1"},
+                {"PF_SIGNING_TEST_TEAM_ID": "WRONGTEAM1"},
             )
 
             output = result.stdout + result.stderr
@@ -461,12 +461,12 @@ else:
 
     def test_rejects_a_signature_with_the_wrong_identifier(self) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
 
             result, _, runner_temp, _ = self.run_script(
                 root,
-                {"FX_SIGNING_TEST_IDENTIFIER": "com.example.fx"},
+                {"PF_SIGNING_TEST_IDENTIFIER": "com.example.pf"},
             )
 
             output = result.stdout + result.stderr
@@ -476,13 +476,13 @@ else:
 
     def test_rejects_a_notarization_ticket_for_another_binary(self) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
 
             result, _, runner_temp, _ = self.run_script(
                 root,
                 {
-                    "FX_SIGNING_TEST_TICKET_CDHASH":
+                    "PF_SIGNING_TEST_TICKET_CDHASH":
                         "ffffffffffffffffffffffffffffffffffffffff"
                 },
             )
@@ -494,12 +494,12 @@ else:
 
     def test_rejects_a_failed_notarization_submission(self) -> None:
         self.assertTrue(SCRIPT_PATH.is_file(), "macOS signing helper is missing")
-        with tempfile.TemporaryDirectory(prefix="fx-macos-signing-test-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
             root = pathlib.Path(tmp)
 
             result, _, runner_temp, event_log = self.run_script(
                 root,
-                {"FX_SIGNING_TEST_SUBMISSION_STATUS": "Invalid"},
+                {"PF_SIGNING_TEST_SUBMISSION_STATUS": "Invalid"},
             )
 
             output = result.stdout + result.stderr
@@ -526,7 +526,7 @@ class MacosSigningWorkflowTests(unittest.TestCase):
             ("false", False, "true", "true"),
         ):
             with self.subTest(validate=validate, tag_exists=tag_exists):
-                with tempfile.TemporaryDirectory(prefix="fx-release-check-") as tmp:
+                with tempfile.TemporaryDirectory(prefix="pf-release-check-") as tmp:
                     root = pathlib.Path(tmp)
                     (root / "src").mkdir()
                     (root / "src/main.zig").write_text(
@@ -560,7 +560,7 @@ class MacosSigningWorkflowTests(unittest.TestCase):
         script = textwrap.dedent(run[2:]) if run.startswith("|\n") else run.strip()
         for validate in ("true", "false"):
             with self.subTest(validate=validate):
-                with tempfile.TemporaryDirectory(prefix="fx-signing-route-") as tmp:
+                with tempfile.TemporaryDirectory(prefix="pf-signing-route-") as tmp:
                     root = pathlib.Path(tmp)
                     (root / "scripts").mkdir()
                     signer = root / "scripts/sign-and-notarize-macos.sh"
@@ -568,7 +568,7 @@ class MacosSigningWorkflowTests(unittest.TestCase):
                         "#!/bin/sh\nprintf '%s' \"${2-default}\" >> \"$1\"\n"
                     )
                     signer.chmod(0o755)
-                    candidate = root / "fx-pgso-aggregate/candidate/fx"
+                    candidate = root / "pf-pgso-aggregate/candidate/pf"
                     candidate.parent.mkdir(parents=True)
                     candidate.write_bytes(b"native:")
                     result = subprocess.run(
@@ -580,7 +580,7 @@ class MacosSigningWorkflowTests(unittest.TestCase):
                         capture_output=True, text=True,
                     )
                     self.assertEqual(0, result.returncode, result.stderr)
-                    control = root / "fx-signing-control/fx"
+                    control = root / "pf-signing-control/pf"
                     if validate == "true":
                         self.assertEqual(b"native:16384", candidate.read_bytes())
                         self.assertEqual(b"native:4096", control.read_bytes())
@@ -590,10 +590,10 @@ class MacosSigningWorkflowTests(unittest.TestCase):
 
     def test_every_privileged_publish_job_uses_an_environment_gate(self) -> None:
         release = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
-        publish_libfx = PUBLISH_LIBFX_WORKFLOW_PATH.read_text(encoding="utf-8")
+        publish_libpf = PUBLISH_LIBPF_WORKFLOW_PATH.read_text(encoding="utf-8")
 
         release_job = release.split("  release:\n", 1)[1]
-        npm_publish_job = publish_libfx.split("  publish:\n", 1)[1]
+        npm_publish_job = publish_libpf.split("  publish:\n", 1)[1]
 
         self.assertIn("environment: release", release_job)
         self.assertIn("environment: npm", npm_publish_job)
@@ -607,13 +607,13 @@ class MacosSigningWorkflowTests(unittest.TestCase):
         self.assertIn("runs-on: macos-15-intel", release)
         self.assertIn("sign-macos-arm64:", release)
         self.assertEqual(2, release.count("environment: apple-signing"))
-        self.assertIn("scripts/sign-and-notarize-macos.sh zig-out/bin/fx", release)
+        self.assertIn("scripts/sign-and-notarize-macos.sh zig-out/bin/pf", release)
         self.assertNotIn("sign-stable-release:", pgso)
         self.assertNotIn("package_release", pgso)
         self.assertNotIn("environment: apple-signing", pgso)
         self.assertIn(
             "scripts/sign-and-notarize-macos.sh "
-            '"$RUNNER_TEMP/fx-pgso-aggregate/candidate/fx"',
+            '"$RUNNER_TEMP/pf-pgso-aggregate/candidate/pf"',
             release,
         )
         arm64_caller = release.split("  build-macos-arm64:\n", 1)[1].split(

@@ -9,9 +9,9 @@ import { serializeError } from "./package-report.mjs";
 
 const packageDir = resolve(process.argv[2]);
 const { nodeFileTrace } = createRequire(import.meta.url)(resolve(process.argv[3]));
-const artifactRoot = process.env.LIBFX_TEST_ARTIFACT_ROOT || tmpdir();
+const artifactRoot = process.env.LIBPF_TEST_ARTIFACT_ROOT || tmpdir();
 await mkdir(artifactRoot, { recursive: true });
-const root = await mkdtemp(join(artifactRoot, "libfx-trace-"));
+const root = await mkdtemp(join(artifactRoot, "libpf-trace-"));
 const results = [];
 let failure;
 
@@ -43,7 +43,7 @@ async function exercise(sdk) {
     const info = await sdk.getBackendInfo({ backend: "native" });
     assert.equal(info.backend, "native", JSON.stringify(info));
     for (const backend of ["native", "auto"]) {
-      const agent = await sdk.createFxAgent({
+      const agent = await sdk.createPfAgent({
         backend, home, workspaceRoot: process.cwd(), apiKey: "trace-key", model: "trace/model",
         gatewayChatUrl: `${origin}/chat`,
         fetch(input, init) {
@@ -74,7 +74,7 @@ async function exercise(sdk) {
 async function run(entry, cwd, name) {
   const child = spawnSync(process.execPath, ["--no-experimental-require-module", entry], {
     cwd, encoding: "utf8", timeout: 30_000,
-    env: { PATH: process.env.PATH, NODE_PATH: "", NODE_OPTIONS: "", FX_SOUND: "0", FX_DISABLE_KEYCHAIN: "1" },
+    env: { PATH: process.env.PATH, NODE_PATH: "", NODE_OPTIONS: "", PF_SOUND: "0", PF_DISABLE_KEYCHAIN: "1" },
   });
   await writeFile(join(root, `${name}.log`), `${child.stdout || ""}\n${child.stderr || ""}`);
   if (child.error) throw child.error;
@@ -87,15 +87,15 @@ try {
     const source = join(root, `${format}-source`);
     const isolated = join(root, `${format}-isolated`);
     const entry = format === "esm" ? "entry.mjs" : "entry.cjs";
-    await cp(packageDir, join(source, "node_modules/libfx"), { recursive: true });
-    const load = format === "esm" ? 'import * as sdk from "libfx";' : 'const sdk = require("libfx");';
+    await cp(packageDir, join(source, "node_modules/libpf"), { recursive: true });
+    const load = format === "esm" ? 'import * as sdk from "libpf";' : 'const sdk = require("libpf");';
     await writeFile(join(source, entry), `${load}\n(${exercise.toString()})(sdk).catch(error => { console.error(error); process.exitCode = 1; });\n`);
     const result = { format, control: await run(entry, source, `${format}-control`) };
     results.push(result);
     const trace = await nodeFileTrace([join(source, entry)], { base: source, processCwd: source });
     result.files = [...trace.fileList].sort();
     result.warnings = [...trace.warnings].map(String);
-    if (format === "cjs") assert.ok(!result.files.includes("node_modules/libfx/node.js"), "CJS tracing must not be rescued by an ESM import");
+    if (format === "cjs") assert.ok(!result.files.includes("node_modules/libpf/node.js"), "CJS tracing must not be rescued by an ESM import");
     for (const file of result.files) {
       const from = resolve(source, file);
       const to = resolve(isolated, file);
@@ -105,7 +105,7 @@ try {
     }
     await rename(source, `${source}-unavailable`);
     result.isolated = await run(entry, isolated, `${format}-isolated`);
-    assert.ok(result.files.some((file) => file.endsWith(`/libfx.${process.platform}-${process.arch}.node`)));
+    assert.ok(result.files.some((file) => file.endsWith(`/libpf.${process.platform}-${process.arch}.node`)));
     console.log(`${format} traced native and auto agent turns passed`);
   }
 } catch (error) { failure = error; }

@@ -33,12 +33,12 @@ if (childMode) {
 }
 
 async function runChild() {
-  const gatewayUrl = process.env.LIBFX_BENCH_GATEWAY_URL;
-  const diagnosticsPath = process.env.LIBFX_BENCH_DIAGNOSTICS;
+  const gatewayUrl = process.env.LIBPF_BENCH_GATEWAY_URL;
+  const diagnosticsPath = process.env.LIBPF_BENCH_DIAGNOSTICS;
   if (!gatewayUrl || !diagnosticsPath) throw new Error("benchmark child environment is incomplete");
 
   const startedAt = performance.now();
-  const { createFxAgent } = await import(new URL("../../sdk/node.js", import.meta.url));
+  const { createPfAgent } = await import(new URL("../../sdk/node.js", import.meta.url));
   const importedAt = performance.now();
   let fetchAt = null;
   let firstBodyAt = null;
@@ -80,14 +80,14 @@ async function runChild() {
     });
   };
 
-  const agent = await createFxAgent({
+  const agent = await createPfAgent({
     backend,
-    nativeAddon: resolve(repoRoot, "zig-out/lib/libfx.node"),
-    wasm: resolve(repoRoot, "zig-out/bin/fx-core.wasm"),
+    nativeAddon: resolve(repoRoot, "zig-out/lib/libpf.node"),
+    wasm: resolve(repoRoot, "zig-out/bin/pf-core.wasm"),
     fetch: tracedFetch,
     home: repoRoot,
     workspaceRoot: repoRoot,
-    apiKey: "libfx-benchmark-key",
+    apiKey: "libpf-benchmark-key",
     gatewayChatUrl: gatewayUrl,
     model: "benchmark/model",
     instructions: benchmarkInstructions,
@@ -144,7 +144,7 @@ async function runParent() {
   await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
   const { port } = server.address();
   const gatewayUrl = `http://127.0.0.1:${port}/chat`;
-  const runDir = await mkdtemp(join(tmpdir(), "libfx-benchmark-"));
+  const runDir = await mkdtemp(join(tmpdir(), "libpf-benchmark-"));
   const measured = [];
   try {
     for (let index = 0; index < samples; index++) {
@@ -175,8 +175,8 @@ async function runSample(gatewayUrl, diagnosticsPath) {
     cwd: repoRoot,
     env: {
       ...process.env,
-      LIBFX_BENCH_GATEWAY_URL: gatewayUrl,
-      LIBFX_BENCH_DIAGNOSTICS: diagnosticsPath,
+      LIBPF_BENCH_GATEWAY_URL: gatewayUrl,
+      LIBPF_BENCH_DIAGNOSTICS: diagnosticsPath,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

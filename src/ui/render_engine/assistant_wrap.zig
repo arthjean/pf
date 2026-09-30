@@ -1303,12 +1303,12 @@ test "wrapAssistantText preserves heading underline across wrap boundary" {
 test "wrapAssistantText preserves an underlined OSC 8 link across a wrap" {
     const alloc = std.testing.allocator;
     const input =
-        "\x1b]8;id=fx-1;https://example.com\x1b\\\x1b[4mabcdef\x1b[24m\x1b]8;;\x1b\\ tail";
+        "\x1b]8;id=pf-1;https://example.com\x1b\\\x1b[4mabcdef\x1b[24m\x1b]8;;\x1b\\ tail";
     const out = try wrapAssistantText(alloc, input, 3);
     defer alloc.free(out);
     try std.testing.expectEqualStrings(
-        "\x1b]8;id=fx-1;https://example.com\x1b\\\x1b[4mabc\x1b[0m\x1b]8;;\x1b\\\n" ++
-            "\x1b[4m\x1b]8;id=fx-1;https://example.com\x1b\\def\x1b[24m\x1b]8;;\x1b\\\ntai\nl",
+        "\x1b]8;id=pf-1;https://example.com\x1b\\\x1b[4mabc\x1b[0m\x1b]8;;\x1b\\\n" ++
+            "\x1b[4m\x1b]8;id=pf-1;https://example.com\x1b\\def\x1b[24m\x1b]8;;\x1b\\\ntai\nl",
         out,
     );
 }
@@ -1316,12 +1316,12 @@ test "wrapAssistantText preserves an underlined OSC 8 link across a wrap" {
 test "wrapAssistantText reopens an OSC 8 link after a word-balanced wrap" {
     const alloc = std.testing.allocator;
     const input =
-        "\x1b]8;id=fx-1;https://example.com\x1b\\\x1b[4malpha beta\x1b[24m\x1b]8;;\x1b\\";
+        "\x1b]8;id=pf-1;https://example.com\x1b\\\x1b[4malpha beta\x1b[24m\x1b]8;;\x1b\\";
     const out = try wrapAssistantText(alloc, input, 6);
     defer alloc.free(out);
     try std.testing.expectEqualStrings(
-        "\x1b]8;id=fx-1;https://example.com\x1b\\\x1b[4malpha\x1b[0m\x1b]8;;\x1b\\\n" ++
-            "\x1b[4m\x1b]8;id=fx-1;https://example.com\x1b\\beta\x1b[24m\x1b]8;;\x1b\\",
+        "\x1b]8;id=pf-1;https://example.com\x1b\\\x1b[4malpha\x1b[0m\x1b]8;;\x1b\\\n" ++
+            "\x1b[4m\x1b]8;id=pf-1;https://example.com\x1b\\beta\x1b[24m\x1b]8;;\x1b\\",
         out,
     );
 }
@@ -1550,7 +1550,7 @@ test "wrapAssistantText elides infeasible dim footnote markers at narrow widths"
 
 test "wrapAssistantText reopens a definition link after a wrap" {
     const alloc = std.testing.allocator;
-    const link_open = "\x1b]8;id=fx-definition;https://example.com\x1b\\";
+    const link_open = "\x1b]8;id=pf-definition;https://example.com\x1b\\";
     const link_close = "\x1b]8;;\x1b\\";
     const input =
         "\x1b[2m  \x1b[22m" ++
@@ -1769,7 +1769,7 @@ test "wrapLiteralCommandOutput preserves and rows a pathological zero width run"
 test "a link opening a guttered row keeps its theme color" {
     const alloc = std.testing.allocator;
     const link_style = shared_theme.current().link_style;
-    const input = try std.fmt.allocPrint(alloc, "\x1b]8;id=fx-1;https://example.com\x1b\\{s}\x1b[4mdocs\x1b[24m\x1b[39m\x1b]8;;\x1b\\", .{link_style});
+    const input = try std.fmt.allocPrint(alloc, "\x1b]8;id=pf-1;https://example.com\x1b\\{s}\x1b[4mdocs\x1b[24m\x1b[39m\x1b]8;;\x1b\\", .{link_style});
     defer alloc.free(input);
     const out = try wrapAssistantTextWithBaseGutter(alloc, input, 40, 2, false, false, null, null, null);
     defer alloc.free(out);

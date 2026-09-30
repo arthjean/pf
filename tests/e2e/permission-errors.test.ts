@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, runFx } from "../evals/eval-helpers";
+import { PF_BIN, runPf } from "../evals/eval-helpers";
 import {
   FAKE_GATEWAY_MODEL,
   fakeGatewayFinalText,
@@ -23,7 +23,7 @@ import {
 
 const TIMEOUT = 120_000;
 
-type FxJson = {
+type PfJson = {
   output: string;
   exit_code: number;
   tool_calls: Array<{ name: string; status: string }>;
@@ -42,16 +42,16 @@ function createIsolatedRoot(prefix: string) {
   const home = join(root, "home");
   const workspace = join(root, "workspace");
   mkdirSync(home, { recursive: true });
-  mkdirSync(join(home, ".fx"), { recursive: true });
+  mkdirSync(join(home, ".pf"), { recursive: true });
   mkdirSync(workspace, { recursive: true });
   return { root, home, workspace };
 }
 
-function parseFxJson(result: { stdout: string; stderr: string; code: number | null }): FxJson {
+function parsePfJson(result: { stdout: string; stderr: string; code: number | null }): PfJson {
   if (result.code !== 0) {
-    throw new Error(`fx exited ${result.code}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+    throw new Error(`pf exited ${result.code}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
   }
-  return JSON.parse(result.stdout.trim()) as FxJson;
+  return JSON.parse(result.stdout.trim()) as PfJson;
 }
 
 function executionDeniedReason(body: string, toolCallId: string): string {
@@ -77,11 +77,11 @@ function permissionEnv(
     HOME: home,
     AI_GATEWAY_API_KEY: "permission-error-fake-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_GATEWAY_BASE_URL: gateway.baseUrl,
-    FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-    FX_MODEL: FAKE_GATEWAY_MODEL,
-    FX_AUTO_UPGRADE: "0",
+    PF_GATEWAY_BASE_URL: gateway.baseUrl,
+    PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_MODEL: FAKE_GATEWAY_MODEL,
+    PF_AUTO_UPGRADE: "0",
     NO_COLOR: "1",
   };
 }
@@ -100,7 +100,7 @@ async function waitForPaneExit(
     await Bun.sleep(25);
   }
   throw new Error(
-    `Timed out waiting for fx ask to exit.\n${await session.captureFullScrollback()}`,
+    `Timed out waiting for pf ask to exit.\n${await session.captureFullScrollback()}`,
   );
 }
 
@@ -109,12 +109,12 @@ async function runTtyPromptPermissionsCase(
   decision: "approve" | "deny",
 ) {
   const root = createIsolatedRoot(
-    `fx-${outputMode}-prompt-permissions-${decision}-`,
+    `pf-${outputMode}-prompt-permissions-${decision}-`,
   );
   const marker = join(root.workspace, `${decision}-marker.txt`);
   const stdoutPath = join(root.root, `${decision}.stdout`);
   writeFileSync(
-    join(root.home, ".fx", "settings.json"),
+    join(root.home, ".pf", "settings.json"),
     JSON.stringify({ permission_mode: "ask", sandbox: "none" }),
   );
   writeFileSync(stdoutPath, "");
@@ -127,13 +127,13 @@ async function runTtyPromptPermissionsCase(
   let session: TmuxSession | null = null;
   try {
     session = await TmuxSession.create({
-      cmd: `${JSON.stringify(FX_BIN)} ask --${outputMode} --prompt-permissions --no-save "Run the exact ${outputMode} fixture." > ${JSON.stringify(stdoutPath)}`,
+      cmd: `${JSON.stringify(PF_BIN)} ask --${outputMode} --prompt-permissions --no-save "Run the exact ${outputMode} fixture." > ${JSON.stringify(stdoutPath)}`,
       cwd: root.workspace,
       env: permissionEnv(root.home, gateway),
       remainOnExit: true,
     });
     const prompt = await session.waitForText("Approve? [y/N]", TIMEOUT);
-    expect(prompt).toContain("fx wants to run:");
+    expect(prompt).toContain("pf wants to run:");
     expect(existsSync(marker)).toBe(false);
     await session.sendText(decision === "approve" ? "y" : "n");
     await waitForPaneExit(session, 0);
@@ -141,7 +141,7 @@ async function runTtyPromptPermissionsCase(
     const stdout = readFileSync(stdoutPath, "utf8");
     expect(stdout).not.toContain("Approve? [y/N]");
     if (outputMode === "json") {
-      const json = JSON.parse(stdout) as FxJson;
+      const json = JSON.parse(stdout) as PfJson;
       expect(json.exit_code).toBe(0);
       expect(json.tool_calls).toContainEqual(
         expect.objectContaining({
@@ -165,7 +165,7 @@ describe("generic permission typed errors", () => {
   test(
     "returns typed JSON for denied terminal",
     async () => {
-      const root = createIsolatedRoot("fx-permission-error-");
+      const root = createIsolatedRoot("pf-permission-error-");
       const marker = join(root.workspace, "denied-marker.txt");
       const toolCallId = "permission_denied_call";
       const gateway = startFakeGateway([
@@ -176,7 +176,7 @@ describe("generic permission typed errors", () => {
       ]);
       try {
         writeFileSync(
-          join(root.home, ".fx", "settings.json"),
+          join(root.home, ".pf", "settings.json"),
           JSON.stringify({
             workspaces: {
               [root.workspace]: {
@@ -190,21 +190,21 @@ describe("generic permission typed errors", () => {
           }),
         );
 
-        const result = await runFx(["ask", "--json", "--no-save", "--auto", "Run the denied command."], {
+        const result = await runPf(["ask", "--json", "--no-save", "--auto", "Run the denied command."], {
           cwd: root.workspace,
           env: {
             HOME: root.home,
             AI_GATEWAY_API_KEY: "permission-error-fake-key",
             VERCEL_OIDC_TOKEN: undefined,
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_MODEL: FAKE_GATEWAY_MODEL,
-            FX_AUTO_UPGRADE: "0",
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_MODEL: FAKE_GATEWAY_MODEL,
+            PF_AUTO_UPGRADE: "0",
           },
           timeoutMs: TIMEOUT,
         });
-        const json = parseFxJson(result);
+        const json = parsePfJson(result);
         expect(result.stderr).toBe('Running touch "./denied-marker.txt"\n');
         expect(json.tool_calls).toContainEqual({
           name: "shell",
@@ -248,14 +248,14 @@ describe("generic permission typed errors", () => {
   test.skipIf(!tmuxAvailable())(
     "JSON prompt-permissions does not prompt after repeated advisory cautions",
     async () => {
-      const root = createIsolatedRoot("fx-json-auto-prompt-permissions-");
+      const root = createIsolatedRoot("pf-json-auto-prompt-permissions-");
       const markers = Array.from(
         { length: 4 },
         (_, index) => join(root.workspace, `auto-marker-${index + 1}.txt`),
       );
       const stdoutPath = join(root.root, "auto.stdout");
       writeFileSync(
-        join(root.home, ".fx", "settings.json"),
+        join(root.home, ".pf", "settings.json"),
         JSON.stringify({ permission_mode: "auto", sandbox: "none" }),
       );
       writeFileSync(stdoutPath, "");
@@ -284,7 +284,7 @@ describe("generic permission typed errors", () => {
       let session: TmuxSession | null = null;
       try {
         session = await TmuxSession.create({
-          cmd: `${JSON.stringify(FX_BIN)} ask --auto --json --prompt-permissions --no-save "Run the advisory caution fixture." > ${JSON.stringify(stdoutPath)}`,
+          cmd: `${JSON.stringify(PF_BIN)} ask --auto --json --prompt-permissions --no-save "Run the advisory caution fixture." > ${JSON.stringify(stdoutPath)}`,
           cwd: root.workspace,
           env: permissionEnv(root.home, gateway),
           remainOnExit: true,
@@ -297,7 +297,7 @@ describe("generic permission typed errors", () => {
 
         const stdout = readFileSync(stdoutPath, "utf8");
         expect(stdout).not.toContain("Approve? [y/N]");
-        const json = JSON.parse(stdout) as FxJson;
+        const json = JSON.parse(stdout) as PfJson;
         expect(json.output).toContain("Advisory cautions handled normally.");
         expect(json.tool_calls.filter((call) => call.status === "error")).toHaveLength(4);
         expect(json.tool_calls.filter((call) => call.status === "success")).toHaveLength(0);
@@ -334,11 +334,11 @@ describe("generic permission typed errors", () => {
 
       for (const testCase of cases) {
         const root = createIsolatedRoot(
-          `fx-${testCase.mode}-${testCase.optIn ? "opt-in" : "default"}-non-tty-`,
+          `pf-${testCase.mode}-${testCase.optIn ? "opt-in" : "default"}-non-tty-`,
         );
         const marker = join(root.workspace, "must-not-run.txt");
         writeFileSync(
-          join(root.home, ".fx", "settings.json"),
+          join(root.home, ".pf", "settings.json"),
           JSON.stringify({ permission_mode: "ask", sandbox: "none" }),
         );
         const gateway = startFakeGateway([
@@ -347,7 +347,7 @@ describe("generic permission typed errors", () => {
           }),
         ]);
         try {
-          const result = await runFx(
+          const result = await runPf(
             [
               "ask",
               ...testCase.args,
@@ -366,7 +366,7 @@ describe("generic permission typed errors", () => {
           expect(result.stderr).toContain("noninteractive_permission_prompt_unavailable");
           expect(result.stderr).not.toContain("Approve? [y/N]");
           if (testCase.mode === "json") {
-            const json = JSON.parse(result.stdout) as FxJson & {
+            const json = JSON.parse(result.stdout) as PfJson & {
               error: string;
             };
             expect(json.error).toBe("NonInteractivePermissionRequired");

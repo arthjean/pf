@@ -86,7 +86,7 @@ const ReadyNotifier = struct {
 
 comptime {
     if (build_options.napi_surface != .core) {
-        @compileError("libfx N-API core requires -Dnapi-surface=core");
+        @compileError("libpf N-API core requires -Dnapi-surface=core");
     }
 }
 
@@ -663,7 +663,7 @@ fn throw(env: c.napi_env, code: [*:0]const u8, message: [*:0]const u8) c.napi_va
 
 fn statusOk(env: c.napi_env, status: c.napi_status, message: [*:0]const u8) bool {
     if (status == c.napi_ok) return true;
-    _ = c.napi_throw_error(env, "LIBFX_NAPI", message);
+    _ = c.napi_throw_error(env, "LIBPF_NAPI", message);
     return false;
 }
 
@@ -671,7 +671,7 @@ fn callbackArgs(env: c.napi_env, info: c.napi_callback_info, argv: []c.napi_valu
     var argc = argv.len;
     if (!statusOk(env, c.napi_get_cb_info(env, info, &argc, argv.ptr, null, null), "could not read arguments")) return false;
     if (argc == argv.len) return true;
-    _ = c.napi_throw_type_error(env, "LIBFX_INVALID_ARGUMENT", "missing required argument");
+    _ = c.napi_throw_type_error(env, "LIBPF_INVALID_ARGUMENT", "missing required argument");
     return false;
 }
 
@@ -835,17 +835,17 @@ fn createRuntime(env: c.napi_env, options: c.napi_value) CreateError!*Runtime {
 fn throwCreateError(env: c.napi_env, err: CreateError) c.napi_value {
     return switch (err) {
         error.JavaScriptException => null,
-        error.TooManyRuntimes => throw(env, "LIBFX_NATIVE_LIMIT", "too many active native runtimes"),
-        error.InvalidApiKey => throw(env, "LIBFX_INVALID_ARGUMENT", "apiKey is required and must be a bounded string"),
-        error.InvalidModel => throw(env, "LIBFX_INVALID_ARGUMENT", "model must be a bounded string"),
-        error.InvalidEffort => throw(env, "LIBFX_INVALID_ARGUMENT", "effort must be a bounded string"),
-        error.InvalidFast => throw(env, "LIBFX_INVALID_ARGUMENT", "fast must be a boolean"),
-        error.InvalidHome => throw(env, "LIBFX_INVALID_ARGUMENT", "home is required and must be a bounded string"),
-        error.InvalidWorkspaceRoot => throw(env, "LIBFX_INVALID_ARGUMENT", "workspaceRoot is required and must be a bounded string"),
-        error.InvalidGatewayUrl => throw(env, "LIBFX_INVALID_ARGUMENT", "gatewayChatUrl must be a bounded string"),
-        error.OutOfMemory => throw(env, "LIBFX_NATIVE_OOM", "could not allocate native runtime"),
-        error.ThreadFailed => throw(env, "LIBFX_NATIVE_THREAD", "could not start native runtime thread"),
-        error.ReadyChannelFailed => throw(env, "LIBFX_NATIVE_IO", "could not create native readiness channel"),
+        error.TooManyRuntimes => throw(env, "LIBPF_NATIVE_LIMIT", "too many active native runtimes"),
+        error.InvalidApiKey => throw(env, "LIBPF_INVALID_ARGUMENT", "apiKey is required and must be a bounded string"),
+        error.InvalidModel => throw(env, "LIBPF_INVALID_ARGUMENT", "model must be a bounded string"),
+        error.InvalidEffort => throw(env, "LIBPF_INVALID_ARGUMENT", "effort must be a bounded string"),
+        error.InvalidFast => throw(env, "LIBPF_INVALID_ARGUMENT", "fast must be a boolean"),
+        error.InvalidHome => throw(env, "LIBPF_INVALID_ARGUMENT", "home is required and must be a bounded string"),
+        error.InvalidWorkspaceRoot => throw(env, "LIBPF_INVALID_ARGUMENT", "workspaceRoot is required and must be a bounded string"),
+        error.InvalidGatewayUrl => throw(env, "LIBPF_INVALID_ARGUMENT", "gatewayChatUrl must be a bounded string"),
+        error.OutOfMemory => throw(env, "LIBPF_NATIVE_OOM", "could not allocate native runtime"),
+        error.ThreadFailed => throw(env, "LIBPF_NATIVE_THREAD", "could not start native runtime thread"),
+        error.ReadyChannelFailed => throw(env, "LIBPF_NATIVE_IO", "could not create native readiness channel"),
     };
 }
 
@@ -863,7 +863,7 @@ fn createCore(env: c.napi_env, info: c.napi_callback_info) callconv(.c) c.napi_v
     var runtime_owned = true;
     defer if (runtime_owned) runtime.deinit();
     const handle = std.heap.c_allocator.create(RuntimeHandle) catch
-        return throw(env, "LIBFX_NATIVE_OOM", "could not allocate runtime handle");
+        return throw(env, "LIBPF_NATIVE_OOM", "could not allocate runtime handle");
     var handle_owned = true;
     defer if (handle_owned) {
         handle.unregisterCleanup(env);
@@ -904,7 +904,7 @@ fn runtimeHandleArg(env: c.napi_env, info: c.napi_callback_info, argv: []c.napi_
         "could not validate runtime handle",
     )) return null;
     if (!branded) {
-        _ = c.napi_throw_type_error(env, "LIBFX_INVALID_ARGUMENT", "invalid runtime handle");
+        _ = c.napi_throw_type_error(env, "LIBPF_INVALID_ARGUMENT", "invalid runtime handle");
         return null;
     }
     var context: ?*anyopaque = null;
@@ -916,7 +916,7 @@ fn lockRuntime(env: c.napi_env, handle: *RuntimeHandle) ?*Runtime {
     handle.mutex.lockUncancelable(io_mod.getIo());
     const runtime = handle.runtime orelse {
         handle.mutex.unlock(io_mod.getIo());
-        _ = c.napi_throw_error(env, "LIBFX_NATIVE_CLOSED", "native runtime is closed");
+        _ = c.napi_throw_error(env, "LIBPF_NATIVE_CLOSED", "native runtime is closed");
         return null;
     };
     return runtime;
@@ -932,7 +932,7 @@ fn takeCoreReadyFd(env: c.napi_env, info: c.napi_callback_info) callconv(.c) c.n
     const runtime = lockRuntime(env, handle) orelse return null;
     defer unlockRuntime(handle);
     const reader = runtime.ready.reader orelse
-        return throw(env, "LIBFX_INVALID_ARGUMENT", "readiness descriptor already transferred");
+        return throw(env, "LIBPF_INVALID_ARGUMENT", "readiness descriptor already transferred");
     var value: c.napi_value = undefined;
     if (!statusOk(env, c.napi_create_int32(env, reader, &value), "could not transfer readiness descriptor")) return null;
     runtime.ready.reader = null;
@@ -947,7 +947,7 @@ fn fetch_handle_arg(env: c.napi_env, value: c.napi_value) ?fetch_state.Handle {
         number > @as(f64, @floatFromInt(std.math.maxInt(fetch_state.Handle))) or
         @floor(number) != number)
     {
-        _ = c.napi_throw_type_error(env, "LIBFX_INVALID_ARGUMENT", "fetch handle must be a positive int32");
+        _ = c.napi_throw_type_error(env, "LIBPF_INVALID_ARGUMENT", "fetch handle must be a positive int32");
         return null;
     }
     return @intFromFloat(number);
@@ -967,11 +967,11 @@ fn writeCore(env: c.napi_env, info: c.napi_callback_info) callconv(.c) c.napi_va
     var data: ?*anyopaque = null;
     var len: usize = 0;
     if (!statusOk(env, c.napi_get_buffer_info(env, argv[1], &data, &len), "write() requires a Buffer")) return null;
-    const bytes = if (len == 0) &.{} else @as([*]const u8, @ptrCast(data orelse return throw(env, "LIBFX_NATIVE_IO", "Buffer data is unavailable")))[0..len];
+    const bytes = if (len == 0) &.{} else @as([*]const u8, @ptrCast(data orelse return throw(env, "LIBPF_NATIVE_IO", "Buffer data is unavailable")))[0..len];
     runtime.input.write(runtime.alloc, bytes) catch |err| return switch (err) {
-        error.InputClosed => throw(env, "LIBFX_NATIVE_CLOSED", "native runtime input is closed"),
-        error.InputQueueFull => throw(env, "LIBFX_NATIVE_BACKPRESSURE", "native runtime input queue is full"),
-        error.OutOfMemory => throw(env, "LIBFX_NATIVE_OOM", "could not queue native input"),
+        error.InputClosed => throw(env, "LIBPF_NATIVE_CLOSED", "native runtime input is closed"),
+        error.InputQueueFull => throw(env, "LIBPF_NATIVE_BACKPRESSURE", "native runtime input queue is full"),
+        error.OutOfMemory => throw(env, "LIBPF_NATIVE_OOM", "could not queue native input"),
     };
     var value: c.napi_value = undefined;
     _ = c.napi_get_undefined(env, &value);
@@ -995,14 +995,14 @@ fn drainCore(env: c.napi_env, info: c.napi_callback_info) callconv(.c) c.napi_va
     const runtime = lockRuntime(env, handle) orelse return null;
     defer unlockRuntime(handle);
     const available = runtime.output.available() catch
-        return throw(env, "LIBFX_NATIVE_IO", "native output delivery failed");
+        return throw(env, "LIBPF_NATIVE_IO", "native output delivery failed");
     const len = @min(available, max_drain_bytes);
     var value: c.napi_value = undefined;
     var data: ?*anyopaque = null;
     if (!statusOk(env, c.napi_create_buffer(env, len, &data, &value), "could not allocate output Buffer")) return null;
     if (len == 0) return value;
     const written = runtime.output.drain(@as([*]u8, @ptrCast(data.?))[0..len]);
-    if (written != len) return throw(env, "LIBFX_NATIVE_IO", "native output changed while draining");
+    if (written != len) return throw(env, "LIBPF_NATIVE_IO", "native output changed while draining");
     return value;
 }
 
@@ -1049,7 +1049,7 @@ fn startCoreFetchResponse(env: c.napi_env, info: c.napi_callback_info) callconv(
     defer unlockRuntime(runtime_handle);
     var status: u32 = 0;
     if (c.napi_get_value_uint32(env, argv[2], &status) != c.napi_ok or status > std.math.maxInt(u16))
-        return throw(env, "LIBFX_INVALID_ARGUMENT", "fetch response status must be a uint16");
+        return throw(env, "LIBPF_INVALID_ARGUMENT", "fetch response status must be a uint16");
     return fetch_operation_value(env, runtime.fetch.startResponse(fetch_handle, @intCast(status)));
 }
 
@@ -1064,7 +1064,7 @@ fn pushCoreFetchResponse(env: c.napi_env, info: c.napi_callback_info) callconv(.
     if (!statusOk(env, c.napi_get_buffer_info(env, argv[2], &data, &len), "fetch response chunk requires a Buffer")) return null;
     const bytes = if (len == 0) &.{} else @as([*]const u8, @ptrCast(data.?))[0..len];
     const result = runtime.fetch.pushResponse(fetch_handle, bytes) catch
-        return throw(env, "LIBFX_NATIVE_OOM", "could not queue fetch response");
+        return throw(env, "LIBPF_NATIVE_OOM", "could not queue fetch response");
     return fetch_operation_value(env, result);
 }
 
@@ -1137,7 +1137,7 @@ export fn napi_register_module_v1(env: c.napi_env, exports: c.napi_value) callco
     ensureThreadedIo();
     var api_version: c.napi_value = undefined;
     if (!statusOk(env, c.napi_create_uint32(env, 3, &api_version), "could not create API version")) return null;
-    if (!statusOk(env, c.napi_set_named_property(env, exports, "libfxApiVersion", api_version), "could not export API version")) return null;
+    if (!statusOk(env, c.napi_set_named_property(env, exports, "libpfApiVersion", api_version), "could not export API version")) return null;
     if (!exportFunction(env, exports, "createCore", createCore)) return null;
     if (!exportFunction(env, exports, "takeCoreReadyFd", takeCoreReadyFd)) return null;
     if (!exportFunction(env, exports, "writeCore", writeCore)) return null;

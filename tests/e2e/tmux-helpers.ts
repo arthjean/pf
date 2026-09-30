@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FX_BIN, REPO_ROOT, providerVersionTestEnv } from "../evals/eval-helpers";
+import { PF_BIN, REPO_ROOT, providerVersionTestEnv } from "../evals/eval-helpers";
 
 let sessionCounter = 0;
 
@@ -25,17 +25,17 @@ const AUTH_ENV_KEYS = [
 ] as const;
 const DEFAULT_UNSET_ENV_KEYS = [
   ...AUTH_ENV_KEYS,
-  "FX_E2E_GATEWAY_CHAT_URL",
-  "FX_E2E_GATEWAY_MODELS_URL",
-  "FX_E2E_GATEWAY_CREDITS_URL",
-  "FX_E2E_UPGRADE_BASE_URL",
-  "FX_PERMISSION_MODE",
+  "PF_E2E_GATEWAY_CHAT_URL",
+  "PF_E2E_GATEWAY_MODELS_URL",
+  "PF_E2E_GATEWAY_CREDITS_URL",
+  "PF_E2E_UPGRADE_BASE_URL",
+  "PF_PERMISSION_MODE",
 ] as const;
 const MIRRORED_ENV_KEYS = [
-  "FX_GATEWAY_BASE_URL",
-  "FX_GATEWAY_CHAT_URL",
-  "FX_MAX_AGENT_STEPS",
-  "FX_MODEL",
+  "PF_GATEWAY_BASE_URL",
+  "PF_GATEWAY_CHAT_URL",
+  "PF_MAX_AGENT_STEPS",
+  "PF_MODEL",
 ] as const;
 
 export function canonicalSubagentIdForStore(childId: string): string {
@@ -492,7 +492,7 @@ export function startDynamicFakeGateway(
 }
 
 // Serves a fake update channel whose "new" artifact is a wrapper script that
-// logs its argv to argvLogPath and execs the real FX_BIN, so upgrade relaunch
+// logs its argv to argvLogPath and execs the real PF_BIN, so upgrade relaunch
 // tests can drive the handoff without shipping a second binary.
 export function startUpgradeServer(
   root: string,
@@ -502,8 +502,8 @@ export function startUpgradeServer(
   } = {},
 ): { baseUrl: string; stop: () => void } {
   const artifactDir = join(root, "release-artifact");
-  const wrapperPath = join(artifactDir, "fx");
-  const archivePath = join(root, "fx.tar.gz");
+  const wrapperPath = join(artifactDir, "pf");
+  const archivePath = join(root, "pf.tar.gz");
   mkdirSync(artifactDir);
   const script = `#!/bin/sh
 {
@@ -513,19 +513,19 @@ export function startUpgradeServer(
   done
   printf '\\n'
 } >> ${shellQuote(argvLogPath)}
-exec ${shellQuote(FX_BIN)} "$@"
+exec ${shellQuote(PF_BIN)} "$@"
 `;
   writeFileSync(wrapperPath, script);
   chmodSync(wrapperPath, 0o755);
-  const tar = Bun.spawnSync(["tar", "-czf", archivePath, "-C", artifactDir, "fx"]);
+  const tar = Bun.spawnSync(["tar", "-czf", archivePath, "-C", artifactDir, "pf"]);
   if (tar.exitCode !== 0) throw new Error(tar.stderr.toString());
 
   const archive = readFileSync(archivePath);
   const checksum = createHash("sha256").update(archive).digest("hex");
   const platform = `${process.platform === "darwin" ? "macos" : "linux"}-${process.arch === "arm64" ? "aarch64" : "x86_64"}`;
   const revision = options.revision ?? "abcdef0123456789abcdef0123456789abcdef01";
-  const stableArchiveRoute = `/v9.9.9/fx-${platform}.tar.gz`;
-  const devArchiveRoute = `/dev/${revision}/fx-${platform}.tar.gz`;
+  const stableArchiveRoute = `/v9.9.9/pf-${platform}.tar.gz`;
+  const devArchiveRoute = `/dev/${revision}/pf-${platform}.tar.gz`;
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -576,7 +576,7 @@ export class TmuxSession {
     socketName?: string;
   }): Promise<TmuxSession> {
     const {
-      cmd = FX_BIN,
+      cmd = PF_BIN,
       cwd = REPO_ROOT,
       env: requestedEnv = {},
       width = 120,
@@ -600,9 +600,9 @@ export class TmuxSession {
     }
 
     const sequence = ++sessionCounter;
-    const name = `fx-test-${process.pid}-${sequence}`;
+    const name = `pf-test-${process.pid}-${sequence}`;
     const resolvedSocketName = socketName ?? (isolated
-      ? `fx-e2e-${process.pid}-${sequence}-${Date.now()}`
+      ? `pf-e2e-${process.pid}-${sequence}-${Date.now()}`
       : undefined);
     const startGate = `${name}-start`;
     const exitStatusPath = join(tmpdir(), `${name}.exit-status`);
@@ -633,9 +633,9 @@ export class TmuxSession {
       value === undefined ? [] : [shellQuote(`${key}=${value}`)]
     );
     const defaultArgs = [
-      ["FX_DISABLE_KEYCHAIN", "1"],
-      ["FX_SKIP_ONBOARDING", "1"],
-      ["FX_SOUND", "0"],
+      ["PF_DISABLE_KEYCHAIN", "1"],
+      ["PF_SKIP_ONBOARDING", "1"],
+      ["PF_SOUND", "0"],
     ].flatMap(([key, value]) =>
       Object.prototype.hasOwnProperty.call(env, key) ? [] : [shellQuote(`${key}=${value}`)]
     );
@@ -656,9 +656,9 @@ export class TmuxSession {
     );
     const processEnv = {
       ...process.env,
-      FX_DISABLE_KEYCHAIN: "1",
-      FX_SKIP_ONBOARDING: "1",
-      FX_SOUND: process.env.FX_SOUND ?? "0",
+      PF_DISABLE_KEYCHAIN: "1",
+      PF_SKIP_ONBOARDING: "1",
+      PF_SOUND: process.env.PF_SOUND ?? "0",
     };
     for (const key of DEFAULT_UNSET_ENV_KEYS) delete processEnv[key];
 
@@ -1010,7 +1010,7 @@ export class TmuxSession {
   }
 
   /**
-   * Complete pane history including the ANSI sequences emitted by fx.
+   * Complete pane history including the ANSI sequences emitted by pf.
    * Keep this separate from the viewport capture so transcript-order tests
    * inspect all committed output rather than only the visible rows.
    */
@@ -1032,7 +1032,7 @@ export class TmuxSession {
 
   /**
    * Current pane title, which is what a terminal renders as the tab label.
-   * fx sets it through OSC 2, so this reads back what the user would see.
+   * pf sets it through OSC 2, so this reads back what the user would see.
    */
   async paneTitle(): Promise<string> {
     try {
@@ -1050,7 +1050,7 @@ export class TmuxSession {
   }
 
   /**
-   * Resize the tmux window. Delivers a real SIGWINCH to fx, exercising the
+   * Resize the tmux window. Delivers a real SIGWINCH to pf, exercising the
    * resize pipeline end-to-end. Default post-resize sleep covers the 100 ms
    * debounce in src/main.zig.
    */

@@ -16,7 +16,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { FX_BIN, runFx } from "../evals/eval-helpers";
+import { PF_BIN, runPf } from "../evals/eval-helpers";
 import {
   startLegacyHttpSseFixture,
   startLegacyStreamableHttpFixture,
@@ -37,13 +37,13 @@ const ACCESS_REFRESHED = "mcp-access-refreshed-secret";
 const REFRESH_INITIAL = "mcp-refresh-initial-secret";
 const REFRESH_ROTATED = "mcp-refresh-rotated-secret";
 const REPO_ROOT = realpathSync(join(import.meta.dirname, "..", ".."));
-const MCP_KEYCHAIN_SERVICE = "FX_MCP_OAUTH_CREDENTIALS_V1";
-const FX_SLACK_CLIENT_ID = "12364000946.12017137861236";
-const FX_SLACK_SCOPES = [
+const MCP_KEYCHAIN_SERVICE = "PF_MCP_OAUTH_CREDENTIALS_V1";
+const PF_SLACK_CLIENT_ID = "12364000946.12017137861236";
+const PF_SLACK_SCOPES = [
   "channels:history", "channels:read", "channels:write", "chat:write", "emoji:read",
   "files:write", "search:read.public", "search:read.users", "users:read",
 ];
-const inheritedKeychainDisable = process.env.FX_DISABLE_KEYCHAIN;
+const inheritedKeychainDisable = process.env.PF_DISABLE_KEYCHAIN;
 const MCP_KEYCHAIN_PROBE_SCRIPT = `
 ObjC.import("Security");
 ObjC.import("Foundation");
@@ -117,14 +117,14 @@ function runMcpKeychainProbe(
 }
 
 beforeAll(() => {
-  process.env.FX_DISABLE_KEYCHAIN = "1";
+  process.env.PF_DISABLE_KEYCHAIN = "1";
 });
 
 afterAll(() => {
   if (inheritedKeychainDisable === undefined) {
-    delete process.env.FX_DISABLE_KEYCHAIN;
+    delete process.env.PF_DISABLE_KEYCHAIN;
   } else {
-    process.env.FX_DISABLE_KEYCHAIN = inheritedKeychainDisable;
+    process.env.PF_DISABLE_KEYCHAIN = inheritedKeychainDisable;
   }
 });
 
@@ -539,7 +539,7 @@ function startAuthFixture(
           });
         }
         tokenExchanges += 1;
-        if (form.get("client_id") === FX_SLACK_CLIENT_ID) {
+        if (form.get("client_id") === PF_SLACK_CLIENT_ID) {
           expect(form.get("redirect_uri")).toBe("https://fx.sh/api/slack/oauth/callback");
         }
         if (options.rejectCodeExchange) return Response.json({ error: "invalid_grant" }, { status: 400 });
@@ -615,9 +615,9 @@ function createRoot(
   transport: "http" | "sse" = "http",
   serverUrl = activeAuth.url,
   followAuthorization = true,
-  clientId = "fx-mcp-auth-test",
+  clientId = "pf-mcp-auth-test",
 ) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "fx-mcp-auth-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pf-mcp-auth-")));
   cleanupRoot = root;
   const home = join(root, "home");
   const workspace = join(root, "workspace");
@@ -626,21 +626,21 @@ function createRoot(
   const openLog = join(root, "open.log");
   const callbackLog = join(root, "callback.html");
   const stderr = join(root, "stderr.log");
-  mkdirSync(join(home, ".fx"), { recursive: true, mode: 0o700 });
+  mkdirSync(join(home, ".pf"), { recursive: true, mode: 0o700 });
   mkdirSync(workspace, { recursive: true });
   mkdirSync(bin, { recursive: true });
   writeFileSync(
-    join(home, ".fx", "settings.json"),
+    join(home, ".pf", "settings.json"),
     JSON.stringify({}),
   );
   writeFileSync(
-    join(home, ".fx", "mcp.json"),
+    join(home, ".pf", "mcp.json"),
     JSON.stringify({
       mcp: {
         fixture: {
           type: transport,
           url: serverUrl,
-          environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+          environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
           ...(configureOauth
             ? {
                 oauth: {
@@ -669,7 +669,7 @@ function createRoot(
 }
 
 function moveAuthFixtureToWorkspace(root: ReturnType<typeof createRoot>): void {
-  const profilePath = join(root.home, ".fx", "mcp.json");
+  const profilePath = join(root.home, ".pf", "mcp.json");
   const profile = JSON.parse(readFileSync(profilePath, "utf8"));
   writeFileSync(
     join(root.workspace, ".mcp.json"),
@@ -684,12 +684,12 @@ function baseEnv(root: ReturnType<typeof createRoot>) {
     PATH: `${root.bin}${delimiter}${process.env.PATH ?? ""}`,
     AI_GATEWAY_API_KEY: "fake-mcp-auth-key",
     VERCEL_OIDC_TOKEN: undefined,
-    FX_AUTO_UPGRADE: "0",
-    FX_MCP_PROTOCOL_VERSION: "2026-07-28",
-    FX_PERMISSION_MODE: "auto",
-    FX_MODEL: MODEL,
-    FX_TRACE_LOG: root.trace,
-    FX_TRACE_SCOPES: "mcp,core",
+    PF_AUTO_UPGRADE: "0",
+    PF_MCP_PROTOCOL_VERSION: "2026-07-28",
+    PF_PERMISSION_MODE: "auto",
+    PF_MODEL: MODEL,
+    PF_TRACE_LOG: root.trace,
+    PF_TRACE_SCOPES: "mcp,core",
   };
 }
 
@@ -700,7 +700,7 @@ function seedExpiredCredentials(
 ) {
   const endpoint = activeAuth.url;
   const origin = new URL(endpoint).origin;
-  const directory = join(root.home, ".fx", "mcp-credentials");
+  const directory = join(root.home, ".pf", "mcp-credentials");
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const path = join(directory, "credentials.json");
   writeFileSync(
@@ -712,7 +712,7 @@ function seedExpiredCredentials(
         endpoint,
         resource: new URL(activeAuth.resource).href,
         issuer: origin,
-        client_id: "fx-mcp-auth-test",
+        client_id: "pf-mcp-auth-test",
         client_secret: null,
         access_token: ACCESS_INITIAL,
         refresh_token: REFRESH_INITIAL,
@@ -817,15 +817,15 @@ function toolResultText(
 function preserveAuthFailure(
   label: string,
   root: ReturnType<typeof createRoot>,
-  result: Awaited<ReturnType<typeof runFx>>,
+  result: Awaited<ReturnType<typeof runPf>>,
   activeAuth: AuthFixture,
   activeUpstream: ReturnType<typeof startModernMcpHttpFixture>,
   activeGateway: ReturnType<typeof startFakeGateway>,
 ): void {
   if (result.code === 0) return;
   cleanupRoot = null;
-  writeFileSync(join(root.root, "fx-stdout.log"), result.stdout);
-  writeFileSync(join(root.root, "fx-stderr.log"), result.stderr);
+  writeFileSync(join(root.root, "pf-stdout.log"), result.stdout);
+  writeFileSync(join(root.root, "pf-stderr.log"), result.stderr);
   writeFileSync(
     join(root.root, "failure.json"),
     JSON.stringify({
@@ -848,7 +848,7 @@ function preserveAuthFailure(
       gatewayRequests: activeGateway.requests.map((request) => request.body),
     }, null, 2),
   );
-  throw new Error(`fx ${label} failed; retained artifacts: ${root.root}`);
+  throw new Error(`pf ${label} failed; retained artifacts: ${root.root}`);
 }
 
 async function preserveAuthTuiFailure(
@@ -874,7 +874,7 @@ async function preserveAuthTuiFailure(
       gatewayRequests: gateway?.requests.map((request) => request.body) ?? [],
     }, null, 2),
   );
-  throw new Error(`fx ${label} failed; retained artifacts: ${root.root}`);
+  throw new Error(`pf ${label} failed; retained artifacts: ${root.root}`);
 }
 
 async function authorizePersonalFixture(activeAuth: AuthFixture, start: URL) {
@@ -893,24 +893,24 @@ describe("MCP remote authentication lifecycle", () => {
     test(`personal Slack HTTPS bridge completes after persistence: ${scenario}`, async () => {
       const succeeds = ["success", "reauth", "no-scopes", "extra-scopes"].includes(scenario);
       upstream = startModernMcpHttpFixture("json");
-      auth = startAuthFixture(upstream.url, { slackBridgeClientId: FX_SLACK_CLIENT_ID, rejectCodeExchange: scenario === "exchange", rotateAuthorizationToken: scenario === "reauth" });
-      const root = createRoot(auth, true, "http", auth.url, false, FX_SLACK_CLIENT_ID);
+      auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID, rejectCodeExchange: scenario === "exchange", rotateAuthorizationToken: scenario === "reauth" });
+      const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
       if (scenario === "reauth") {
         const path = seedExpiredCredentials(root, auth, Date.now() + 3_600_000);
         const saved = JSON.parse(readFileSync(path, "utf8"));
-        saved.credentials[0].client_id = FX_SLACK_CLIENT_ID;
+        saved.credentials[0].client_id = PF_SLACK_CLIENT_ID;
         saved.credentials[0].scope = "tools.read offline_access im:history search:read.private";
         writeFileSync(path, JSON.stringify(saved), { mode: 0o600 });
       }
       const bridgeOrigin = new URL(auth.url).origin;
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
       profile.mcp.fixture.oauth.callback_port = Number(new URL(auth.url).port);
       if (scenario === "no-scopes") delete profile.mcp.fixture.oauth.scopes;
       if (scenario === "extra-scopes") profile.mcp.fixture.oauth.scopes = ["tools.read", "im:history", "search:read.private"];
       writeFileSync(profilePath, JSON.stringify(profile));
-      const env = { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: bridgeOrigin, AI_GATEWAY_API_KEY: undefined };
-      const authentication = runFx(["mcp", "auth", "fixture"], { cwd: root.workspace, env, timeoutMs: 15_000 });
+      const env = { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: bridgeOrigin, AI_GATEWAY_API_KEY: undefined };
+      const authentication = runPf(["mcp", "auth", "fixture"], { cwd: root.workspace, env, timeoutMs: 15_000 });
       expect(await waitForFileText(root.openLog, "/api/slack/auth?", 5_000)).toBe(true);
       const start = new URL(readFileSync(root.openLog, "utf8").trim());
       expect(start.origin).toBe(bridgeOrigin);
@@ -926,7 +926,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(auth.tokenExchanges).toBe(0);
       if (scenario === "denied") { body.delete("code"); body.set("error", "access_denied"); }
       if (scenario === "issuer") body.set("iss", "https://wrong.example");
-      const credentialDir = join(root.home, ".fx", "mcp-credentials");
+      const credentialDir = join(root.home, ".pf", "mcp-credentials");
       const credentialPath = join(credentialDir, "credentials.json");
       if (scenario === "save") writeFileSync(credentialDir, "blocked persistence", { mode: 0o600 });
       const response = await postCallback(body);
@@ -943,7 +943,7 @@ describe("MCP remote authentication lifecycle", () => {
         expect(result.stdout + result.stderr + JSON.stringify([...response.headers])).not.toContain(secret);
       }
       expect(JSON.stringify([...response.headers])).not.toContain(body.get("state")!);
-      expect(existsSync(join(root.home, ".fx", "slack", "installation.json"))).toBe(false);
+      expect(existsSync(join(root.home, ".pf", "slack", "installation.json"))).toBe(false);
       if (succeeds) {
         expect(result.code).toBe(0);
         expect(result.stderr).toBe("");
@@ -964,49 +964,49 @@ describe("MCP remote authentication lifecycle", () => {
 
   test("personal Slack rejects an endpoint-scoped resource before opening a browser", async () => {
     upstream = startModernMcpHttpFixture("json");
-    auth = startAuthFixture(upstream.url, { slackBridgeClientId: FX_SLACK_CLIENT_ID, resourceAtOrigin: false });
-    const root = createRoot(auth, true, "http", auth.url, false, FX_SLACK_CLIENT_ID);
-    const result = await runFx(["mcp", "auth", "fixture"], {
-      cwd: root.workspace, env: { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
+    auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID, resourceAtOrigin: false });
+    const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
+    const result = await runPf(["mcp", "auth", "fixture"], {
+      cwd: root.workspace, env: { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
     });
     expect(result.code).not.toBe(0);
     expect(result.stderr).toContain("InvalidSlackAuthorizationResource");
     expect(existsSync(root.openLog)).toBe(false);
     expect(auth.authorizationRequests).toBe(0);
     expect(auth.tokenExchanges).toBe(0);
-    expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json"))).toBe(false);
+    expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json"))).toBe(false);
   }, 20_000);
 
   for (const scenario of ["read-only", "empty", "unrelated-extra", "reauth"] as const) {
     test(`personal Slack rejects scope expansion without changing credentials: ${scenario}`, async () => {
       upstream = startModernMcpHttpFixture("json");
-      auth = startAuthFixture(upstream.url, { slackBridgeClientId: FX_SLACK_CLIENT_ID, slackBridgeScopes: FX_SLACK_SCOPES });
-      const root = createRoot(auth, true, "http", auth.url, false, FX_SLACK_CLIENT_ID);
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID, slackBridgeScopes: PF_SLACK_SCOPES });
+      const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
       profile.mcp.fixture.oauth.scopes = scenario === "empty" ? [] :
         scenario === "unrelated-extra" ? ["channels:read", "im:history"] : ["channels:read"];
       writeFileSync(profilePath, JSON.stringify(profile));
-      const env = { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: new URL(auth.url).origin, AI_GATEWAY_API_KEY: undefined };
+      const env = { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: new URL(auth.url).origin, AI_GATEWAY_API_KEY: undefined };
       if (scenario === "empty") {
-        const added = await runFx(["mcp", "add", "auxiliary", "echo"], { cwd: root.workspace, env });
+        const added = await runPf(["mcp", "add", "auxiliary", "echo"], { cwd: root.workspace, env });
         expect(added.code).toBe(0);
         expect(JSON.parse(readFileSync(profilePath, "utf8")).mcp.fixture.oauth.scopes).toEqual([]);
       }
       const originalProfile = readFileSync(profilePath, "utf8");
-      const credentialPath = join(root.home, ".fx", "mcp-credentials", "credentials.json");
+      const credentialPath = join(root.home, ".pf", "mcp-credentials", "credentials.json");
       let originalCredentials: string | undefined;
       if (scenario === "reauth") {
         seedExpiredCredentials(root, auth, Date.now() + 3_600_000);
         const saved = JSON.parse(readFileSync(credentialPath, "utf8"));
-        saved.credentials[0].client_id = FX_SLACK_CLIENT_ID;
-        saved.credentials[0].scope = FX_SLACK_SCOPES.join(" ");
+        saved.credentials[0].client_id = PF_SLACK_CLIENT_ID;
+        saved.credentials[0].scope = PF_SLACK_SCOPES.join(" ");
         originalCredentials = JSON.stringify(saved);
         writeFileSync(credentialPath, originalCredentials, { mode: 0o600 });
       }
-      const result = await runFx(["mcp", "auth", "fixture"], { cwd: root.workspace, env, timeoutMs: 15_000 });
+      const result = await runPf(["mcp", "auth", "fixture"], { cwd: root.workspace, env, timeoutMs: 15_000 });
       expect(result.code).not.toBe(0);
-      expect(result.stderr).toContain("Your configured Slack scopes request fewer permissions than fx requires");
+      expect(result.stderr).toContain("Your configured Slack scopes request fewer permissions than pf requires");
       expect(result.stderr).toContain("Authorization was not started");
       expect(result.stderr).toContain("Remove the local scopes override only if you want to authorize the full shared scope set");
       expect(result.stdout).not.toContain("/api/slack/auth?");
@@ -1026,25 +1026,25 @@ describe("MCP remote authentication lifecycle", () => {
   for (const scopes of [undefined, [], [""], ["tools.read im:history"], ["bad<scope"], ["x".repeat(257)]]) {
     test(`personal Slack rejects invalid shared scopes: ${JSON.stringify(scopes)}`, async () => {
       upstream = startModernMcpHttpFixture("json");
-      auth = startAuthFixture(upstream.url, { slackBridgeClientId: FX_SLACK_CLIENT_ID, slackBridgeScopes: scopes });
-      const root = createRoot(auth, true, "http", auth.url, false, FX_SLACK_CLIENT_ID);
-      const result = await runFx(["mcp", "auth", "fixture"], {
-        cwd: root.workspace, env: { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
+      auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID, slackBridgeScopes: scopes });
+      const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
+      const result = await runPf(["mcp", "auth", "fixture"], {
+        cwd: root.workspace, env: { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
       });
       expect(result.code).not.toBe(0);
       expect(result.stderr).toContain("InvalidSlackBridgeConfiguration");
       expect(existsSync(root.openLog)).toBe(false);
       expect(auth.tokenExchanges).toBe(0);
-      expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json"))).toBe(false);
+      expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json"))).toBe(false);
     }, 20_000);
   }
 
   for (const status of [200, 503]) test(`another Slack client keeps its direct callback when fx.sh returns ${status}`, async () => {
     upstream = startModernMcpHttpFixture("json");
-    auth = startAuthFixture(upstream.url, { slackBridgeClientId: FX_SLACK_CLIENT_ID, slackBridgeStatus: status === 503 ? status : undefined });
+    auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID, slackBridgeStatus: status === 503 ? status : undefined });
     const root = createRoot(auth);
-    const result = await runFx(["mcp", "auth", "fixture"], {
-      cwd: root.workspace, env: { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
+    const result = await runPf(["mcp", "auth", "fixture"], {
+      cwd: root.workspace, env: { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
     });
     expect(result.code).toBe(0);
     expect(result.stderr).toBe("");
@@ -1059,12 +1059,12 @@ describe("MCP remote authentication lifecycle", () => {
   for (const scenario of ["unavailable", "wrong-client"] as const) test(`personal Slack fails closed when fx.sh metadata is ${scenario}`, async () => {
     upstream = startModernMcpHttpFixture("json");
     auth = startAuthFixture(upstream.url, {
-      slackBridgeClientId: scenario === "wrong-client" ? "other-slack-client" : FX_SLACK_CLIENT_ID,
+      slackBridgeClientId: scenario === "wrong-client" ? "other-slack-client" : PF_SLACK_CLIENT_ID,
       slackBridgeStatus: scenario === "unavailable" ? 503 : undefined,
     });
-    const root = createRoot(auth, true, "http", auth.url, false, FX_SLACK_CLIENT_ID);
-    const result = await runFx(["mcp", "auth", "fixture"], {
-      cwd: root.workspace, env: { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
+    const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
+    const result = await runPf(["mcp", "auth", "fixture"], {
+      cwd: root.workspace, env: { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: new URL(auth.url).origin }, timeoutMs: 15_000,
     });
     expect(result.code).not.toBe(0);
     expect(result.stderr).toContain(scenario === "unavailable" ? "SlackBridgeUnavailable" : "InvalidSlackBridgeConfiguration");
@@ -1072,14 +1072,14 @@ describe("MCP remote authentication lifecycle", () => {
     expect(existsSync(root.openLog)).toBe(false);
     expect(auth.authorizationRequests).toBe(0);
     expect(auth.tokenExchanges).toBe(0);
-    expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json"))).toBe(false);
+    expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json"))).toBe(false);
   }, 20_000);
 
   test.skipIf(!tmuxAvailable())("in-session personal Slack HTTPS auth reconnects after saving", async () => {
     upstream = startModernMcpHttpFixture("json");
-    auth = startAuthFixture(upstream.url, { slackBridgeClientId: FX_SLACK_CLIENT_ID, challengeScope: "im:history", slackBridgeScopes: ["tools.read", "tools.approved"] });
-    const root = createRoot(auth, true, "http", auth.url, false, FX_SLACK_CLIENT_ID);
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID, challengeScope: "im:history", slackBridgeScopes: ["tools.read", "tools.approved"] });
+    const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
     delete profile.mcp.fixture.oauth.scopes;
     writeFileSync(profilePath, JSON.stringify(profile));
@@ -1087,7 +1087,7 @@ describe("MCP remote authentication lifecycle", () => {
     gateway = startFakeGateway([], { models: [{ id: MODEL, type: "language", tags: ["tool-use"] }] });
     tui = await TmuxSession.create({
       isolated: true, cwd: root.workspace, width: 120, height: 34,
-      env: { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: bridgeOrigin, FX_GATEWAY_BASE_URL: gateway.baseUrl, FX_GATEWAY_CHAT_URL: gateway.chatUrl },
+      env: { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: bridgeOrigin, PF_GATEWAY_BASE_URL: gateway.baseUrl, PF_GATEWAY_CHAT_URL: gateway.chatUrl },
     });
     await tui.waitForComposer(15_000);
     await tui.sendText("/mcp auth fixture --open");
@@ -1100,7 +1100,7 @@ describe("MCP remote authentication lifecycle", () => {
     });
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(`${bridgeOrigin}/api/slack/auth/complete?result=success`);
-    expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json"))).toBe(true);
+    expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json"))).toBe(true);
     const pane = await tui.waitForText("Authenticated MCP server 'fixture'.", 15_000);
     expect(pane).not.toContain(ACCESS_INITIAL);
     expect(tui.paneStatus().dead).toBe(false);
@@ -1116,12 +1116,12 @@ describe("MCP remote authentication lifecycle", () => {
 
   test.skipIf(!tmuxAvailable())("in-session personal Slack rejects narrower scopes before opening a browser", async () => {
     upstream = startModernMcpHttpFixture("json");
-    auth = startAuthFixture(upstream.url, { slackBridgeClientId: FX_SLACK_CLIENT_ID, slackBridgeScopes: ["tools.read", "tools.write"] });
-    const root = createRoot(auth, true, "http", auth.url, false, FX_SLACK_CLIENT_ID);
+    auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID, slackBridgeScopes: ["tools.read", "tools.write"] });
+    const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
     gateway = startFakeGateway([], { models: [{ id: MODEL, type: "language", tags: ["tool-use"] }] });
     tui = await TmuxSession.create({
       isolated: true, cwd: root.workspace, width: 120, height: 34,
-      env: { ...baseEnv(root), FX_E2E_SLACK_ORIGIN: new URL(auth.url).origin, FX_GATEWAY_BASE_URL: gateway.baseUrl, FX_GATEWAY_CHAT_URL: gateway.chatUrl },
+      env: { ...baseEnv(root), PF_E2E_SLACK_ORIGIN: new URL(auth.url).origin, PF_GATEWAY_BASE_URL: gateway.baseUrl, PF_GATEWAY_CHAT_URL: gateway.chatUrl },
     });
     await tui.waitForComposer(15_000);
     await tui.sendText("/mcp auth fixture --open");
@@ -1130,7 +1130,7 @@ describe("MCP remote authentication lifecycle", () => {
     expect(existsSync(root.openLog)).toBe(false);
     expect(auth.authorizationRequests).toBe(0);
     expect(auth.tokenExchanges).toBe(0);
-    expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json"))).toBe(false);
+    expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json"))).toBe(false);
     expect(tui.paneStatus().dead).toBe(false);
     await tui.waitForComposer(5_000);
   }, 40_000);
@@ -1143,9 +1143,9 @@ describe("MCP remote authentication lifecycle", () => {
       writeFileSync(join(root.bin, name),
         `#!/bin/sh\nprintf '%s\\n' "$1" > '${root.openLog}'\nexit 1\n`);
     }
-    const authentication = Bun.spawn([FX_BIN, "mcp", "auth", "fixture"], {
+    const authentication = Bun.spawn([PF_BIN, "mcp", "auth", "fixture"], {
       cwd: root.workspace,
-      env: { ...process.env, ...baseEnv(root), AI_GATEWAY_API_KEY: undefined, FX_NO_OPEN_BROWSER: undefined },
+      env: { ...process.env, ...baseEnv(root), AI_GATEWAY_API_KEY: undefined, PF_NO_OPEN_BROWSER: undefined },
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -1183,7 +1183,7 @@ describe("MCP remote authentication lifecycle", () => {
     const response = await callback;
     expect(response?.status).toBe(200);
     expect(auth.tokenExchanges).toBe(1);
-    expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json"))).toBe(true);
+    expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json"))).toBe(true);
   }, 15_000);
 
   test("top-level MCP auth and logout complete without TUI or Gateway", async () => {
@@ -1195,7 +1195,7 @@ describe("MCP remote authentication lifecycle", () => {
       AI_GATEWAY_API_KEY: undefined,
     };
 
-    const authenticated = await runFx(["mcp", "auth", "fixture"], {
+    const authenticated = await runPf(["mcp", "auth", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1223,18 +1223,18 @@ describe("MCP remote authentication lifecycle", () => {
     expect(callbackPage).toContain("prefers-color-scheme:dark");
     const credentialPath = join(
       root.home,
-      ".fx",
+      ".pf",
       "mcp-credentials",
       "credentials.json",
     );
     expect(existsSync(credentialPath)).toBe(true);
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
     delete profile.mcp.fixture.oauth;
     writeFileSync(profilePath, JSON.stringify(profile));
 
     const requestCountBeforeList = auth.requests.length;
-    const listed = await runFx(["mcp", "list"], {
+    const listed = await runPf(["mcp", "list"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1244,7 +1244,7 @@ describe("MCP remote authentication lifecycle", () => {
     expect(listed.stdout).toMatch(/fixture[\s\S]{0,240}auth=authenticated/);
     expect(auth.requests).toHaveLength(requestCountBeforeList);
 
-    const loggedOut = await runFx(["mcp", "logout", "fixture"], {
+    const loggedOut = await runPf(["mcp", "logout", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1261,7 +1261,7 @@ describe("MCP remote authentication lifecycle", () => {
     auth = startAuthFixture(upstream.url);
     const root = createRoot(auth, true, "http", auth.url, false);
     const callbackPort = unusedCallbackPort();
-    const profilePath = join(root.home, ".fx", "mcp.json");
+    const profilePath = join(root.home, ".pf", "mcp.json");
     const profile = JSON.parse(readFileSync(profilePath, "utf8"));
     profile.mcp.fixture.oauth.callback_port = callbackPort;
     writeFileSync(profilePath, JSON.stringify(profile));
@@ -1273,7 +1273,7 @@ describe("MCP remote authentication lifecycle", () => {
     const attempts = 12;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       rmSync(root.openLog, { force: true });
-      const authentication = runFx(["mcp", "auth", "fixture"], {
+      const authentication = runPf(["mcp", "auth", "fixture"], {
         cwd: root.workspace,
         env,
         timeoutMs: 20_000,
@@ -1317,7 +1317,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(callbackBody).toContain("Authorization complete");
       expect(authenticated.stdout).toContain("Authenticated MCP server 'fixture'");
 
-      const loggedOut = await runFx(["mcp", "logout", "fixture"], {
+      const loggedOut = await runPf(["mcp", "logout", "fixture"], {
         cwd: root.workspace,
         env,
         timeoutMs: 20_000,
@@ -1340,7 +1340,7 @@ describe("MCP remote authentication lifecycle", () => {
       AI_GATEWAY_API_KEY: undefined,
     };
 
-    const authenticated = await runFx(["mcp", "auth", "fixture"], {
+    const authenticated = await runPf(["mcp", "auth", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1348,7 +1348,7 @@ describe("MCP remote authentication lifecycle", () => {
     expect(authenticated.code).toBe(0);
     expect(authenticated.stdout).toContain("Authenticated MCP server 'fixture'");
 
-    const listed = await runFx(["mcp", "list", "--connect"], {
+    const listed = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1383,7 +1383,7 @@ describe("MCP remote authentication lifecycle", () => {
       AI_GATEWAY_API_KEY: undefined,
     };
 
-    const authenticated = await runFx(["mcp", "auth", "fixture"], {
+    const authenticated = await runPf(["mcp", "auth", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1391,7 +1391,7 @@ describe("MCP remote authentication lifecycle", () => {
     expect(authenticated.code).toBe(0);
     expect(authenticated.stdout).toContain("Authenticated MCP server 'fixture'");
 
-    const listed = await runFx(["mcp", "list", "--connect"], {
+    const listed = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1427,7 +1427,7 @@ describe("MCP remote authentication lifecycle", () => {
       AI_GATEWAY_API_KEY: undefined,
     };
 
-    const authenticated = await runFx(["mcp", "auth", "fixture"], {
+    const authenticated = await runPf(["mcp", "auth", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1435,7 +1435,7 @@ describe("MCP remote authentication lifecycle", () => {
     expect(authenticated.code).toBe(0);
     expect(authenticated.stdout).toContain("Authenticated MCP server 'fixture'");
 
-    const listed = await runFx(["mcp", "list", "--connect"], {
+    const listed = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1469,7 +1469,7 @@ describe("MCP remote authentication lifecycle", () => {
       AI_GATEWAY_API_KEY: undefined,
     };
 
-    const authenticated = await runFx(["mcp", "auth", "fixture"], {
+    const authenticated = await runPf(["mcp", "auth", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1477,7 +1477,7 @@ describe("MCP remote authentication lifecycle", () => {
     expect(authenticated.code).toBe(0);
     expect(authenticated.stdout).toContain("Authenticated MCP server 'fixture'");
 
-    const listed = await runFx(["mcp", "list", "--connect"], {
+    const listed = await runPf(["mcp", "list", "--connect"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -1506,10 +1506,10 @@ describe("MCP remote authentication lifecycle", () => {
       const env = {
         ...baseEnv(root),
         AI_GATEWAY_API_KEY: undefined,
-        FX_DISABLE_KEYCHAIN: undefined,
+        PF_DISABLE_KEYCHAIN: undefined,
       };
 
-      const authenticated = await runFx(["mcp", "auth", "fixture"], {
+      const authenticated = await runPf(["mcp", "auth", "fixture"], {
         cwd: root.workspace,
         env,
         timeoutMs: 20_000,
@@ -1520,14 +1520,14 @@ describe("MCP remote authentication lifecycle", () => {
       expect(auth.tokenExchanges).toBe(1);
       const credentialPath = join(
         root.home,
-        ".fx",
+        ".pf",
         "mcp-credentials",
         "credentials.json",
       );
       expect(existsSync(credentialPath)).toBe(true);
       expect(statSync(credentialPath).mode & 0o777).toBe(0o600);
 
-      const loggedOut = await runFx(["mcp", "logout", "fixture"], {
+      const loggedOut = await runPf(["mcp", "logout", "fixture"], {
         cwd: root.workspace,
         env,
         timeoutMs: 20_000,
@@ -1546,17 +1546,17 @@ describe("MCP remote authentication lifecycle", () => {
       const canary = startModernMcpHttpFixture("json");
       auth = startAuthFixture(upstream.url, { omitScopes: true });
       const root = createRoot(auth);
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
       delete profile.mcp.fixture.oauth.scopes;
       profile.mcp.canary = {
-        type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+        type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
         url: canary.url,
         startup_timeout_ms: 5_000,
         operation_timeout_ms: 5_000,
       };
       writeFileSync(profilePath, JSON.stringify(profile));
-      const credentialDir = join(root.home, ".fx", "mcp-credentials");
+      const credentialDir = join(root.home, ".pf", "mcp-credentials");
       mkdirSync(credentialDir, { recursive: true, mode: 0o700 });
       const credentialPath = join(credentialDir, "credentials.json");
       writeFileSync(
@@ -1572,8 +1572,8 @@ describe("MCP remote authentication lifecycle", () => {
       try {
         const env = {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         };
         tui = await TmuxSession.create({
           isolated: true,
@@ -1642,14 +1642,14 @@ describe("MCP remote authentication lifecycle", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Read an authenticated resource template."],
       {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         timeoutMs: 25_000,
       },
@@ -1729,14 +1729,14 @@ describe("MCP remote authentication lifecycle", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Use authenticated MCP features after rotation."],
       {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         timeoutMs: 25_000,
       },
@@ -1818,15 +1818,15 @@ describe("MCP remote authentication lifecycle", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Check private MCP features after failed rotation."],
       {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-          FX_E2E_MCP_AUTH_AUTOMATE: "1",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_MCP_AUTH_AUTOMATE: "1",
         },
         timeoutMs: 25_000,
       },
@@ -1944,14 +1944,14 @@ describe("MCP remote authentication lifecycle", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Reuse public MCP state after auth rotation."],
       {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         timeoutMs: 30_000,
       },
@@ -2037,14 +2037,14 @@ describe("MCP remote authentication lifecycle", () => {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Read the same authenticated MCP resource twice."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 25_000,
         },
@@ -2113,14 +2113,14 @@ describe("MCP remote authentication lifecycle", () => {
     ], {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Refresh the active authenticated subscription."],
       {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         timeoutMs: 30_000,
       },
@@ -2169,15 +2169,15 @@ describe("MCP remote authentication lifecycle", () => {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Recover the subscription."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_E2E_MCP_AUTH_AUTOMATE: "1",
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_E2E_MCP_AUTH_AUTOMATE: "1",
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -2217,15 +2217,15 @@ describe("MCP remote authentication lifecycle", () => {
       models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
     });
 
-    const result = await runFx(
+    const result = await runPf(
       ["ask", "--json", "--auto", "--no-save", "Load the rotated private catalog."],
       {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_E2E_MCP_AUTH_AUTOMATE: "1",
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_E2E_MCP_AUTH_AUTOMATE: "1",
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         timeoutMs: 20_000,
       },
@@ -2284,14 +2284,14 @@ describe("MCP remote authentication lifecycle", () => {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Exercise the authenticated cache."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -2310,26 +2310,26 @@ describe("MCP remote authentication lifecycle", () => {
   }
 
   test(
-    "fx ask isolates failed-server authentication from healthy tool search",
+    "pf ask isolates failed-server authentication from healthy tool search",
     async () => {
       upstream = startModernMcpHttpFixture("json");
       auth = startAuthFixture(upstream.url);
       const root = createRoot(auth);
       writeFileSync(
-        join(root.home, ".fx", "mcp.json"),
+        join(root.home, ".pf", "mcp.json"),
         JSON.stringify({
           mcp: {
             linear: {
-              type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+              type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
               url: upstream.url,
               startup_timeout_ms: 5_000,
               operation_timeout_ms: 5_000,
             },
             slack: {
-              type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" },
+              type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" },
               url: auth.url,
               oauth: {
-                client_id: "fx-mcp-auth-test",
+                client_id: "pf-mcp-auth-test",
                 scopes: ["tools.read"],
               },
               startup_timeout_ms: 5_000,
@@ -2359,14 +2359,14 @@ describe("MCP remote authentication lifecycle", () => {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Exercise mixed MCP search."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -2396,7 +2396,7 @@ describe("MCP remote authentication lifecycle", () => {
   );
 
   for (const targeted of [false, true]) test(
-    `fx ask reports an actionable auth requirement for ${targeted ? "named" : "broad"} search without opening a browser`,
+    `pf ask reports an actionable auth requirement for ${targeted ? "named" : "broad"} search without opening a browser`,
     async () => {
       upstream = startModernMcpHttpFixture("json");
       auth = startAuthFixture(upstream.url);
@@ -2411,14 +2411,14 @@ describe("MCP remote authentication lifecycle", () => {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Find the protected MCP tool."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -2431,10 +2431,10 @@ describe("MCP remote authentication lifecycle", () => {
       ).toHaveLength(1);
       expect(gateway.requests[1]?.body).toContain("authentication_required");
       expect(gateway.requests[1]?.body).toContain(
-        "Run /mcp auth fixture --open in an interactive fx session.",
+        "Run /mcp auth fixture --open in an interactive pf session.",
       );
       expect(
-        existsSync(join(root.home, ".fx", "mcp-credentials")),
+        existsSync(join(root.home, ".pf", "mcp-credentials")),
       ).toBe(false);
     },
     30_000,
@@ -2446,7 +2446,7 @@ describe("MCP remote authentication lifecycle", () => {
       upstream = startModernMcpHttpFixture("json");
       auth = startAuthFixture(upstream.url);
       const root = createRoot(auth);
-      const account = `fx-mcp-auth-${process.pid}-${Date.now()}`;
+      const account = `pf-mcp-auth-${process.pid}-${Date.now()}`;
       mkdirSync(join(root.home, "Library"), { recursive: true });
       symlinkSync(
         join(homedir(), "Library", "Keychains"),
@@ -2463,19 +2463,19 @@ describe("MCP remote authentication lifecycle", () => {
       const keychainEnv = {
         ...baseEnv(root),
         USER: account,
-        FX_DISABLE_KEYCHAIN: undefined,
+        PF_DISABLE_KEYCHAIN: undefined,
       };
 
       try {
         gateway = startToolGateway();
-        const ask = await runFx(
+        const ask = await runPf(
           ["ask", "--json", "--auto", "--no-save", "Call the authenticated MCP fixture."],
           {
             cwd: root.workspace,
             env: {
               ...keychainEnv,
-              FX_GATEWAY_BASE_URL: gateway.baseUrl,
-              FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+              PF_GATEWAY_BASE_URL: gateway.baseUrl,
+              PF_GATEWAY_CHAT_URL: gateway.chatUrl,
             },
             timeoutMs: 20_000,
           },
@@ -2502,12 +2502,12 @@ describe("MCP remote authentication lifecycle", () => {
         expect(persisted.credentials[0].access_token).toBe(ACCESS_INITIAL);
         expect(persisted.credentials[0].refresh_token).toBe(REFRESH_INITIAL);
 
-        const profilePath = join(root.home, ".fx", "mcp.json");
+        const profilePath = join(root.home, ".pf", "mcp.json");
         const profile = JSON.parse(readFileSync(profilePath, "utf8"));
         delete profile.mcp.fixture.oauth;
         writeFileSync(profilePath, JSON.stringify(profile));
         const requestCountBeforeList = auth.requests.length;
-        const listed = await runFx(["mcp", "list"], {
+        const listed = await runPf(["mcp", "list"], {
           cwd: root.workspace,
           env: keychainEnv,
           timeoutMs: 20_000,
@@ -2528,8 +2528,8 @@ describe("MCP remote authentication lifecycle", () => {
           cwd: root.workspace,
           env: {
             ...keychainEnv,
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           width: 110,
           height: 34,
@@ -2578,8 +2578,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -2635,7 +2635,7 @@ describe("MCP remote authentication lifecycle", () => {
         expect(trace).not.toContain(secretMarker);
       }
       expect(
-        existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json")),
+        existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json")),
       ).toBe(false);
       expect(readFileSync(root.stderr, "utf8")).toBe("");
     },
@@ -2662,8 +2662,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 120,
         height: 34,
@@ -2713,7 +2713,7 @@ describe("MCP remote authentication lifecycle", () => {
       AI_GATEWAY_API_KEY: undefined,
     };
 
-    const authentication = await runFx(["mcp", "auth", "fixture"], {
+    const authentication = await runPf(["mcp", "auth", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -2725,7 +2725,7 @@ describe("MCP remote authentication lifecycle", () => {
     expect(existsSync(credentialPath)).toBe(true);
     const requestsBeforeLogout = auth.requests.length;
 
-    const logout = await runFx(["mcp", "logout", "fixture"], {
+    const logout = await runPf(["mcp", "logout", "fixture"], {
       cwd: root.workspace,
       env,
       timeoutMs: 20_000,
@@ -2743,7 +2743,7 @@ describe("MCP remote authentication lifecycle", () => {
       upstream = startModernMcpHttpFixture("features");
       auth = startAuthFixture(upstream.url);
       const root = createRoot(auth);
-      const initial = await runFx(["mcp", "auth", "fixture"], {
+      const initial = await runPf(["mcp", "auth", "fixture"], {
         cwd: root.workspace,
         env: baseEnv(root),
         timeoutMs: 20_000,
@@ -2755,8 +2755,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
       });
       await tui.waitForComposer(15_000);
@@ -2784,9 +2784,9 @@ describe("MCP remote authentication lifecycle", () => {
       upstream = startModernMcpHttpFixture("json");
       auth = startAuthFixture(upstream.url);
       const root = createRoot(auth);
-      const profilePath = join(root.home, ".fx", "mcp.json");
+      const profilePath = join(root.home, ".pf", "mcp.json");
       const profile = JSON.parse(readFileSync(profilePath, "utf8"));
-      profile.mcp.healthy = { type: "http", environment: { FX_MCP_PROTOCOL_VERSION: "2026-07-28" }, url: upstream.url, headers: { "x-test-healthy": "1" }, startup_timeout_ms: 5_000 };
+      profile.mcp.healthy = { type: "http", environment: { PF_MCP_PROTOCOL_VERSION: "2026-07-28" }, url: upstream.url, headers: { "x-test-healthy": "1" }, startup_timeout_ms: 5_000 };
       writeFileSync(profilePath, JSON.stringify(profile));
       gateway = startFakeGateway([
         fakeGatewayFinalText("TUI idle."),
@@ -2795,8 +2795,8 @@ describe("MCP remote authentication lifecycle", () => {
       });
       const tuiEnv = {
         ...baseEnv(root),
-        FX_GATEWAY_BASE_URL: gateway.baseUrl,
-        FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+        PF_GATEWAY_BASE_URL: gateway.baseUrl,
+        PF_GATEWAY_CHAT_URL: gateway.chatUrl,
       };
       tui = await TmuxSession.create({
         isolated: true,
@@ -2825,7 +2825,7 @@ describe("MCP remote authentication lifecycle", () => {
       const menu = await tui.waitForText("Needs authentication", 10_000);
       expect(menu).toContain("fixture");
       await tui.sendKeys("Enter");
-      await tui.waitForText("Profile · ~/.fx/mcp.json", 5_000);
+      await tui.waitForText("Profile · ~/.pf/mcp.json", 5_000);
       await tui.sendKeys("Enter");
       const authDeadline = Date.now() + 10_000;
       while (auth.authorizationRequests === 0 && Date.now() < authDeadline) {
@@ -2843,7 +2843,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(auth.tokenExchanges).toBe(1);
       const credentialPath = join(
         root.home,
-        ".fx",
+        ".pf",
         "mcp-credentials",
         "credentials.json",
       );
@@ -2864,14 +2864,14 @@ describe("MCP remote authentication lifecycle", () => {
       stored.credentials[0].expires_at_ms = 0;
       writeFileSync(credentialPath, JSON.stringify(stored), { mode: 0o600 });
 
-      const ask = await runFx(
+      const ask = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Call the authenticated MCP fixture."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -2905,8 +2905,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -2925,7 +2925,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(status).toContain("Ready");
       expect(status).not.toContain(ACCESS_REFRESHED);
       await tui.sendKeys("Enter");
-      await tui.waitForText("Profile · ~/.fx/mcp.json", 5_000);
+      await tui.waitForText("Profile · ~/.pf/mcp.json", 5_000);
       await tui.sendKeys("L");
       await tui.waitForText("Log out of this MCP server?", 5_000);
       await tui.sendKeys("Enter");
@@ -2975,8 +2975,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 120,
         height: 34,
@@ -2987,7 +2987,7 @@ describe("MCP remote authentication lifecycle", () => {
       await tui.waitForText("Authenticated MCP server 'fixture'.", 15_000);
       expect(auth.authorizationRequests).toBe(1);
       expect(auth.tokenExchanges).toBe(1);
-      expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json")))
+      expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json")))
         .toBe(true);
     },
     30_000,
@@ -3010,8 +3010,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 140,
         height: 36,
@@ -3028,7 +3028,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(compactMismatch).not.toContain('Add "oauth":{"issuer":');
       expect(auth.authorizationRequests).toBe(1);
       expect(auth.tokenExchanges).toBe(0);
-      expect(existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json")))
+      expect(existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json")))
         .toBe(false);
     },
     30_000,
@@ -3050,8 +3050,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -3062,7 +3062,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(auth.authorizationRequests).toBe(1);
       expect(auth.tokenExchanges).toBe(0);
       expect(
-        existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json")),
+        existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json")),
       ).toBe(false);
     },
     30_000,
@@ -3086,8 +3086,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -3098,7 +3098,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(auth.authorizationRequests).toBe(0);
       expect(auth.tokenExchanges).toBe(0);
       expect(
-        existsSync(join(root.home, ".fx", "mcp-credentials", "credentials.json")),
+        existsSync(join(root.home, ".pf", "mcp-credentials", "credentials.json")),
       ).toBe(false);
     },
     30_000,
@@ -3142,7 +3142,7 @@ describe("MCP remote authentication lifecycle", () => {
             env: {
               ...process.env,
               ...baseEnv(root),
-              FX_E2E_MCP_AUTH_AUTOMATE: "1",
+              PF_E2E_MCP_AUTH_AUTOMATE: "1",
             },
             stdout: "pipe",
             stderr: "pipe",
@@ -3188,7 +3188,7 @@ describe("MCP remote authentication lifecycle", () => {
           ).toHaveLength(0);
         }
 
-        const evidenceDir = process.env.FX_S11_EVIDENCE_DIR;
+        const evidenceDir = process.env.PF_S11_EVIDENCE_DIR;
         if (evidenceDir) {
           mkdirSync(evidenceDir, { recursive: true });
           writeFileSync(
@@ -3228,15 +3228,15 @@ describe("MCP remote authentication lifecycle", () => {
       seedExpiredCredentials(root, auth, Date.now() + 3_600_000);
       gateway = startToolGateway();
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Call the protected MCP fixture."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
-            FX_E2E_MCP_AUTH_AUTOMATE: "1",
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_E2E_MCP_AUTH_AUTOMATE: "1",
           },
           timeoutMs: 20_000,
         },
@@ -3265,14 +3265,14 @@ describe("MCP remote authentication lifecycle", () => {
       seedExpiredCredentials(root, auth);
       gateway = startToolGateway();
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Call the protected legacy fixture."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -3300,14 +3300,14 @@ describe("MCP remote authentication lifecycle", () => {
       seedExpiredCredentials(root, auth);
       gateway = startToolGateway();
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Call the protected SSE fixture."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -3413,7 +3413,7 @@ describe("MCP remote authentication lifecycle", () => {
       seedExpiredCredentials(root, auth, Date.now() + 3_600_000);
       const credentialStorePath = join(
         root.home,
-        ".fx",
+        ".pf",
         "mcp-credentials",
         "credentials.json",
       );
@@ -3578,14 +3578,14 @@ describe("MCP remote authentication lifecycle", () => {
           "Legacy HTTP refresh complete.",
         );
 
-        const result = await runFx(
+        const result = await runPf(
           ["ask", "--json", "--auto", "--no-save", "Call the protected legacy fixture."],
           {
             cwd: root.workspace,
             env: {
               ...baseEnv(root),
-              FX_GATEWAY_BASE_URL: gateway.baseUrl,
-              FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+              PF_GATEWAY_BASE_URL: gateway.baseUrl,
+              PF_GATEWAY_CHAT_URL: gateway.chatUrl,
             },
             timeoutMs: 25_000,
           },
@@ -3621,14 +3621,14 @@ describe("MCP remote authentication lifecycle", () => {
         "Legacy SSE refresh complete.",
       );
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Call the protected SSE fixture."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 25_000,
         },
@@ -3672,8 +3672,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -3735,8 +3735,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -3781,8 +3781,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -3841,8 +3841,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -3867,7 +3867,7 @@ describe("MCP remote authentication lifecycle", () => {
 
         const credentialDirectory = join(
           root.home,
-          ".fx",
+          ".pf",
           "mcp-credentials",
         );
         mkdirSync(credentialDirectory, { recursive: true, mode: 0o700 });
@@ -3918,8 +3918,8 @@ describe("MCP remote authentication lifecycle", () => {
         cwd: root.workspace,
         env: {
           ...baseEnv(root),
-          FX_GATEWAY_BASE_URL: gateway.baseUrl,
-          FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+          PF_GATEWAY_BASE_URL: gateway.baseUrl,
+          PF_GATEWAY_CHAT_URL: gateway.chatUrl,
         },
         width: 110,
         height: 34,
@@ -3958,14 +3958,14 @@ describe("MCP remote authentication lifecycle", () => {
         models: [{ id: MODEL, type: "language", tags: ["tool-use"] }],
       });
 
-      const result = await runFx(
+      const result = await runPf(
         ["ask", "--json", "--auto", "--no-save", "Check the MCP fixture."],
         {
           cwd: root.workspace,
           env: {
             ...baseEnv(root),
-            FX_GATEWAY_BASE_URL: gateway.baseUrl,
-            FX_GATEWAY_CHAT_URL: gateway.chatUrl,
+            PF_GATEWAY_BASE_URL: gateway.baseUrl,
+            PF_GATEWAY_CHAT_URL: gateway.chatUrl,
           },
           timeoutMs: 20_000,
         },
@@ -3978,7 +3978,7 @@ describe("MCP remote authentication lifecycle", () => {
       expect(result.stderr).not.toContain(REFRESH_INITIAL);
       expect(readFileSync(root.trace, "utf8")).not.toContain(REFRESH_INITIAL);
 
-      const listed = await runFx(["mcp", "list", "--connect"], {
+      const listed = await runPf(["mcp", "list", "--connect"], {
         cwd: root.workspace,
         env: { ...baseEnv(root) },
         timeoutMs: 20_000,

@@ -5,10 +5,10 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import xtermHeadless from "@xterm/headless";
-import { createFxTerminal, supportsJspi, xtermAdapter } from "../node.js";
+import { createPfTerminal, supportsJspi, xtermAdapter } from "../node.js";
 
 const script = fileURLToPath(import.meta.url);
-const wasmPath = resolve(process.argv[2] || fileURLToPath(new URL("../../zig-out/bin/fx-term.wasm", import.meta.url)));
+const wasmPath = resolve(process.argv[2] || fileURLToPath(new URL("../../zig-out/bin/pf-term.wasm", import.meta.url)));
 if (!supportsJspi()) {
   console.error("JSPI is required: node --experimental-wasm-jspi sdk/node/test-term-compaction.mjs");
   process.exit(2);
@@ -22,7 +22,7 @@ if (scenario) {
   // A blocked cooperative loop must fail the test, not hang the entire SDK lane.
   for (const name of scenarios) {
     const child = spawn(process.execPath, ["--experimental-wasm-jspi", script, wasmPath, name], {
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", FX_SOUND: "0", FX_E2E_DISABLE_DOTENV: "1" },
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", PF_SOUND: "0", PF_E2E_DISABLE_DOTENV: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "", stderr = "";
@@ -119,7 +119,7 @@ async function runScenario(name) {
     commit(id, bytes, expectedRevision) {
       const current = records.get(id);
       if (current?.revision !== expectedRevision) {
-        throw Object.assign(new Error("session revision conflict"), { code: "FX_SESSION_REVISION_CONFLICT" });
+        throw Object.assign(new Error("session revision conflict"), { code: "PF_SESSION_REVISION_CONFLICT" });
       }
       const next = String(++revision);
       records.set(id, { bytes: bytes.slice(), revision: next, updatedAtMs: Date.now() });
@@ -166,7 +166,7 @@ async function runScenario(name) {
     const adapter = xtermAdapter(terminal);
     const state = { terminal, writes: 0, stderr: "", events: [], runtime: undefined };
     active = state;
-    state.runtime = await createFxTerminal({
+    state.runtime = await createPfTerminal({
       backend: "wasm", wasm, args,
       terminal: {
         ...adapter,
@@ -175,8 +175,8 @@ async function runScenario(name) {
         write(bytes) { state.writes++; adapter.write(bytes); },
       },
       env: {
-        AI_GATEWAY_API_KEY: "synthetic-host-compaction-key", FX_MODEL: "fixture/test-model",
-        FX_SOUND: "0", FX_AUTO_UPGRADE: "0", FX_DISABLE_KEYCHAIN: "1", FX_SKIP_ONBOARDING: "1",
+        AI_GATEWAY_API_KEY: "synthetic-host-compaction-key", PF_MODEL: "fixture/test-model",
+        PF_SOUND: "0", PF_AUTO_UPGRADE: "0", PF_DISABLE_KEYCHAIN: "1", PF_SKIP_ONBOARDING: "1",
       },
       fetch, sessionStore,
       configStore: { get(id) { return id === "model" ? "fixture/test-model" : null; }, set() {} },

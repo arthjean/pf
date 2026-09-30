@@ -7,10 +7,10 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const temp = await mkdtemp(join(tmpdir(), "libfx-node-package-"));
+const temp = await mkdtemp(join(tmpdir(), "libpf-node-package-"));
 const packageDir = join(temp, "package");
 const consumerDir = join(temp, "consumer");
-const installedPackage = join(consumerDir, "node_modules", "libfx");
+const installedPackage = join(consumerDir, "node_modules", "libpf");
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -24,7 +24,7 @@ function run(command, args, options = {}) {
 }
 
 try {
-  run(process.execPath, [resolve(repoRoot, "sdk/scripts/package-libfx.mjs"), packageDir]);
+  run(process.execPath, [resolve(repoRoot, "sdk/scripts/package-libpf.mjs"), packageDir]);
 
   const manifest = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
   assert.deepEqual(manifest.exports["."], {
@@ -34,7 +34,7 @@ try {
   });
   assert.deepEqual(manifest.exports["./node"], { import: "./node.js", require: "./node.cjs" });
   assert.equal(manifest.exports["./browser"], "./browser.js");
-  assert.equal(manifest.exports["./wasm"], "./fx-sdk.js");
+  assert.equal(manifest.exports["./wasm"], "./pf-sdk.js");
   assert.equal(manifest.exports["./mcp"], "./mcp.js");
   assert.equal(manifest.exports["./skills"], "./skills.js");
   assert.equal(manifest.exports["./skills/node"], "./skills-node.js");
@@ -42,51 +42,51 @@ try {
   const cjs = await readFile(join(packageDir, "node.cjs"), "utf8");
   assert.doesNotMatch(cjs, new RegExp(repoRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   for (const platform of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]) {
-    assert.match(cjs, new RegExp(`libfx\\.${platform}\\.node`));
+    assert.match(cjs, new RegExp(`libpf\\.${platform}\\.node`));
   }
 
   const source = await readFile(resolve(repoRoot, "sdk/node.js"), "utf8");
-  assert.doesNotMatch(source, /["']\.\/libfx\.node["']/);
+  assert.doesNotMatch(source, /["']\.\/libpf\.node["']/);
   for (const platform of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"]) {
-    assert.match(source, new RegExp(`["']\\.\\/libfx\\.${platform}\\.node["']`));
+    assert.match(source, new RegExp(`["']\\.\\/libpf\\.${platform}\\.node["']`));
   }
 
   await cp(packageDir, installedPackage, { recursive: true });
   await writeFile(join(consumerDir, "package.json"), '{"type":"module"}\n');
   await writeFile(join(consumerDir, "esm.mjs"), `
-    import * as libfx from "libfx";
-    import * as nodeEntry from "libfx/node";
-    const { createFxAgent, createFxTerminal, getBackendInfo } = libfx;
-    if (JSON.stringify(Object.keys(libfx).sort()) !== JSON.stringify(Object.keys(nodeEntry).sort())) {
+    import * as libpf from "libpf";
+    import * as nodeEntry from "libpf/node";
+    const { createPfAgent, createPfTerminal, getBackendInfo } = libpf;
+    if (JSON.stringify(Object.keys(libpf).sort()) !== JSON.stringify(Object.keys(nodeEntry).sort())) {
       throw new Error("root and Node subpath ESM exports differ");
     }
     const info = await getBackendInfo({ backend: "native" });
-    if (typeof createFxAgent !== "function" || typeof createFxTerminal !== "function" || info.backend !== "native") {
+    if (typeof createPfAgent !== "function" || typeof createPfTerminal !== "function" || info.backend !== "native") {
       throw new Error(JSON.stringify(info));
     }
-    const agent = await createFxAgent({ backend: "native", apiKey: "package-test-key" });
+    const agent = await createPfAgent({ backend: "native", apiKey: "package-test-key" });
     const checkpoint = await agent.checkpoint();
     await agent.close();
     if (!(checkpoint instanceof Uint8Array) || checkpoint.length === 0) throw new Error("empty checkpoint");
-    console.log(JSON.stringify(Object.keys(libfx).sort()));
+    console.log(JSON.stringify(Object.keys(libpf).sort()));
   `);
   await writeFile(join(consumerDir, "cjs.cjs"), `
-    const libfx = require("libfx");
-    const nodeEntry = require("libfx/node");
-    const { createFxAgent, createFxTerminal, getBackendInfo } = libfx;
+    const libpf = require("libpf");
+    const nodeEntry = require("libpf/node");
+    const { createPfAgent, createPfTerminal, getBackendInfo } = libpf;
     (async () => {
-      if (JSON.stringify(Object.keys(libfx).sort()) !== JSON.stringify(Object.keys(nodeEntry).sort())) {
+      if (JSON.stringify(Object.keys(libpf).sort()) !== JSON.stringify(Object.keys(nodeEntry).sort())) {
         throw new Error("root and Node subpath CommonJS exports differ");
       }
       const info = await getBackendInfo({ backend: "native" });
-      if (typeof createFxAgent !== "function" || typeof createFxTerminal !== "function" || info.backend !== "native") {
+      if (typeof createPfAgent !== "function" || typeof createPfTerminal !== "function" || info.backend !== "native") {
         throw new Error(JSON.stringify(info));
       }
-      const agent = await createFxAgent({ backend: "native", apiKey: "package-test-key" });
+      const agent = await createPfAgent({ backend: "native", apiKey: "package-test-key" });
       const checkpoint = await agent.checkpoint();
       await agent.close();
       if (!(checkpoint instanceof Uint8Array) || checkpoint.length === 0) throw new Error("empty checkpoint");
-      console.log(JSON.stringify(Object.keys(libfx).sort()));
+      console.log(JSON.stringify(Object.keys(libpf).sort()));
     })();
   `);
 

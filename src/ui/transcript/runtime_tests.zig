@@ -3161,7 +3161,7 @@ test "staged soft-wrapped presentation resumes across committed projections" {
     const stable_flow = "base\n";
     const filler_row_count: usize = @as(usize, std.math.maxInt(u16)) - 3;
     const link_url = "https://staged.example";
-    const link_params = "id=fx-42";
+    const link_params = "id=pf-42";
     const presentation_open =
         "\x1b[1;31m\x1b[9m" ++
         "\x1b]8;" ++ link_params ++ ";" ++ link_url ++ "\x1b\\";
@@ -7685,8 +7685,8 @@ test "attempt source projections leave transcript runtime and commit state uncha
 
 fn checkPrepareTranscriptSourceAllocationFailures(alloc: Allocator) !void {
     const welcome =
-        "fx welcome banner line one\n" ++
-        "fx welcome banner line two\n";
+        "pf welcome banner line one\n" ++
+        "pf welcome banner line two\n";
     const summary = "● 2 command lines folded\n";
     var runtime = TranscriptRuntime{
         .layout = transcriptTestLayout(24, 10, 6),
@@ -10023,7 +10023,7 @@ test "replaceable line with ansi wrapper does not accumulate historical entries"
     try std.testing.expectEqualStrings("start\n\x1b[38;5;245mline two\n\x1b[0m", runtime.transcript.items);
 }
 
-test "updateExtraInputRows shrink preserves pre-fx scrollback" {
+test "updateExtraInputRows shrink preserves pre-pf scrollback" {
     var sink = try std.Io.Dir.openFileAbsolute(io_mod.getIo(), "/dev/null", .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
@@ -11403,7 +11403,7 @@ test "theme retint preserves a capped canonical anchor and visual geometry" {
     );
     const committed_diagnostic = runtime.transcriptCommitDiagnostic();
 
-    try runtime.retintEntriesForTheme(alloc, shared_theme.fx_dark, shared_theme.fx_light);
+    try runtime.retintEntriesForTheme(alloc, shared_theme.pf_dark, shared_theme.pf_light);
 
     try std.testing.expectEqualDeep(
         committed_diagnostic,
@@ -11461,7 +11461,7 @@ test "theme retint preserves a capped canonical anchor and visual geometry" {
     const retinted_diagnostic = runtime.transcriptCommitDiagnostic();
     const retinted_bytes = try alloc.dupe(u8, retinted_source.bytes);
     defer alloc.free(retinted_bytes);
-    try runtime.retintEntriesForTheme(alloc, shared_theme.fx_light, shared_theme.fx_light);
+    try runtime.retintEntriesForTheme(alloc, shared_theme.pf_light, shared_theme.pf_light);
     var unchanged_source = try runtime.prepareTranscriptSource(alloc, null);
     defer unchanged_source.deinit(alloc);
     try std.testing.expectEqualStrings(retinted_bytes, unchanged_source.bytes);
@@ -11504,7 +11504,7 @@ test "light to dark theme retint preserves retention with equal-width tokens" {
         1,
     );
 
-    try runtime.retintEntriesForTheme(alloc, shared_theme.fx_light, shared_theme.fx_dark);
+    try runtime.retintEntriesForTheme(alloc, shared_theme.pf_light, shared_theme.pf_dark);
 
     try std.testing.expectEqual(
         transcript_runtime.TranscriptCommitDiagnosticState.stable,
@@ -11566,7 +11566,7 @@ fn checkThemeRetintAllocationFailures(alloc: Allocator) !void {
     const pending_repaints_before = runtime.render_requests.pendingReasonCount();
     const cache_origin_before = runtime.transcript_cache_origin_untrimmed;
 
-    runtime.retintEntriesForTheme(alloc, shared_theme.fx_dark, shared_theme.fx_light) catch |err| {
+    runtime.retintEntriesForTheme(alloc, shared_theme.pf_dark, shared_theme.pf_light) catch |err| {
         var source_after = try runtime.prepareTranscriptSource(std.testing.allocator, null);
         defer source_after.deinit(std.testing.allocator);
         try std.testing.expectEqualStrings(source_before.bytes, source_after.bytes);
@@ -12148,7 +12148,7 @@ test "command output retention preserves its artifact detail owner" {
         .entry_id = detail_entry_id,
         .tool_name = "run_command",
         .arguments_json = "{\"command\":\"generate output\"}",
-        .result = "output_file=/tmp/fx-command-retained.log\n",
+        .result = "output_file=/tmp/pf-command-retained.log\n",
         .result_handle = "result-run-command.txt",
         .turn_id = 1,
         .call_id = "retained-command",
@@ -14963,7 +14963,7 @@ test "transcript lifecycle terminal and finalization transitions stay batch safe
         const expected_line = if (case.kind == .cancelled)
             try std.fmt.bufPrint(
                 &expected,
-                "{s}{s}{s} {s}{s}{s} · What can fx do differently?\n",
+                "{s}{s}{s} {s}{s}{s} · What can pf do differently?\n",
                 .{
                     case.marker_style,
                     case.marker,
@@ -15086,7 +15086,7 @@ test "transcript lifecycle terminal markers preserve ANSI summaries and normaliz
     try expectRawEntryBytes(&runtime, styled_cancelled_entry_id, try std.fmt.bufPrint(
         &styled_cancelled_expected,
         "{s}■{s}{s} Cancelled\x1b[0m \x1b[38;5;245msleep 30\x1b[0m{s}" ++
-            " · What can fx do differently?\n",
+            " · What can pf do differently?\n",
         .{
             ui_render.warning_style,
             ui_render.reset_style,
@@ -15118,7 +15118,7 @@ test "transcript lifecycle terminal markers preserve ANSI summaries and normaliz
     var cancelled_expected: [128]u8 = undefined;
     try expectRawEntryBytes(&runtime, cancelled_entry_id, try std.fmt.bufPrint(
         &cancelled_expected,
-        "{s}■{s} {s}Tool cancelled{s} · What can fx do differently?\n",
+        "{s}■{s} {s}Tool cancelled{s} · What can pf do differently?\n",
         .{
             ui_render.warning_style,
             ui_render.reset_style,
@@ -15165,7 +15165,7 @@ test "active tool cancellation is presented immediately without closing lifecycl
     defer rendered.deinit(alloc);
     try std.testing.expectEqual(
         @as(usize, 2),
-        std.mem.count(u8, rendered.bytes, "What can fx do differently?"),
+        std.mem.count(u8, rendered.bytes, "What can pf do differently?"),
     );
     try std.testing.expect(std.mem.find(u8, rendered.bytes, "System:") == null);
     try std.testing.expect(std.mem.find(u8, rendered.bytes, "Cancelling") == null);
@@ -15214,7 +15214,7 @@ test "late successful settlement preserves its result and one turn cancellation"
         defer rendered.deinit(alloc);
         try std.testing.expectEqual(
             @as(usize, 1),
-            std.mem.count(u8, rendered.bytes, "What can fx do differently?"),
+            std.mem.count(u8, rendered.bytes, "What can pf do differently?"),
         );
         try std.testing.expectEqual(
             @as(usize, 1),
@@ -15271,7 +15271,7 @@ test "post-cancel sibling settlement preserves one turn cancellation" {
         defer rendered.deinit(alloc);
         try std.testing.expectEqual(
             @as(usize, 1),
-            std.mem.count(u8, rendered.bytes, "What can fx do differently?"),
+            std.mem.count(u8, rendered.bytes, "What can pf do differently?"),
         );
         try std.testing.expectEqual(
             @as(usize, 1),
@@ -15320,7 +15320,7 @@ test "late zero-output command settlement reserves distinct presentation entries
         defer rendered.deinit(alloc);
         try std.testing.expectEqual(
             @as(usize, 1),
-            std.mem.count(u8, rendered.bytes, "What can fx do differently?"),
+            std.mem.count(u8, rendered.bytes, "What can pf do differently?"),
         );
         try std.testing.expectEqual(
             @as(usize, 1),
@@ -15380,7 +15380,7 @@ fn checkLateZeroOutputCommandCancellationAllocationFailuresImpl(alloc: Allocator
     defer rendered.deinit(alloc);
     try std.testing.expectEqual(
         @as(usize, 1),
-        std.mem.count(u8, rendered.bytes, "What can fx do differently?"),
+        std.mem.count(u8, rendered.bytes, "What can pf do differently?"),
     );
 }
 
@@ -16839,11 +16839,11 @@ test "retint rewrites custom theme colors on a variant flip" {
     defer runtime.deinit(alloc);
     try runtime.enableShadowVt(alloc);
 
-    var custom_dark = shared_theme.fx_dark;
+    var custom_dark = shared_theme.pf_dark;
     custom_dark.name = "probe-dark";
     custom_dark.statusline_style = "\x1b[38;5;201m";
     custom_dark.syntax.keyword_style = "\x1b[38;5;202m";
-    var custom_light = shared_theme.fx_light;
+    var custom_light = shared_theme.pf_light;
     custom_light.name = "probe-light";
     custom_light.statusline_style = "\x1b[38;5;89m";
     custom_light.syntax.keyword_style = "\x1b[38;5;90m";

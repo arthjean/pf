@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>fx core debugger</title>
+  <title>pf core debugger</title>
   <style>
     @import url("https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-mono/style.css");
     :root { color-scheme: dark; --bg: #000; --panel: #050505; --line: #242424; --muted: #777; --dim: #aaa; --text: #f2f2f2; }
@@ -43,7 +43,7 @@
   </style>
 </head>
 <body>
-  <header><h1>fx-core debugger</h1><span id="status">booting</span></header>
+  <header><h1>pf-core debugger</h1><span id="status">booting</span></header>
   <section id="controls" aria-label="Session controls">
     <label>Model<input id="model" class="model" list="models" disabled><datalist id="models"></datalist></label>
     <label>Mode<select id="mode" disabled></select></label>
@@ -56,10 +56,10 @@
     <button type="button" id="cancel" disabled>Cancel</button>
   </form>
   <script type="module">
-    import { createFxAgent, supportsJspi } from "./browser.js";
+    import { createPfAgent, supportsJspi } from "./browser.js";
     import { createSkillsAdapter } from "./skills.js";
 
-    const configPrefix = "fx.core.config.";
+    const configPrefix = "pf.core.config.";
     const configStore = {
       get(configId) { return localStorage.getItem(`${configPrefix}${configId}`); },
       set(configId, value) { localStorage.setItem(`${configPrefix}${configId}`, value); },
@@ -91,7 +91,7 @@
     const transportSelect = document.querySelector("#transport");
     transportSelect.value = transport;
     const startedAt = performance.now();
-    const test = window.__fxCoreTest = {
+    const test = window.__pfCoreTest = {
       state: "booting",
       transport,
       events: [],
@@ -332,11 +332,11 @@
           name: "browser-skill",
           instructions: "BROWSER_SKILL_SENTINEL",
         }]) : { instructions: "", tools: [] };
-        agent = await createFxAgent({
+        agent = await createPfAgent({
           wasm: location.hostname === "localhost" || location.hostname === "127.0.0.1"
-            ? "../zig-out/bin/fx-core.wasm"
-            : "./fx-core.wasm",
-          apiKey: localStorage.getItem("FX_API_KEY") || "sdk-test-key",
+            ? "../zig-out/bin/pf-core.wasm"
+            : "./pf-core.wasm",
+          apiKey: localStorage.getItem("PF_API_KEY") || "sdk-test-key",
           ...(initialModel ? { model: initialModel } : {}),
           fetch: dispatchFetch,
           onEvent: observe,

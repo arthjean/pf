@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../../sdk/node.js";
+import { createPfAgent } from "../../sdk/node.js";
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -48,10 +48,10 @@ const server = createServer((request, response) => {
 await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
 
 let activeSample = 0;
-const agent = await createFxAgent({
+const agent = await createPfAgent({
   backend,
-  nativeAddon: resolve(root, "zig-out/lib/libfx.node"),
-  ...(backend === "wasm" ? { wasm: await readFile(resolve(root, "zig-out/bin/fx-core.wasm")) } : {}),
+  nativeAddon: resolve(root, "zig-out/lib/libpf.node"),
+  ...(backend === "wasm" ? { wasm: await readFile(resolve(root, "zig-out/bin/pf-core.wasm")) } : {}),
   fetch(input, init) {
     return fetch(init.method === "GET" ? `http://127.0.0.1:${server.address().port}/models` : input, init);
   },

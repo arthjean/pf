@@ -94,7 +94,7 @@ pub const PermissionTargetKind = enum {
 
 pub const web_search_permission = "web_search";
 pub const web_fetch_permission = "web_fetch";
-pub const yolo_warning_text = "Full access enabled: fx permission checks disabled";
+pub const yolo_warning_text = "Full access enabled: pf permission checks disabled";
 
 pub fn isWebSearchToolName(tool_name: []const u8) bool {
     return std.mem.eql(u8, tool_name, web_search_permission);
@@ -2378,8 +2378,8 @@ test "configured wildcard command allows only static command grammar" {
 
     try std.testing.expectEqual(RuleDecision.allow, ruleDecisionForPermissionPattern(rules, "bash", "printf safe", .none));
     try std.testing.expectEqual(RuleDecision.allow, ruleDecisionForPermissionPattern(rules, "bash", "printf 'safe value'", .none));
-    try std.testing.expectEqual(RuleDecision.none, ruleDecisionForPermissionPattern(rules, "bash", "printf safe && touch /tmp/fx-marker", .none));
-    try std.testing.expectEqual(RuleDecision.none, ruleDecisionForPermissionPattern(rules, "bash", "printf \"$(touch /tmp/fx-marker)\"", .none));
+    try std.testing.expectEqual(RuleDecision.none, ruleDecisionForPermissionPattern(rules, "bash", "printf safe && touch /tmp/pf-marker", .none));
+    try std.testing.expectEqual(RuleDecision.none, ruleDecisionForPermissionPattern(rules, "bash", "printf \"$(touch /tmp/pf-marker)\"", .none));
 }
 
 test "configured command rules require exact matching outside static grammar" {
@@ -2389,7 +2389,7 @@ test "configured command rules require exact matching outside static grammar" {
     const exact_rules: types.PermissionRuleSet = .{ .rules = &exact_rules_buf };
 
     try std.testing.expectEqual(RuleDecision.allow, ruleDecisionForPermissionPattern(exact_rules, "bash", "printf \"$(date)\"", .none));
-    try std.testing.expectEqual(RuleDecision.none, ruleDecisionForPermissionPattern(exact_rules, "bash", "printf \"$(touch /tmp/fx-marker)\"", .none));
+    try std.testing.expectEqual(RuleDecision.none, ruleDecisionForPermissionPattern(exact_rules, "bash", "printf \"$(touch /tmp/pf-marker)\"", .none));
 
     var dynamic_pattern_rules_buf = [_]types.PermissionRule{
         .{ .permission = @constCast("bash"), .pattern = @constCast("printf \"*\""), .action = .allow },
@@ -2407,8 +2407,8 @@ test "configured command deny and ask retain generic wildcard matching" {
     };
     const rules: types.PermissionRuleSet = .{ .rules = &rules_buf };
 
-    try std.testing.expectEqual(RuleDecision.deny, ruleDecisionForPermissionPattern(rules, "bash", "printf safe && touch /tmp/fx-marker", .none));
-    try std.testing.expectEqual(RuleDecision.ask, ruleDecisionForPermissionPattern(rules, "custom", "printf \"$(touch /tmp/fx-marker)\"", .none));
+    try std.testing.expectEqual(RuleDecision.deny, ruleDecisionForPermissionPattern(rules, "bash", "printf safe && touch /tmp/pf-marker", .none));
+    try std.testing.expectEqual(RuleDecision.ask, ruleDecisionForPermissionPattern(rules, "custom", "printf \"$(touch /tmp/pf-marker)\"", .none));
 }
 
 test "static command grammar is an explicit allowlist" {

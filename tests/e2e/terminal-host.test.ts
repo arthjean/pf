@@ -23,14 +23,14 @@ import {
 import { createConnection, type Socket } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { FX_BIN } from "../evals/eval-helpers";
+import { PF_BIN } from "../evals/eval-helpers";
 import {
   terminalFixtureShell,
   TmuxSession,
   tmuxAvailable,
 } from "./tmux-helpers";
 
-const INTERNAL_MODE = "--fx-internal-terminal-host";
+const INTERNAL_MODE = "--pf-internal-terminal-host";
 const HEADER_BYTES = 28;
 const TERMINAL_FIXTURE_SHELL = terminalFixtureShell();
 const CLEANUP_CHILD_EXIT_TIMEOUT_MS = 5_000;
@@ -194,12 +194,12 @@ async function cleanupOwnedTestResources(
 }
 
 function makeHome(): string {
-  const home = mkdtempSync(join(tmpdir(), "fx-terminal-host-"));
+  const home = mkdtempSync(join(tmpdir(), "pf-terminal-host-"));
   chmodSync(home, 0o700);
-  const owner = join(home, ".fx", "sessions", TERMINAL_OWNER_SESSION);
+  const owner = join(home, ".pf", "sessions", TERMINAL_OWNER_SESSION);
   mkdirSync(owner, { recursive: true, mode: 0o700 });
-  chmodSync(join(home, ".fx"), 0o700);
-  chmodSync(join(home, ".fx", "sessions"), 0o700);
+  chmodSync(join(home, ".pf"), 0o700);
+  chmodSync(join(home, ".pf", "sessions"), 0o700);
   chmodSync(owner, 0o700);
   homes.push(home);
   return home;
@@ -249,7 +249,7 @@ function rememberPrivateTmuxIdentities(resource: PrivateTmuxResource): void {
       },
     );
     for (const name of names.trim().split("\n")) {
-      if (name.startsWith("fx-") && name.length === 35) {
+      if (name.startsWith("pf-") && name.length === 35) {
         resource.identities.add(name.slice(3));
       }
     }
@@ -337,8 +337,8 @@ function privateTmuxProcessPids(
 function tmuxPeerArtifacts(): string[] {
   return readdirSync("/tmp")
     .filter((name) =>
-      name.startsWith("fx-tmux-capture-") ||
-      name.startsWith("fx-tmux-marker-")
+      name.startsWith("pf-tmux-capture-") ||
+      name.startsWith("pf-tmux-marker-")
     )
     .sort();
 }
@@ -356,8 +356,8 @@ function tmuxCaptureHelperPids(): number[] {
     })
     .filter((entry): entry is { pid: number; command: string } => entry !== null)
     .filter((entry) =>
-      entry.command.includes(FX_BIN) &&
-      entry.command.includes("--fx-internal-terminal-tmux-capture")
+      entry.command.includes(PF_BIN) &&
+      entry.command.includes("--pf-internal-terminal-tmux-capture")
     )
     .map((entry) => entry.pid)
     .sort((left, right) => left - right);
@@ -428,8 +428,8 @@ async function cleanupPrivateTmuxServer(
       privateTmuxProcessPids(socket, identities, remainingMs).length === 0;
   }, PRIVATE_TMUX_SETTLE_TIMEOUT_MS);
   for (const identity of identities) {
-    rmSync(`/tmp/fx-tmux-capture-${identity}.sock`, { force: true });
-    rmSync(`/tmp/fx-tmux-marker-${identity}.sock`, { force: true });
+    rmSync(`/tmp/pf-tmux-capture-${identity}.sock`, { force: true });
+    rmSync(`/tmp/pf-tmux-marker-${identity}.sock`, { force: true });
   }
   rmSync(socket, { force: true });
   return { identities, panePids, processPids };
@@ -439,17 +439,17 @@ async function runClientFixture(
   home: string,
   idleMs = 500,
   extraEnv: NodeJS.ProcessEnv = {},
-  binary = FX_BIN,
+  binary = PF_BIN,
 ) {
-  const current = binary === FX_BIN;
+  const current = binary === PF_BIN;
   const executable = current ? buildCurrentClientFixture() : binary;
-  const args = current ? [] : ["--fx-internal-terminal-client-fixture"];
+  const args = current ? [] : ["--pf-internal-terminal-client-fixture"];
   const child = spawn(executable, args, {
     env: {
       ...process.env,
       HOME: home,
       SHELL: TERMINAL_FIXTURE_SHELL,
-      FX_TERMINAL_HOST_IDLE_MS: String(idleMs),
+      PF_TERMINAL_HOST_IDLE_MS: String(idleMs),
       ...extraEnv,
     },
     stdio: ["pipe", "pipe", "pipe"],
@@ -464,7 +464,7 @@ async function runClientFixture(
 function buildCurrentClientFixture(): string {
   if (currentClientFixtureBinary !== null) return currentClientFixtureBinary;
   const repoRoot = join(import.meta.dir, "../..");
-  const fixtureRoot = mkdtempSync(join(tmpdir(), "fx-terminal-client-fixture-"));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "pf-terminal-client-fixture-"));
   const binary = join(fixtureRoot, "terminal-client-fixture");
   fixtureArtifacts.push(fixtureRoot);
   execFileSync(
@@ -487,7 +487,7 @@ function buildThreadForkFixture(): string {
     return currentThreadForkFixtureBinary;
   }
   const repoRoot = join(import.meta.dir, "../..");
-  const fixtureRoot = mkdtempSync(join(tmpdir(), "fx-terminal-thread-fork-"));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "pf-terminal-thread-fork-"));
   const source = join(fixtureRoot, "thread-fork.c");
   const binary = join(fixtureRoot, "thread-fork");
   fixtureArtifacts.push(fixtureRoot);
@@ -574,7 +574,7 @@ int main(int argc, char **argv) {
 buildCurrentClientFixture();
 
 function hostPaths(home: string) {
-  const dir = join(home, ".fx", "terminal-host-v7");
+  const dir = join(home, ".pf", "terminal-host-v7");
   return {
     dir,
     socket: join(dir, "host.sock"),
@@ -598,14 +598,14 @@ function terminalTransportPaths(home: string) {
     };
   }
   const digest = createHash("sha256")
-    .update("fx.terminal.transport.v3\0")
+    .update("pf.terminal.transport.v3\0")
     .update(home)
     .digest("hex")
     .slice(0, 32);
   const uid = process.getuid?.();
   if (uid === undefined) throw new Error("missing Unix uid");
   const base = process.platform === "darwin" ? "/private/tmp" : "/tmp";
-  const dir = join(base, `fx-terminal-${uid}-${digest}`);
+  const dir = join(base, `pf-terminal-${uid}-${digest}`);
   return {
     dir,
     socket: join(dir, "host.sock"),
@@ -614,8 +614,8 @@ function terminalTransportPaths(home: string) {
 }
 
 function makeLongHome(endpointBytes = 141): string {
-  const root = mkdtempSync(join(tmpdir(), "fx-terminal-long-home-"));
-  const endpointSuffix = join(".fx", "terminal-host-v7", "host.sock");
+  const root = mkdtempSync(join(tmpdir(), "pf-terminal-long-home-"));
+  const endpointSuffix = join(".pf", "terminal-host-v7", "host.sock");
   const componentBytes = endpointBytes -
     Buffer.byteLength(root) -
     Buffer.byteLength(endpointSuffix) -
@@ -624,10 +624,10 @@ function makeLongHome(endpointBytes = 141): string {
   const home = join(root, "x".repeat(componentBytes));
   mkdirSync(home, { recursive: true, mode: 0o700 });
   chmodSync(home, 0o700);
-  const owner = join(home, ".fx", "sessions", TERMINAL_OWNER_SESSION);
+  const owner = join(home, ".pf", "sessions", TERMINAL_OWNER_SESSION);
   mkdirSync(owner, { recursive: true, mode: 0o700 });
-  chmodSync(join(home, ".fx"), 0o700);
-  chmodSync(join(home, ".fx", "sessions"), 0o700);
+  chmodSync(join(home, ".pf"), 0o700);
+  chmodSync(join(home, ".pf", "sessions"), 0o700);
   chmodSync(owner, 0o700);
   homes.push(home, root);
   transportRoots.add(terminalTransportPaths(home).dir);
@@ -640,7 +640,7 @@ function durableTerminalRecord(home: string): {
 } {
   const state = join(
     home,
-    ".fx",
+    ".pf",
     "sessions",
     TERMINAL_OWNER_SESSION,
     "terminal",
@@ -663,7 +663,7 @@ function durableTerminalRecordFor(
 ): Record<string, unknown> {
   return JSON.parse(readFileSync(join(
     home,
-    ".fx",
+    ".pf",
     "sessions",
     TERMINAL_OWNER_SESSION,
     "terminal",
@@ -675,7 +675,7 @@ function durableTerminalRecordFor(
 function durableEventIds(home: string, sessionId: string): number[] {
   const state = join(
     home,
-    ".fx",
+    ".pf",
     "sessions",
     TERMINAL_OWNER_SESSION,
     "terminal",
@@ -712,16 +712,16 @@ function startHost(
   range: Range = { minimum: 4, current: 5 },
   idleMs = 350,
   extraEnv: NodeJS.ProcessEnv = {},
-  binary = FX_BIN,
+  binary = PF_BIN,
 ): ChildProcessWithoutNullStreams {
   const child = spawn(binary, [INTERNAL_MODE], {
     env: {
       ...process.env,
       HOME: home,
       SHELL: TERMINAL_FIXTURE_SHELL,
-      FX_TERMINAL_HOST_IDLE_MS: String(idleMs),
-      FX_TERMINAL_HOST_PROTOCOL_MIN: String(range.minimum),
-      FX_TERMINAL_HOST_PROTOCOL_CURRENT: String(range.current),
+      PF_TERMINAL_HOST_IDLE_MS: String(idleMs),
+      PF_TERMINAL_HOST_PROTOCOL_MIN: String(range.minimum),
+      PF_TERMINAL_HOST_PROTOCOL_CURRENT: String(range.current),
       ...extraEnv,
     },
     stdio: ["pipe", "pipe", "pipe"],
@@ -734,14 +734,14 @@ function startHostWithAdvertisedProtocol(
   home: string,
   idleMs = 350,
   extraEnv: NodeJS.ProcessEnv = {},
-  binary = FX_BIN,
+  binary = PF_BIN,
 ): ChildProcessWithoutNullStreams {
   const child = spawn(binary, [INTERNAL_MODE], {
     env: {
       ...process.env,
       HOME: home,
       SHELL: TERMINAL_FIXTURE_SHELL,
-      FX_TERMINAL_HOST_IDLE_MS: String(idleMs),
+      PF_TERMINAL_HOST_IDLE_MS: String(idleMs),
       ...extraEnv,
     },
     stdio: ["pipe", "pipe", "pipe"],
@@ -773,9 +773,9 @@ function protocolFixtureEnv(
   fixture: (typeof protocolFixtureDefinitions)[keyof typeof protocolFixtureDefinitions],
 ): NodeJS.ProcessEnv {
   return {
-    FX_TERMINAL_HOST_PROTOCOL_MIN: String(fixture.range.minimum),
-    FX_TERMINAL_HOST_PROTOCOL_CURRENT: String(fixture.range.current),
-    FX_TERMINAL_HOST_PROTOCOL_CAPABILITIES: String(fixture.capabilities),
+    PF_TERMINAL_HOST_PROTOCOL_MIN: String(fixture.range.minimum),
+    PF_TERMINAL_HOST_PROTOCOL_CURRENT: String(fixture.range.current),
+    PF_TERMINAL_HOST_PROTOCOL_CAPABILITIES: String(fixture.capabilities),
   };
 }
 
@@ -1092,7 +1092,7 @@ function rememberStartAuthority(
   });
   const home = homes.find((candidate) => existsSync(join(
     candidate,
-    ".fx",
+    ".pf",
     "sessions",
     TERMINAL_OWNER_SESSION,
     "terminal",
@@ -1119,19 +1119,19 @@ function ownerCatalogAuthorityForSession(
   const proof = { bytes: Array(32).fill(11) };
   const claim = { principal: ownerPrincipal, actor, proof };
   const key = ownerCatalogDigest(
-    "fx.terminal.owner-catalog-key.v2\0",
+    "pf.terminal.owner-catalog-key.v2\0",
     ownerPrincipal,
     actor,
   ).toString("hex");
   const verifier = ownerCatalogDigest(
-    "fx.terminal.owner-catalog-proof.v2\0",
+    "pf.terminal.owner-catalog-proof.v2\0",
     ownerPrincipal,
     actor,
     Buffer.from(proof.bytes),
   );
   const terminalRoot = join(
     home,
-    ".fx",
+    ".pf",
     "sessions",
     ownerPrincipal.durable_session_id,
     "terminal",
@@ -1610,7 +1610,7 @@ test("fresh hidden host is singular, correlated, reconnectable, private, and idl
     () => contenders.filter((child) => child.exitCode === null).length === 1,
   );
 
-  expect(statSync(join(home, ".fx")).mode & 0o777).toBe(0o700);
+  expect(statSync(join(home, ".pf")).mode & 0o777).toBe(0o700);
   expect(statSync(paths.dir).mode & 0o777).toBe(0o700);
   expect(statSync(paths.lock).mode & 0o777).toBe(0o600);
   expect(statSync(paths.socket).mode & 0o777).toBe(0o600);
@@ -1653,7 +1653,7 @@ test("host handshake is ready before slow durable recovery", async () => {
   const home = makeHome();
   const paths = hostPaths(home);
   const child = startHost(home, { minimum: 4, current: 5 }, 350, {
-    FX_TERMINAL_TEST_STARTUP_RECOVERY_DELAY_MS: "5500",
+    PF_TERMINAL_TEST_STARTUP_RECOVERY_DELAY_MS: "5500",
   });
   await waitFor(() => existsSync(paths.socket) && existsSync(paths.identity));
 
@@ -1695,7 +1695,7 @@ test("fatal host drain timeout exits before shared-state teardown", async () => 
   const paths = hostPaths(home);
   const failAccept = join(home, "fail-next-accept");
   const host = startHost(home, undefined, 10_000, {
-    FX_TERMINAL_TEST_ACCEPT_FAILURE_PATH: failAccept,
+    PF_TERMINAL_TEST_ACCEPT_FAILURE_PATH: failAccept,
   });
   await waitFor(() => existsSync(paths.socket) && existsSync(paths.identity));
 
@@ -1726,8 +1726,8 @@ test("startup recovery failure exits before stalled client teardown", async () =
   const home = makeHome();
   const paths = hostPaths(home);
   const host = startHost(home, undefined, 10_000, {
-    FX_TERMINAL_TEST_STARTUP_RECOVERY_DELAY_MS: "1000",
-    FX_TERMINAL_TEST_STARTUP_RECOVERY_FAILURE: "1",
+    PF_TERMINAL_TEST_STARTUP_RECOVERY_DELAY_MS: "1000",
+    PF_TERMINAL_TEST_STARTUP_RECOVERY_FAILURE: "1",
   });
   await waitFor(() => existsSync(paths.socket) && existsSync(paths.identity));
 
@@ -1745,9 +1745,9 @@ test("client reconciles an idle-retiring host before admitting a request", async
   const paths = hostPaths(home);
   const trace = join(home, "idle-retirement.trace");
   const retiring = startHost(home, undefined, 50, {
-    FX_TRACE_LOG: trace,
-    FX_TRACE_SCOPES: "terminal_host",
-    FX_TERMINAL_TEST_IDLE_EXIT_DELAY_MS: "3000",
+    PF_TRACE_LOG: trace,
+    PF_TRACE_SCOPES: "terminal_host",
+    PF_TERMINAL_TEST_IDLE_EXIT_DELAY_MS: "3000",
   }, buildCurrentClientFixture());
 
   await waitFor(() =>
@@ -2064,7 +2064,7 @@ test.skipIf(!tmuxAvailable())(
     const home = makeHome();
     const paths = hostPaths(home);
     const host = startHost(home, undefined, 10_000, {
-      FX_TERMINAL_TEST_COMMAND_BOUNDARY_DELAY_MS: "5000",
+      PF_TERMINAL_TEST_COMMAND_BOUNDARY_DELAY_MS: "5000",
     });
     await waitFor(() => existsSync(paths.socket));
     const connected = await handshake(paths.socket, { minimum: 4, current: 5 });
@@ -2121,12 +2121,12 @@ test.skipIf(!tmuxAvailable())(
         const transport = terminalTransportPaths(home);
         const trace = join(home, `${fixture.owner}-${fixture.point}-${pass}.log`);
         const host = startHost(home, undefined, 2_000, {
-          FX_TRACE_LOG: trace,
-          FX_TRACE_SCOPES: "terminal_host",
-          FX_TERMINAL_TEST_TMUX_DEADLINE_MS: "150",
+          PF_TRACE_LOG: trace,
+          PF_TRACE_SCOPES: "terminal_host",
+          PF_TERMINAL_TEST_TMUX_DEADLINE_MS: "150",
           ...(fixture.owner === "marker"
-            ? { FX_TERMINAL_TEST_TMUX_MARKER_FAILURE: fixture.point }
-            : { FX_TERMINAL_TEST_TMUX_CAPTURE_FAILURE: fixture.point }),
+            ? { PF_TERMINAL_TEST_TMUX_MARKER_FAILURE: fixture.point }
+            : { PF_TERMINAL_TEST_TMUX_CAPTURE_FAILURE: fixture.point }),
         });
         const stderr = streamText(host.stderr);
         await waitFor(() => existsSync(paths.socket));
@@ -2156,7 +2156,7 @@ test.skipIf(!tmuxAvailable())(
           .toMatchObject({ action: "start", code: "startup_failed" });
         const state = join(
           home,
-          ".fx",
+          ".pf",
           "sessions",
           TERMINAL_OWNER_SESSION,
           "terminal",
@@ -2211,11 +2211,11 @@ test.skipIf(!tmuxAvailable())(
         const transport = terminalTransportPaths(home);
         const trace = join(home, `foreground-${fixture.name}-${pass}.log`);
         const host = startHost(home, undefined, 2_000, {
-          FX_TRACE_LOG: trace,
-          FX_TRACE_SCOPES: "terminal_host",
-          FX_TERMINAL_TEST_TMUX_TCSETPGRP_FAILURE: "1",
+          PF_TRACE_LOG: trace,
+          PF_TRACE_SCOPES: "terminal_host",
+          PF_TERMINAL_TEST_TMUX_TCSETPGRP_FAILURE: "1",
           ...(fixture.injectGroupKillFailure
-            ? { FX_TERMINAL_TEST_TMUX_GROUP_KILL_FAILURE: "1" }
+            ? { PF_TERMINAL_TEST_TMUX_GROUP_KILL_FAILURE: "1" }
             : {}),
         });
         const stderr = streamText(host.stderr);
@@ -2306,9 +2306,9 @@ test.skipIf(!tmuxAvailable())(
           readdirSync(paths.dir).filter((name) => name.startsWith("tmux-")),
           `${fixture.name}:${pass}`,
         ).toEqual([]);
-        expect(existsSync(`/tmp/fx-tmux-capture-${record.backend_identity}.sock`))
+        expect(existsSync(`/tmp/pf-tmux-capture-${record.backend_identity}.sock`))
           .toBe(false);
-        expect(existsSync(`/tmp/fx-tmux-marker-${record.backend_identity}.sock`))
+        expect(existsSync(`/tmp/pf-tmux-marker-${record.backend_identity}.sock`))
           .toBe(false);
         expect(processFdCount(host.pid!)).toBeLessThanOrEqual(baselineFds + 2);
         connected.client.close();
@@ -2344,9 +2344,9 @@ test.skipIf(!tmuxAvailable())(
     const baselineCaptureHelpers = tmuxCaptureHelperPids();
     const trace = join(home, "tmux-sigttin-trace.log");
     const host = startHost(home, undefined, 250, {
-      FX_TRACE_LOG: trace,
-      FX_TRACE_SCOPES: "terminal_host",
-      FX_TERMINAL_TEST_TMUX_DEADLINE_MS: "2000",
+      PF_TRACE_LOG: trace,
+      PF_TRACE_SCOPES: "terminal_host",
+      PF_TERMINAL_TEST_TMUX_DEADLINE_MS: "2000",
     });
     const stderr = streamText(host.stderr);
     await waitFor(() => existsSync(paths.socket));
@@ -2418,9 +2418,9 @@ test.skipIf(!tmuxAvailable())(
     expect(
       readdirSync(paths.dir).filter((name) => name.startsWith("tmux-")),
     ).toEqual([]);
-    expect(existsSync(`/tmp/fx-tmux-capture-${record.backend_identity}.sock`))
+    expect(existsSync(`/tmp/pf-tmux-capture-${record.backend_identity}.sock`))
       .toBe(false);
-    expect(existsSync(`/tmp/fx-tmux-marker-${record.backend_identity}.sock`))
+    expect(existsSync(`/tmp/pf-tmux-marker-${record.backend_identity}.sock`))
       .toBe(false);
     expect(processFdCount(host.pid!)).toBeLessThanOrEqual(hostFds + 2);
     rmSync(stoppedProof, { force: true });
@@ -2470,7 +2470,7 @@ static int launcher_process(void) {
   if (fd < 0) return 0;
   ssize_t count = read(fd, bytes, sizeof(bytes));
   close(fd);
-  const char needle[] = "--fx-internal-terminal-tmux-launcher";
+  const char needle[] = "--pf-internal-terminal-tmux-launcher";
   if (count < (ssize_t)(sizeof(needle) - 1)) return 0;
   for (ssize_t i = 0; i <= count - (ssize_t)(sizeof(needle) - 1); i++) {
     if (memcmp(bytes + i, needle, sizeof(needle) - 1) == 0) return 1;
@@ -2490,13 +2490,13 @@ int tcsetpgrp(int fd, pid_t pgrp) {
     *(void **)(&real_tcsetpgrp) = dlsym(RTLD_NEXT, "tcsetpgrp");
   }
   if (!launcher_process()) return real_tcsetpgrp(fd, pgrp);
-  const char *ready = getenv("FX_E2E_TMUX_DESCENDANT_READY");
+  const char *ready = getenv("PF_E2E_TMUX_DESCENDANT_READY");
   for (int i = 0; ready != NULL && access(ready, F_OK) != 0 && i < 1000; i++) {
     usleep(5000);
   }
   int result = real_tcsetpgrp(fd, pgrp);
-  touch_path(getenv("FX_E2E_TMUX_HANDOFF_ASSIGNED"));
-  const char *release = getenv("FX_E2E_TMUX_HANDOFF_RELEASE");
+  touch_path(getenv("PF_E2E_TMUX_HANDOFF_ASSIGNED"));
+  const char *release = getenv("PF_E2E_TMUX_HANDOFF_RELEASE");
   for (int i = 0; release != NULL && access(release, F_OK) != 0 && i < 1000; i++) {
     usleep(5000);
   }
@@ -2545,10 +2545,10 @@ exec /bin/bash "$@"
     const baselineCaptureHelpers = tmuxCaptureHelperPids();
     const host = startHost(home, undefined, 250, {
       LD_PRELOAD: interposer,
-      FX_E2E_TMUX_DESCENDANT_READY: descendantReady,
-      FX_E2E_TMUX_HANDOFF_ASSIGNED: handoffAssigned,
-      FX_E2E_TMUX_HANDOFF_RELEASE: handoffRelease,
-      FX_TERMINAL_TEST_TMUX_DEADLINE_MS: "2000",
+      PF_E2E_TMUX_DESCENDANT_READY: descendantReady,
+      PF_E2E_TMUX_HANDOFF_ASSIGNED: handoffAssigned,
+      PF_E2E_TMUX_HANDOFF_RELEASE: handoffRelease,
+      PF_TERMINAL_TEST_TMUX_DEADLINE_MS: "2000",
     });
     const stderr = streamText(host.stderr);
     await waitFor(() => existsSync(paths.socket));
@@ -2625,7 +2625,7 @@ exec /bin/bash "$@"
       "do_signal_stop",
     ]);
     expect(processLines.some((line) =>
-      line.includes("--fx-internal-terminal-control")
+      line.includes("--pf-internal-terminal-control")
     )).toBe(false);
     expect(existsSync(resumedProof)).toBe(false);
     const record = durableTerminalRecord(home).value as unknown as {
@@ -2710,8 +2710,8 @@ exec /bin/bash "$@"
       readdirSync(paths.dir).filter((name) => name.startsWith("tmux-")),
     ).toEqual([]);
     for (const identity of [record.backend_identity, laterRecord.backend_identity]) {
-      expect(existsSync(`/tmp/fx-tmux-capture-${identity}.sock`)).toBe(false);
-      expect(existsSync(`/tmp/fx-tmux-marker-${identity}.sock`)).toBe(false);
+      expect(existsSync(`/tmp/pf-tmux-capture-${identity}.sock`)).toBe(false);
+      expect(existsSync(`/tmp/pf-tmux-marker-${identity}.sock`)).toBe(false);
     }
     expect(processFdCount(host.pid!)).toBeLessThanOrEqual(hostFds + 2);
     for (const path of [
@@ -2825,7 +2825,7 @@ test.skipIf(!tmuxAvailable())("tmux resize checkpoint failures roll back without
     const releasePath = join(home, "resize-release");
     const paths = hostPaths(home);
     const host = startHost(home, undefined, 30_000, {
-      FX_TERMINAL_TEST_TMUX_RESIZE_CHECKPOINT_FAILURE: failurePoint,
+      PF_TERMINAL_TEST_TMUX_RESIZE_CHECKPOINT_FAILURE: failurePoint,
     });
     await waitFor(() => existsSync(paths.socket));
     const connected = await handshake(paths.socket, { minimum: 4, current: 5 });
@@ -2949,13 +2949,13 @@ test.skipIf(!tmuxAvailable())("revision four client cannot opt into Part 8 tmux 
 }, 15_000);
 
 test.skipIf(!tmuxAvailable() || process.platform !== "linux")(
-  "terminal helpers keep running after the on-disk fx binary is replaced",
+  "terminal helpers keep running after the on-disk pf binary is replaced",
   async () => {
     if (!existsSync("/bin/zsh")) return;
     const home = makeHome();
     const paths = hostPaths(home);
-    const liveBin = join(home, "fx");
-    copyFileSync(FX_BIN, liveBin);
+    const liveBin = join(home, "pf");
+    copyFileSync(PF_BIN, liveBin);
     chmodSync(liveBin, 0o755);
 
     const host = startHost(home, undefined, 30_000, {}, liveBin);
@@ -3018,19 +3018,19 @@ test.skipIf(!tmuxAvailable())("tmux recovers every durable starting boundary", a
       name: "prepared",
       lifecycleKind: 1,
       commandless: false,
-      env: { FX_TERMINAL_TEST_TMUX_PREPARED_RELEASE_DELAY_MS: "5000" },
+      env: { PF_TERMINAL_TEST_TMUX_PREPARED_RELEASE_DELAY_MS: "5000" },
     },
     {
       name: "shell-ready",
       lifecycleKind: 2,
       commandless: true,
-      env: { FX_TERMINAL_TEST_TMUX_SHELL_READY_HOST_DELAY_MS: "5000" },
+      env: { PF_TERMINAL_TEST_TMUX_SHELL_READY_HOST_DELAY_MS: "5000" },
     },
     {
       name: "command-started",
       lifecycleKind: 3,
       commandless: false,
-      env: { FX_TERMINAL_TEST_COMMAND_BOUNDARY_DELAY_MS: "5000" },
+      env: { PF_TERMINAL_TEST_COMMAND_BOUNDARY_DELAY_MS: "5000" },
     },
   ];
 
@@ -3074,8 +3074,8 @@ test.skipIf(!tmuxAvailable())("tmux recovers every durable starting boundary", a
 
     const recoveryTrace = join(home, `starting-${fixture.name}.log`);
     const replacement = startHost(home, undefined, 30_000, {
-      FX_TRACE_LOG: recoveryTrace,
-      FX_TRACE_SCOPES: "terminal_host",
+      PF_TRACE_LOG: recoveryTrace,
+      PF_TRACE_SCOPES: "terminal_host",
     });
     await waitFor(
       () => existsSync(paths.socket) && existsSync(paths.identity) &&
@@ -3166,7 +3166,7 @@ test.skipIf(!tmuxAvailable())(
       const home = makeHome();
       const paths = hostPaths(home);
       const firstHost = startHost(home, undefined, 30_000, {
-        FX_TERMINAL_TEST_TMUX_PREPARED_RELEASE_DELAY_MS:
+        PF_TERMINAL_TEST_TMUX_PREPARED_RELEASE_DELAY_MS:
           String(preparedReleaseDelayMs),
       });
       await waitFor(() => existsSync(paths.socket));
@@ -3191,7 +3191,7 @@ test.skipIf(!tmuxAvailable())(
         backend_identity: string;
       };
       const tmuxSocket = terminalTransportPaths(home).tmuxSocket;
-      const sessionName = `fx-${record.backend_identity}`;
+      const sessionName = `pf-${record.backend_identity}`;
       const panePid = Number(execFileSync(
         "tmux",
         ["-S", tmuxSocket, "display-message", "-p", "-t", sessionName, "#{pane_pid}"],
@@ -3203,12 +3203,12 @@ test.skipIf(!tmuxAvailable())(
       await pending;
 
       const failed = startHost(home, undefined, 30_000, {
-        FX_TERMINAL_TEST_TMUX_RECOVERY_FAILURE: "release",
+        PF_TERMINAL_TEST_TMUX_RECOVERY_FAILURE: "release",
       });
       expect(await waitForExit(failed), `release:${pass}`).not.toBe(0);
       expect(processExists(panePid), `release:${pass}`).toBe(true);
       execFileSync("tmux", ["-S", tmuxSocket, "has-session", "-t", sessionName]);
-      expect(existsSync(`/tmp/fx-tmux-capture-${record.backend_identity}.sock`))
+      expect(existsSync(`/tmp/pf-tmux-capture-${record.backend_identity}.sock`))
         .toBe(false);
 
       const replacement = startHost(home, undefined, 500);
@@ -3295,8 +3295,8 @@ test.skipIf(!tmuxAvailable())("transient tmux recovery failures preserve the pan
     const siblingIdentity = (durableTerminalRecordFor(home, siblingId) as {
       backend_identity: string;
     }).backend_identity;
-    const sessionName = `fx-${backendIdentity}`;
-    const siblingName = `fx-${siblingIdentity}`;
+    const sessionName = `pf-${backendIdentity}`;
+    const siblingName = `pf-${siblingIdentity}`;
     const panePid = Number(execFileSync(
       "tmux",
       ["-S", tmuxSocket, "display-message", "-p", "-t", sessionName, "#{pane_pid}"],
@@ -3312,8 +3312,8 @@ test.skipIf(!tmuxAvailable())("transient tmux recovery failures preserve the pan
     await waitForExit(firstHost);
 
     const failedRecovery = startHost(home, undefined, 30_000, {
-      FX_TERMINAL_TEST_TMUX_RECOVERY_FAILURE: failurePoint,
-      FX_TERMINAL_TEST_TMUX_RECOVERY_SESSION_ID: sessionId,
+      PF_TERMINAL_TEST_TMUX_RECOVERY_FAILURE: failurePoint,
+      PF_TERMINAL_TEST_TMUX_RECOVERY_SESSION_ID: sessionId,
     });
     expect(await waitForExit(failedRecovery), failurePoint).not.toBe(0);
     expect(() => process.kill(panePid, 0), failurePoint).not.toThrow();
@@ -3321,12 +3321,12 @@ test.skipIf(!tmuxAvailable())("transient tmux recovery failures preserve the pan
     execFileSync("tmux", ["-S", tmuxSocket, "has-session", "-t", sessionName]);
     execFileSync("tmux", ["-S", tmuxSocket, "has-session", "-t", siblingName]);
     await waitFor(
-      () => !existsSync(`/tmp/fx-tmux-capture-${backendIdentity}.sock`),
+      () => !existsSync(`/tmp/pf-tmux-capture-${backendIdentity}.sock`),
       5_000,
     ).catch(() => {
       throw new Error(`${failurePoint}: target capture socket retained`);
     });
-    expect(existsSync(`/tmp/fx-tmux-capture-${backendIdentity}.sock`), failurePoint)
+    expect(existsSync(`/tmp/pf-tmux-capture-${backendIdentity}.sock`), failurePoint)
       .toBe(false);
 
     const failedIdentity = existsSync(paths.identity)
@@ -3437,13 +3437,13 @@ test.skipIf(!tmuxAvailable())("transient tmux recovery failures preserve the pan
     expect(await waitForExit(replacement)).toBe(0);
     expect(processExists(panePid), failurePoint).toBe(false);
     expect(processExists(siblingPanePid), failurePoint).toBe(false);
-    expect(existsSync(`/tmp/fx-tmux-capture-${backendIdentity}.sock`), failurePoint)
+    expect(existsSync(`/tmp/pf-tmux-capture-${backendIdentity}.sock`), failurePoint)
       .toBe(false);
-    expect(existsSync(`/tmp/fx-tmux-capture-${siblingIdentity}.sock`), failurePoint)
+    expect(existsSync(`/tmp/pf-tmux-capture-${siblingIdentity}.sock`), failurePoint)
       .toBe(false);
-    expect(existsSync(`/tmp/fx-tmux-marker-${backendIdentity}.sock`), failurePoint)
+    expect(existsSync(`/tmp/pf-tmux-marker-${backendIdentity}.sock`), failurePoint)
       .toBe(false);
-    expect(existsSync(`/tmp/fx-tmux-marker-${siblingIdentity}.sock`), failurePoint)
+    expect(existsSync(`/tmp/pf-tmux-marker-${siblingIdentity}.sock`), failurePoint)
       .toBe(false);
   }
 }, 180_000);
@@ -3481,7 +3481,7 @@ test.skipIf(!tmuxAvailable())("private tmux teardown owns partial recovery resou
   await waitForExit(firstHost);
 
   const failedRecovery = startHost(home, undefined, 30_000, {
-    FX_TERMINAL_TEST_TMUX_RECOVERY_FAILURE: "after-gap",
+    PF_TERMINAL_TEST_TMUX_RECOVERY_FAILURE: "after-gap",
   });
   expect(await waitForExit(failedRecovery)).not.toBe(0);
   const proof = await cleanupPrivateTmuxServer(
@@ -3494,8 +3494,8 @@ test.skipIf(!tmuxAvailable())("private tmux teardown owns partial recovery resou
   expect(proof.processPids.every((pid) => !processExists(pid))).toBe(true);
   expect(privateTmuxProcessPids(tmuxSocket, [backendIdentity])).toEqual([]);
   expect(existsSync(tmuxSocket)).toBe(false);
-  expect(existsSync(`/tmp/fx-tmux-capture-${backendIdentity}.sock`)).toBe(false);
-  expect(existsSync(`/tmp/fx-tmux-marker-${backendIdentity}.sock`)).toBe(false);
+  expect(existsSync(`/tmp/pf-tmux-capture-${backendIdentity}.sock`)).toBe(false);
+  expect(existsSync(`/tmp/pf-tmux-marker-${backendIdentity}.sock`)).toBe(false);
   expect(() =>
     execFileSync("tmux", ["-S", tmuxSocket, "has-session", "-t", sessionName], {
       stdio: "pipe",
@@ -3508,7 +3508,7 @@ test.skipIf(!tmuxAvailable())("private tmux teardown owns partial recovery resou
     identities: new Set(),
   };
   privateTmuxServers.set(retryProbe.socket, retryProbe);
-  const transportRoot = mkdtempSync(join(tmpdir(), "fx-terminal-cleanup-root-"));
+  const transportRoot = mkdtempSync(join(tmpdir(), "pf-terminal-cleanup-root-"));
   transportRoots.add(transportRoot);
   const attempts: string[] = [];
   const cleanupFailure = new Error("cleanup failure");
@@ -3793,7 +3793,7 @@ test.skipIf(!tmuxAvailable())("tmux recovery rejects a replaced pane without sig
     tmuxSocket,
     "set-option",
     "-g",
-    "@fx_terminal_namespace",
+    "@pf_terminal_namespace",
     "1",
   ]);
   execFileSync("tmux", [
@@ -3802,7 +3802,7 @@ test.skipIf(!tmuxAvailable())("tmux recovery rejects a replaced pane without sig
     "set-option",
     "-t",
     sessionName,
-    "@fx_terminal_namespace",
+    "@pf_terminal_namespace",
     backendIdentity,
   ]);
 
@@ -3833,7 +3833,7 @@ test.skipIf(!tmuxAvailable())("tmux recovery rejects a replaced pane without sig
   await waitForExit(replacement);
 }, 25_000);
 
-test.skipIf(!tmuxAvailable())("tmux repeated force-close cycles leave no fx server", async () => {
+test.skipIf(!tmuxAvailable())("tmux repeated force-close cycles leave no pf server", async () => {
   if (!existsSync("/bin/zsh")) return;
   const home = makeHome();
   const paths = hostPaths(home);
@@ -4059,8 +4059,8 @@ test("revoke and close quiesce writes already queued under stale authority", asy
   const paths = hostPaths(home);
   const writeBarrier = join(home, "write-barrier");
   const host = startHost(home, undefined, 10_000, {
-    FX_TERMINAL_TEST_WRITE_DELAY_MS: "180",
-    FX_TERMINAL_TEST_WRITE_BARRIER_PATH: writeBarrier,
+    PF_TERMINAL_TEST_WRITE_DELAY_MS: "180",
+    PF_TERMINAL_TEST_WRITE_BARRIER_PATH: writeBarrier,
   });
   await waitFor(() => existsSync(paths.socket));
   const connected = await handshake(paths.socket, { minimum: 4, current: 5 });
@@ -4402,7 +4402,7 @@ test.skipIf(!tmuxAvailable())("private screen text grid matches an actual tmux c
     fixture,
     [
       "printf '\\033[2J\\033[H'",
-      "printf '\\033[1;34mfx-grid\\033[0m'",
+      "printf '\\033[1;34mpf-grid\\033[0m'",
       "printf '\\033[3;1Hwide: 界 + é'",
       "printf '\\033[5;1Habcdef'",
       "printf '\\033[2D\\033[P'",
@@ -4505,7 +4505,7 @@ test("Bash and zsh preserve trusted normal startup and controlled clean startup"
   if (existsSync("/bin/zsh")) isolateZshStartupFixture(home);
   const paths = hostPaths(home);
   const host = startHost(home, undefined, 10_000, {
-    FX_TERMINAL_TEST_COMMAND_BOUNDARY_DELAY_MS: "2500",
+    PF_TERMINAL_TEST_COMMAND_BOUNDARY_DELAY_MS: "2500",
   });
   await waitFor(() => existsSync(paths.socket));
   const connected = await handshake(paths.socket, { minimum: 4, current: 5 });
@@ -4539,8 +4539,8 @@ test("Bash and zsh preserve trusted normal startup and controlled clean startup"
         `printf '${shell.marker}\\n'`,
         `printf '${boundaryMatch}\\n'`,
         `: > '${profileReady}'`,
-        `alias fx_profile_alias="printf '${shell.name}-alias\\\\n'"`,
-        `fx_profile_function() { printf '${shell.name}-function\\\\n'; }`,
+        `alias pf_profile_alias="printf '${shell.name}-alias\\\\n'"`,
+        `pf_profile_function() { printf '${shell.name}-function\\\\n'; }`,
         "",
       ].join("\n"),
     );
@@ -4556,8 +4556,8 @@ test("Bash and zsh preserve trusted normal startup and controlled clean startup"
       {
         cwd: home,
         command: [
-          "fx_profile_alias",
-          "fx_profile_function",
+          "pf_profile_alias",
+          "pf_profile_function",
           `printf '${shell.name}-command\\n'`,
           "(exit 19)",
         ].join("; "),
@@ -4664,9 +4664,9 @@ test("Bash and zsh preserve trusted normal startup and controlled clean startup"
       {
         cwd: home,
         command:
-          "alias fx_profile_alias >/dev/null 2>&1 && " +
+          "alias pf_profile_alias >/dev/null 2>&1 && " +
           "printf 'alias-leaked\\n' || printf 'alias-absent\\n'; " +
-          "type fx_profile_function >/dev/null 2>&1 && " +
+          "type pf_profile_function >/dev/null 2>&1 && " +
           "printf 'function-leaked\\n' || printf 'function-absent\\n'; " +
           `printf '${shell.name}-clean\\n'; exit 0`,
         shell: {
@@ -4730,7 +4730,7 @@ test("Bash and zsh preserve trusted normal startup and controlled clean startup"
     writeFileSync(
       join(home, ".zprofile"),
       "sleep 0.2\n" +
-        "fx_delayed_function() { printf 'delayed-function\\n'; }\n" +
+        "pf_delayed_function() { printf 'delayed-function\\n'; }\n" +
         "printf 'delayed-profile\\n'\n",
     );
     const delayedAt = Date.now();
@@ -4765,7 +4765,7 @@ test("Bash and zsh preserve trusted normal startup and controlled clean startup"
       "write",
       {
         session_id: delayedId,
-        payload: { text: "fx_delayed_function\r" },
+        payload: { text: "pf_delayed_function\r" },
       },
     );
     const delayedMatch = await requestAction(
@@ -5265,7 +5265,7 @@ test("force close reports incomplete refresh descendant and shell delivery", asy
     const home = makeHome();
     const paths = hostPaths(home);
     const host = startHost(home, undefined, TMUX_INITIAL_STARTUP_OBSERVATION_BUDGET_MS, {
-      FX_TERMINAL_TEST_FAIL_SIGNAL_STAGE: stage,
+      PF_TERMINAL_TEST_FAIL_SIGNAL_STAGE: stage,
     });
     await waitFor(() => existsSync(paths.socket));
     const control = await handshake(paths.socket, { minimum: 4, current: 5 });
@@ -5516,7 +5516,7 @@ test.skipIf(!tmuxAvailable())(
     const invalidId = (invalid.session as { session_id: string }).session_id;
     const stateDir = join(
       home,
-      ".fx",
+      ".pf",
       "sessions",
       TERMINAL_OWNER_SESSION,
       "terminal",
@@ -5537,7 +5537,7 @@ test.skipIf(!tmuxAvailable())(
         "display-message",
         "-p",
         "-t",
-        `fx-${identity}`,
+        `pf-${identity}`,
         "#{pane_pid}",
       ],
       { encoding: "utf8" },
@@ -5586,11 +5586,11 @@ test.skipIf(!tmuxAvailable())(
       ["-S", tmuxSocket, "list-sessions", "-F", "#{session_name}"],
       { encoding: "utf8" },
     ).trim().split("\n");
-    expect(sessionNames).toEqual([`fx-${validIdentity}`]);
-    expect(existsSync(`/tmp/fx-tmux-capture-${invalidIdentity}.sock`)).toBe(
+    expect(sessionNames).toEqual([`pf-${validIdentity}`]);
+    expect(existsSync(`/tmp/pf-tmux-capture-${invalidIdentity}.sock`)).toBe(
       false,
     );
-    expect(existsSync(`/tmp/fx-tmux-marker-${invalidIdentity}.sock`)).toBe(
+    expect(existsSync(`/tmp/pf-tmux-marker-${invalidIdentity}.sock`)).toBe(
       false,
     );
     expect(readdirSync(stateDir)).not.toContain(
@@ -5656,8 +5656,8 @@ test.skipIf(!tmuxAvailable())(
     const home = makeHome();
     const paths = hostPaths(home);
     const firstHost = startHost(home, undefined, 30_000, {
-      FX_TERMINAL_TEST_FAIL_TMUX_CLOSE_CLEANUP: "1",
-      FX_TERMINAL_TEST_FAIL_SIGNAL_STAGE: "outside_group",
+      PF_TERMINAL_TEST_FAIL_TMUX_CLOSE_CLEANUP: "1",
+      PF_TERMINAL_TEST_FAIL_SIGNAL_STAGE: "outside_group",
     });
     const firstStdout = streamText(firstHost.stdout);
     const firstStderr = streamText(firstHost.stderr);
@@ -5687,7 +5687,7 @@ test.skipIf(!tmuxAvailable())(
     const closingId = (closing.session as { session_id: string }).session_id;
     const stateDir = join(
       home,
-      ".fx",
+      ".pf",
       "sessions",
       TERMINAL_OWNER_SESSION,
       "terminal",
@@ -5733,7 +5733,7 @@ test.skipIf(!tmuxAvailable())(
         "display-message",
         "-p",
         "-t",
-        `fx-${closingIdentity}`,
+        `pf-${closingIdentity}`,
         "#{pane_id}|#{pane_dead}",
       ],
       { encoding: "utf8" },
@@ -5741,7 +5741,7 @@ test.skipIf(!tmuxAvailable())(
     expect(retainedPane).toMatch(/^%\d+\|[01]$/);
     execFileSync(
       "tmux",
-      ["-S", tmuxSocket, "has-session", "-t", `fx-${siblingIdentity}`],
+      ["-S", tmuxSocket, "has-session", "-t", `pf-${siblingIdentity}`],
     );
     success(await requestAction(
       first.client,
@@ -5792,7 +5792,7 @@ test.skipIf(!tmuxAvailable())(
       ["-S", tmuxSocket, "list-sessions", "-F", "#{session_name}"],
       { encoding: "utf8" },
     ).trim().split("\n");
-    expect(names).toEqual([`fx-${siblingIdentity}`]);
+    expect(names).toEqual([`pf-${siblingIdentity}`]);
     const afterRestart = success(await requestAction(
       recovered.client,
       recovered.revision!,
@@ -5828,7 +5828,7 @@ test.skipIf(!tmuxAvailable())(
     const home = makeHome();
     const paths = hostPaths(home);
     const firstHost = startHost(home, undefined, 30_000, {
-      FX_TERMINAL_TEST_INTERRUPT_CLOSE_AFTER_COMMIT: "1",
+      PF_TERMINAL_TEST_INTERRUPT_CLOSE_AFTER_COMMIT: "1",
     });
     const firstStdout = streamText(firstHost.stdout);
     const firstStderr = streamText(firstHost.stderr);
@@ -5855,7 +5855,7 @@ test.skipIf(!tmuxAvailable())(
     const closingId = (closing.session as { session_id: string }).session_id;
     const stateDir = join(
       home,
-      ".fx",
+      ".pf",
       "sessions",
       TERMINAL_OWNER_SESSION,
       "terminal",
@@ -5876,7 +5876,7 @@ test.skipIf(!tmuxAvailable())(
         "display-message",
         "-p",
         "-t",
-        `fx-${identity}`,
+        `pf-${identity}`,
         "#{pane_pid}",
       ],
       { encoding: "utf8" },
@@ -5908,7 +5908,7 @@ test.skipIf(!tmuxAvailable())(
     expect(await firstStderr).toBe("");
 
     const failedRecovery = startHost(home, undefined, 30_000, {
-      FX_TERMINAL_TEST_FAIL_TMUX_CLOSE_CLEANUP: "1",
+      PF_TERMINAL_TEST_FAIL_TMUX_CLOSE_CLEANUP: "1",
     });
     const failedStdout = streamText(failedRecovery.stdout);
     const failedStderr = streamText(failedRecovery.stderr);
@@ -5921,11 +5921,11 @@ test.skipIf(!tmuxAvailable())(
     expect(processExists(siblingPanePid)).toBe(true);
     execFileSync(
       "tmux",
-      ["-S", tmuxSocket, "has-session", "-t", `fx-${closingIdentity}`],
+      ["-S", tmuxSocket, "has-session", "-t", `pf-${closingIdentity}`],
     );
     execFileSync(
       "tmux",
-      ["-S", tmuxSocket, "has-session", "-t", `fx-${siblingIdentity}`],
+      ["-S", tmuxSocket, "has-session", "-t", `pf-${siblingIdentity}`],
     );
 
     const replacement = startHost(home, undefined, 500);
@@ -5945,14 +5945,14 @@ test.skipIf(!tmuxAvailable())(
     expect(readdirSync(stateDir)).not.toContain(transactionName);
     execFileSync(
       "tmux",
-      ["-S", tmuxSocket, "has-session", "-t", `fx-${siblingIdentity}`],
+      ["-S", tmuxSocket, "has-session", "-t", `pf-${siblingIdentity}`],
     );
     const names = execFileSync(
       "tmux",
       ["-S", tmuxSocket, "list-sessions", "-F", "#{session_name}"],
       { encoding: "utf8" },
     ).trim().split("\n");
-    expect(names).toEqual([`fx-${siblingIdentity}`]);
+    expect(names).toEqual([`pf-${siblingIdentity}`]);
 
     const waited = success(await requestAction(
       recovered.client,
@@ -6006,11 +6006,11 @@ test(
     const trace = join(home, `reopened-cancellation-${error}.log`);
     const barrier = join(home, `reopened-cancellation-${error}`);
     const replacement = startHost(home, undefined, 300, {
-      FX_TRACE_LOG: trace,
-      FX_TRACE_SCOPES: "terminal_host",
-      FX_TERMINAL_TEST_ORDER_BARRIER: barrier,
-      FX_TERMINAL_TEST_ORDER_HOLD_CORRELATION: "335",
-      FX_TERMINAL_TEST_FAIL_CANCELLATION_OPEN: "1",
+      PF_TRACE_LOG: trace,
+      PF_TRACE_SCOPES: "terminal_host",
+      PF_TERMINAL_TEST_ORDER_BARRIER: barrier,
+      PF_TERMINAL_TEST_ORDER_HOLD_CORRELATION: "335",
+      PF_TERMINAL_TEST_FAIL_CANCELLATION_OPEN: "1",
     });
     await waitFor(() =>
       existsSync(paths.socket) && existsSync(paths.identity) &&
@@ -6351,7 +6351,7 @@ test("host remains authoritative until natural backend cleanup finishes", async 
   const home = makeHome();
   const paths = hostPaths(home);
   const host = startHost(home, undefined, 40, {
-    FX_TERMINAL_TEST_BACKEND_CLEANUP_DELAY_MS: "500",
+    PF_TERMINAL_TEST_BACKEND_CLEANUP_DELAY_MS: "500",
   });
   await waitFor(() => existsSync(paths.socket));
   const connected = await handshake(paths.socket, { minimum: 4, current: 5 });
@@ -6403,7 +6403,7 @@ test("process-token capture failure kills and reaps before returning failure", a
     home,
     undefined,
     NATIVE_STARTUP_OBSERVATION_BUDGET_MS * 4,
-    { FX_TERMINAL_FIXTURE_FAIL_PROCESS_TOKEN: "1" },
+    { PF_TERMINAL_FIXTURE_FAIL_PROCESS_TOKEN: "1" },
     buildCurrentClientFixture(),
   );
   await waitFor(() => existsSync(paths.socket));
@@ -6975,7 +6975,7 @@ test("official client retains every reserved outcome through the exact capacity 
   const home = makeHome();
   const paths = hostPaths(home);
   const result = await runClientFixture(home, 300, {
-    FX_TERMINAL_OUTCOME_FIXTURE: "retention",
+    PF_TERMINAL_OUTCOME_FIXTURE: "retention",
   });
 
   expect(result).toEqual({
@@ -7001,9 +7001,9 @@ test.each([
   const home = makeHome();
   const paths = hostPaths(home);
   const result = await runClientFixture(home, 300, {
-    FX_TERMINAL_OUTCOME_FIXTURE: "failure",
-    FX_TERMINAL_TEST_HOST_FAILURE_POINT: point,
-    FX_TERMINAL_TEST_HOST_FAILURE_CORRELATION: "1",
+    PF_TERMINAL_OUTCOME_FIXTURE: "failure",
+    PF_TERMINAL_TEST_HOST_FAILURE_POINT: point,
+    PF_TERMINAL_TEST_HOST_FAILURE_CORRELATION: "1",
   });
 
   expect(result).toEqual({
@@ -7082,7 +7082,7 @@ test("long profile homes use distinct private transport roots and retain durable
 test("long-home transport roots reject symlink and non-private components without mutation", async () => {
   const symlinkHome = makeLongHome(141);
   const symlinkTransport = terminalTransportPaths(symlinkHome);
-  const outside = mkdtempSync(join(tmpdir(), "fx-terminal-foreign-runtime-"));
+  const outside = mkdtempSync(join(tmpdir(), "pf-terminal-foreign-runtime-"));
   homes.push(outside);
   writeFileSync(join(outside, "host.sock"), "foreign");
   symlinkSync(outside, symlinkTransport.dir);
@@ -7227,7 +7227,7 @@ test("fresh private client reloads owner-scoped authority without retaining proo
   const home = makeHome();
   const paths = hostPaths(home);
   const started = await runClientFixture(home, 700, {
-    FX_TERMINAL_AUTHORITY_FIXTURE: "start",
+    PF_TERMINAL_AUTHORITY_FIXTURE: "start",
   });
   expect(started.exitCode).toBe(0);
   expect(started.stderr).toBe("");
@@ -7253,8 +7253,8 @@ test("fresh private client reloads owner-scoped authority without retaining proo
   writeLeaseSessions.clear();
 
   const reloaded = await runClientFixture(home, 700, {
-    FX_TERMINAL_AUTHORITY_FIXTURE: "reload",
-    FX_TERMINAL_AUTHORITY_SESSION_ID: startValue.session_id,
+    PF_TERMINAL_AUTHORITY_FIXTURE: "reload",
+    PF_TERMINAL_AUTHORITY_SESSION_ID: startValue.session_id,
   });
   expect(reloaded).toEqual({
     exitCode: 0,
@@ -7311,7 +7311,7 @@ test("current client rejects same revision host without complete signal capabili
   const identityBefore = readFileSync(paths.identity, "utf8");
 
   const rejected = await runClientFixture(home, 700, {
-    FX_TERMINAL_CAPABILITY_FIXTURE: "start",
+    PF_TERMINAL_CAPABILITY_FIXTURE: "start",
   });
   expect(rejected).toEqual({
     exitCode: 0,
@@ -7322,7 +7322,7 @@ test("current client rejects same revision host without complete signal capabili
   expect(readFileSync(paths.identity, "utf8")).toBe(identityBefore);
   const terminalState = join(
     home,
-    ".fx",
+    ".pf",
     "sessions",
     TERMINAL_OWNER_SESSION,
     "terminal",
@@ -7373,9 +7373,9 @@ test("current client permits graceful close and rejects force close on signal li
   previousClient.client.close();
 
   const forceRejected = await runClientFixture(home, 1_500, {
-    FX_TERMINAL_CAPABILITY_FIXTURE: "force_close",
-    FX_TERMINAL_AUTHORITY_FIXTURE_COMPAT: "1",
-    FX_TERMINAL_AUTHORITY_SESSION_ID: sessionId,
+    PF_TERMINAL_CAPABILITY_FIXTURE: "force_close",
+    PF_TERMINAL_AUTHORITY_FIXTURE_COMPAT: "1",
+    PF_TERMINAL_AUTHORITY_SESSION_ID: sessionId,
   });
   expect(forceRejected).toEqual({
     exitCode: 0,
@@ -7388,9 +7388,9 @@ test("current client permits graceful close and rejects force close on signal li
   expect(readFileSync(paths.identity, "utf8")).toBe(identityBefore);
 
   const gracefulClosed = await runClientFixture(home, 1_500, {
-    FX_TERMINAL_AUTHORITY_FIXTURE: "reload",
-    FX_TERMINAL_AUTHORITY_FIXTURE_COMPAT: "1",
-    FX_TERMINAL_AUTHORITY_SESSION_ID: sessionId,
+    PF_TERMINAL_AUTHORITY_FIXTURE: "reload",
+    PF_TERMINAL_AUTHORITY_FIXTURE_COMPAT: "1",
+    PF_TERMINAL_AUTHORITY_SESSION_ID: sessionId,
   });
   expect(gracefulClosed).toEqual({
     exitCode: 0,
@@ -7451,7 +7451,7 @@ test("protocol fixtures advertise exact evidence and interoperate in both direct
     expect(await waitForExit(host), direction).toBe(0);
     directionEvidence.push({
       direction,
-      client: "active_FX_BIN",
+      client: "active_PF_BIN",
       host: "previous_contract",
       result: "safe_request_passed",
     });
@@ -7506,7 +7506,7 @@ test("protocol fixtures advertise exact evidence and interoperate in both direct
     directionEvidence.push({
       direction,
       client: "previous_contract",
-      host: "active_FX_BIN",
+      host: "active_PF_BIN",
       result: "passed",
     });
   }
@@ -7573,12 +7573,12 @@ test("protocol fixtures advertise exact evidence and interoperate in both direct
     });
   }
 
-  console.log("FX_TERMINAL_COMPATIBILITY_EVIDENCE " + JSON.stringify({
+  console.log("PF_TERMINAL_COMPATIBILITY_EVIDENCE " + JSON.stringify({
     fixtures: advertised,
     directions: directionEvidence,
     active_current: {
-      source: "FX_BIN",
-      digest: createHash("sha256").update(readFileSync(FX_BIN)).digest("hex"),
+      source: "PF_BIN",
+      digest: createHash("sha256").update(readFileSync(PF_BIN)).digest("hex"),
     },
   }));
 }, 360_000);

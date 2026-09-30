@@ -1,12 +1,12 @@
 const std = @import("std");
 const host = @import("host.zig");
 
-extern "fx" fn fx_clipboard_copy(text_ptr: [*]const u8, text_len: usize) i32;
+extern "pf" fn pf_clipboard_copy(text_ptr: [*]const u8, text_len: usize) i32;
 
 pub const clipboard: host.Clipboard = .{ .copy_fn = copy };
 
 fn copy(_: ?*anyopaque, text: []const u8) host.ClipboardError!bool {
-    return copyWith(fx_clipboard_copy, text);
+    return copyWith(pf_clipboard_copy, text);
 }
 
 fn copyWith(call: anytype, text: []const u8) bool {

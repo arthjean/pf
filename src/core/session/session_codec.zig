@@ -597,7 +597,7 @@ fn formatLegacyBackgroundAssistant(
         }
     }
     try out.writer.writeAll(
-        "[Historical command record: fx no longer owns or controls this process",
+        "[Historical command record: pf no longer owns or controls this process",
     );
     if (log_path.len != 0) try out.writer.print("; former log={s}", .{log_path});
     if (url) |value| try out.writer.print("; recorded url={s}", .{value});
@@ -3500,7 +3500,7 @@ test "non-object saved function inputs are repaired without changing recorded ou
                 defer session.freeHistoryTurn(alloc, decoded);
                 const step = decoded.assistant.execution.tool_steps[0];
                 try std.testing.expectEqualStrings(if (native_kind == 0) "{}" else arguments, step.tool_calls[0].arguments_json);
-                try std.testing.expectEqual(if (native_kind == 0) types.ToolExecutionProvenance.fx_local else .provider_executed, step.tool_calls[0].provenance);
+                try std.testing.expectEqual(if (native_kind == 0) types.ToolExecutionProvenance.pf_local else .provider_executed, step.tool_calls[0].provenance);
                 try std.testing.expectEqual(types.ToolArgumentIntegrity.valid, step.tool_calls[0].argument_integrity);
                 try std.testing.expectEqual(status, step.tool_results[0].status);
                 try std.testing.expectEqualStrings("stale", step.tool_results[0].output);
@@ -3855,7 +3855,7 @@ test "execution memory codec preserves feedback and reads v1 results without it"
             },
         },
         .command_output_replay = .{ .available = .{
-            .handle = "fx-command-replay-private.bin",
+            .handle = "pf-command-replay-private.bin",
             .framed_bytes = 321,
         } },
         .command_process_presentation = .{ .exit_code = 7 },
@@ -3897,7 +3897,7 @@ test "execution memory codec preserves feedback and reads v1 results without it"
     try std.testing.expect(std.mem.find(u8, encoded.written(), "\"permission_feedback\"") != null);
     try std.testing.expect(std.mem.find(u8, encoded.written(), "\"committed_file_presentation\"") != null);
     try std.testing.expect(std.mem.find(u8, encoded.written(), "\"command_output_replay\"") != null);
-    try std.testing.expect(std.mem.find(u8, encoded.written(), "fx-command-replay-private.bin") != null);
+    try std.testing.expect(std.mem.find(u8, encoded.written(), "pf-command-replay-private.bin") != null);
 
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc, encoded.written(), .{});
     defer parsed.deinit();
@@ -3941,7 +3941,7 @@ test "execution memory codec preserves feedback and reads v1 results without it"
         .available => |value| value,
         .unavailable => return error.TestExpectedReplay,
     };
-    try std.testing.expectEqualStrings("fx-command-replay-private.bin", descriptor.handle);
+    try std.testing.expectEqualStrings("pf-command-replay-private.bin", descriptor.handle);
     try std.testing.expectEqual(@as(usize, 321), descriptor.framed_bytes);
     try std.testing.expectEqual(
         types.CommandProcessPresentation{ .exit_code = 7 },
@@ -4012,7 +4012,7 @@ test "execution memory codec preserves feedback and reads v1 results without it"
 test "committed file presentation codec reads shipped and spilled shapes" {
     const alloc = std.testing.allocator;
 
-    // Shipped shape: every record written by released fx has exactly these
+    // Shipped shape: every record written by released pf has exactly these
     // nine keys, with the snapshots inline and no content_handle key.
     const shipped =
         "{\"path\":\"note.txt\",\"kind\":\"added\",\"lines\":[{\"kind\":\"addition\",\"old_line\":null,\"new_line\":1,\"text\":\"line\"}],\"additions\":1,\"deletions\":0,\"truncated\":false,\"previous_content\":null,\"after_content\":\"line\\n\",\"lifecycle_id\":{\"turn_id\":9,\"call_id\":\"call_write\"}}";
@@ -4489,10 +4489,10 @@ test "interrupted command presentation is strict and round trips" {
         },
         .cancelled_command = .{
             .output_replay = .{ .available = .{
-                .handle = "fx-command-replay.bin",
+                .handle = "pf-command-replay.bin",
                 .framed_bytes = 42,
             } },
-            .command_artifact_handle = "fx-command.log",
+            .command_artifact_handle = "pf-command.log",
         },
     } };
     var encoded: std.Io.Writer.Allocating = .init(alloc);
@@ -4507,9 +4507,9 @@ test "interrupted command presentation is strict and round trips" {
         .available => |value| value,
         .unavailable => return error.TestExpectedReplay,
     };
-    try std.testing.expectEqualStrings("fx-command-replay.bin", descriptor.handle);
+    try std.testing.expectEqualStrings("pf-command-replay.bin", descriptor.handle);
     try std.testing.expectEqual(@as(usize, 42), descriptor.framed_bytes);
-    try std.testing.expectEqualStrings("fx-command.log", presentation.command_artifact_handle.?);
+    try std.testing.expectEqualStrings("pf-command.log", presentation.command_artifact_handle.?);
     try std.testing.expectEqual(types.InterruptedTerminalReason.cancelled, decoded.interrupted.terminal_reason);
 
     const failed_turn: session.HistoryTurn = .{ .interrupted = .{
@@ -4725,7 +4725,7 @@ test "durable image snapshots serialize as session-relative locators" {
         .id = 1,
         .path = @constCast("/Users/private/source.png"),
         .media_type = @constCast("image/png"),
-        .snapshot_path = @constCast("/tmp/fx/sessions/session-id/images/image-1-deadbeef.bin"),
+        .snapshot_path = @constCast("/tmp/pf/sessions/session-id/images/image-1-deadbeef.bin"),
         .snapshot_sha256 = @constCast("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
     }};
     const turn: session.HistoryTurn = .{ .assistant = .{
@@ -4740,7 +4740,7 @@ test "durable image snapshots serialize as session-relative locators" {
     try std.testing.expect(std.mem.find(
         u8,
         encoded.written(),
-        "/tmp/fx/sessions/session-id/images",
+        "/tmp/pf/sessions/session-id/images",
     ) == null);
     try std.testing.expect(std.mem.find(
         u8,

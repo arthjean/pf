@@ -1,6 +1,6 @@
 const modulePromisesBySource = new Map();
 const modulePromisesByObject = new WeakMap();
-const moduleFailureSource = Symbol("libfx.moduleFailureSource");
+const moduleFailureSource = Symbol("libpf.moduleFailureSource");
 
 export function withModuleFailure(input, onFailure) {
   return { [moduleFailureSource]: { input, onFailure } };

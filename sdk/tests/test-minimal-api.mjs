@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 let requestedAuthorization;
@@ -33,9 +33,9 @@ const { port } = server.address();
 
 let agent;
 try {
-  agent = await createFxAgent({
+  agent = await createPfAgent({
     backend: "native",
-    nativeAddon: resolve(scriptDir, "../../zig-out/lib/libfx.node"),
+    nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
     fetch,
     apiKey: "minimal-key",
     gatewayChatUrl: `http://127.0.0.1:${port}/chat`,
@@ -61,7 +61,7 @@ try {
   assert.ok(checkpoint instanceof Uint8Array);
   assert.equal(await agent.close(), undefined);
   assert.equal(await agent.close(), undefined);
-  console.log("minimal libfx API passed");
+  console.log("minimal libpf API passed");
 } finally {
   await agent?.close().catch(() => {});
   server.closeAllConnections();

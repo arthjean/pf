@@ -11,12 +11,12 @@ globalThis.fetch = (...args) => {
 try {
   const entry = await import(`../node.js?default-import=${Date.now()}`);
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(typeof entry.createFxAgent, "function");
+  assert.equal(typeof entry.createPfAgent, "function");
   assert.equal(typeof entry.listModels, "function");
   assert.equal("createMcpAdapter" in entry, false);
   assert.equal("createSkillsAdapter" in entry, false);
   assert.equal(fetchCalls, 0);
-  console.log("default libfx import passed: no network or optional adapter activation");
+  console.log("default libpf import passed: no network or optional adapter activation");
 } finally {
   globalThis.fetch = originalFetch;
 }

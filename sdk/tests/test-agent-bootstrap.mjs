@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFxAgent } from "../node.js";
+import { createPfAgent } from "../node.js";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
@@ -27,10 +27,10 @@ if (!child) {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   process.stdout.write(result.stdout);
 } else {
-  const nativeAddon = resolve(scriptDir, "../../zig-out/lib/libfx.node");
+  const nativeAddon = resolve(scriptDir, "../../zig-out/lib/libpf.node");
   const wasm = backend === "native"
     ? undefined
-    : await readFile(resolve(scriptDir, "../../zig-out/bin/fx-core.wasm"));
+    : await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm"));
   const options = {
     backend,
     nativeAddon,
@@ -41,15 +41,15 @@ if (!child) {
 
   for (let index = 0; index < attempts; index++) {
     await assert.rejects(
-      createFxAgent({ ...options, checkpoint: new Uint8Array([1, 2, 3]) }),
+      createPfAgent({ ...options, checkpoint: new Uint8Array([1, 2, 3]) }),
       (error) => {
-        assert.match(error.message, /Invalid or non-fresh libfx checkpoint/);
+        assert.match(error.message, /Invalid or non-fresh libpf checkpoint/);
         return true;
       },
     );
   }
 
-  const agent = await createFxAgent(options);
+  const agent = await createPfAgent(options);
   await agent.close();
   console.log(`${backend} failed bootstrap cleanup passed`);
 }

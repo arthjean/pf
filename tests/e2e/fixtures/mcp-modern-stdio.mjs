@@ -1,31 +1,31 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const protocolVersion = "2026-07-28";
-const wireLogPath = process.env.FX_MCP_WIRE_LOG;
-const pidPath = process.env.FX_MCP_PID_PATH;
-const resultText = process.env.FX_MCP_RESULT_TEXT ?? "MODERN_MCP_TOOL_RESULT";
-const mode = process.env.FX_MCP_MODE ?? "normal";
-const imagePath = process.env.FX_MCP_IMAGE_PATH;
-const crashMarkerPath = process.env.FX_MCP_CRASH_MARKER;
+const wireLogPath = process.env.PF_MCP_WIRE_LOG;
+const pidPath = process.env.PF_MCP_PID_PATH;
+const resultText = process.env.PF_MCP_RESULT_TEXT ?? "MODERN_MCP_TOOL_RESULT";
+const mode = process.env.PF_MCP_MODE ?? "normal";
+const imagePath = process.env.PF_MCP_IMAGE_PATH;
+const crashMarkerPath = process.env.PF_MCP_CRASH_MARKER;
 const recoveryFailureMarkerPath = crashMarkerPath
   ? `${crashMarkerPath}.recovery-failed`
   : undefined;
-const recoveryReadyPath = process.env.FX_MCP_RECOVERY_READY_PATH;
-const recoveryReleasePath = process.env.FX_MCP_RECOVERY_RELEASE_PATH;
-const initialToolName = process.env.FX_MCP_INITIAL_TOOL_NAME ?? "echo";
-const recoveredToolName = process.env.FX_MCP_RECOVERED_TOOL_NAME ?? initialToolName;
-const expectedElicitation = process.env.FX_MCP_EXPECT_ELICITATION ?? "none";
-const environmentCapturePath = process.env.FX_MCP_ENV_CAPTURE;
-const resourcesSubscribe = process.env.FX_MCP_RESOURCES_SUBSCRIBE !== "0";
-const resourceTtlMs = process.env.FX_MCP_RESOURCE_TTL_MS === undefined
+const recoveryReadyPath = process.env.PF_MCP_RECOVERY_READY_PATH;
+const recoveryReleasePath = process.env.PF_MCP_RECOVERY_RELEASE_PATH;
+const initialToolName = process.env.PF_MCP_INITIAL_TOOL_NAME ?? "echo";
+const recoveredToolName = process.env.PF_MCP_RECOVERED_TOOL_NAME ?? initialToolName;
+const expectedElicitation = process.env.PF_MCP_EXPECT_ELICITATION ?? "none";
+const environmentCapturePath = process.env.PF_MCP_ENV_CAPTURE;
+const resourcesSubscribe = process.env.PF_MCP_RESOURCES_SUBSCRIBE !== "0";
+const resourceTtlMs = process.env.PF_MCP_RESOURCE_TTL_MS === undefined
   ? null
-  : Number(process.env.FX_MCP_RESOURCE_TTL_MS);
+  : Number(process.env.PF_MCP_RESOURCE_TTL_MS);
 const catalogDelayMs = Math.max(
   0,
-  Number(process.env.FX_MCP_CATALOG_DELAY_MS ?? "0") || 0,
+  Number(process.env.PF_MCP_CATALOG_DELAY_MS ?? "0") || 0,
 );
-const compactField = process.env.FX_MCP_COMPACT_FIELD ? JSON.parse(process.env.FX_MCP_COMPACT_FIELD) : null;
-const elicitationUrl = process.env.FX_MCP_ELICITATION_URL ?? "https://example.test/connect";
+const compactField = process.env.PF_MCP_COMPACT_FIELD ? JSON.parse(process.env.PF_MCP_COMPACT_FIELD) : null;
+const elicitationUrl = process.env.PF_MCP_ELICITATION_URL ?? "https://example.test/connect";
 const collidingChoices = [
   { const: "Skip", title: "Skip" },
   { const: "Use default", title: "Use default" },
@@ -44,8 +44,8 @@ let buffer = Buffer.alloc(0);
 if (pidPath) writeFileSync(pidPath, String(process.pid));
 if (environmentCapturePath) {
   writeFileSync(environmentCapturePath, JSON.stringify({
-    configured: process.env.FX_MCP_ENV_SENTINEL,
-    inherited: process.env.FX_MCP_INHERITED_SENTINEL,
+    configured: process.env.PF_MCP_ENV_SENTINEL,
+    inherited: process.env.PF_MCP_INHERITED_SENTINEL,
     path: process.env.PATH,
     home: process.env.HOME,
     httpsProxy: process.env.HTTPS_PROXY,
@@ -87,7 +87,7 @@ function hasModernMetadata(message) {
         ? { elicitation: { form: {}, url: {} } }
         : {};
   return meta?.["io.modelcontextprotocol/protocolVersion"] === protocolVersion &&
-    meta?.["io.modelcontextprotocol/clientInfo"]?.name === "fx" &&
+    meta?.["io.modelcontextprotocol/clientInfo"]?.name === "pf" &&
     typeof meta?.["io.modelcontextprotocol/clientInfo"]?.version === "string" &&
     JSON.stringify(capabilities) === JSON.stringify(expectedCapabilities);
 }
@@ -167,7 +167,7 @@ function handle(message) {
   }
 
   if (message.method === "server/discover") {
-    // Answer with output fx must reject; the process itself stays up.
+    // Answer with output pf must reject; the process itself stays up.
     if (mode === "startup_garbage") {
       process.stdout.write("Server started on stdio\n");
       return;
@@ -364,7 +364,7 @@ function handle(message) {
     return;
   }
   if (message.method === "resources/read") {
-    if (process.env.FX_MCP_FEATURE_IMAGES === "1") {
+    if (process.env.PF_MCP_FEATURE_IMAGES === "1") {
       send({ jsonrpc: "2.0", id: message.id, result: { resultType: "complete", contents: [{ uri: message.params.uri, mimeType: "image/png", blob: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP0cAAAAASUVORK5CYII=" }] } });
       return;
     }
@@ -374,7 +374,7 @@ function handle(message) {
         id: message.id,
         error: {
           code: -32602,
-          message: process.env.FX_MCP_PROTOCOL_ERROR_MESSAGE ??
+          message: process.env.PF_MCP_PROTOCOL_ERROR_MESSAGE ??
             "Resource request rejected by fixture",
           data: { method: message.method, retryable: false },
         },
@@ -473,7 +473,7 @@ function handle(message) {
     return;
   }
   if (message.method === "prompts/get") {
-    if (process.env.FX_MCP_FEATURE_IMAGES === "1") {
+    if (process.env.PF_MCP_FEATURE_IMAGES === "1") {
       send({ jsonrpc: "2.0", id: message.id, result: { resultType: "complete", messages: [{ role: "user", content: { type: "image", mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP0cAAAAASUVORK5CYII=" } }] } });
       return;
     }
@@ -483,7 +483,7 @@ function handle(message) {
         id: message.id,
         error: {
           code: -32603,
-          message: process.env.FX_MCP_PROTOCOL_ERROR_MESSAGE ??
+          message: process.env.PF_MCP_PROTOCOL_ERROR_MESSAGE ??
             "Prompt request rejected by fixture",
           data: { method: message.method, retryable: false },
         },

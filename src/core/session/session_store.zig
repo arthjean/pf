@@ -243,7 +243,7 @@ fn latestCheckpointHistoryIndex(history: []const session.HistoryTurn) usize {
 fn historyPrefixDigest(turns: []const session.HistoryTurn) error{ WriteFailed, NoSpaceLeft, InvalidSessionFormat }![32]u8 {
     var buffer: [256]u8 = undefined;
     var hashing: std.Io.Writer.Hashing(std.crypto.hash.sha2.Sha256) = .init(&buffer);
-    try hashing.writer.writeAll("fx.history-page-prefix.v2\x00");
+    try hashing.writer.writeAll("pf.history-page-prefix.v2\x00");
     for (turns) |turn| {
         try session_codec.writeHistoryTurn(&hashing.writer, turn);
         // Canonical JSON never contains a literal NUL, so this makes the
@@ -1199,7 +1199,7 @@ pub const Store = struct {
 
     /// Resumes the newest resumable session in `workspace_root`, taking
     /// candidates in the order and with the workspace filter of the index
-    /// page `fx session last` reads. A listed session whose stale schema-v3
+    /// page `pf session last` reads. A listed session whose stale schema-v3
     /// log failed to replay in this listing is skipped without a second replay
     /// and counted as unreadable. A candidate that disappears or
     /// moves to another workspace between selection and open yields to the
@@ -3643,7 +3643,7 @@ const RecoveredArtifactContract = enum {
 };
 
 fn isCommandLogHandle(handle: []const u8) bool {
-    return std.mem.startsWith(u8, handle, "fx-command-") and
+    return std.mem.startsWith(u8, handle, "pf-command-") and
         std.mem.endsWith(u8, handle, ".log");
 }
 
@@ -4089,25 +4089,25 @@ test "recovery rejects digest-matching handles from the wrong artifact family" {
     );
     try validateRecoveredManagedChildDigest(
         .command_replay,
-        "fx-command-replay-legacy.bin",
+        "pf-command-replay-legacy.bin",
         null,
         1,
         digest,
     );
     try validateRecoveredManagedChildDigest(
         .command_log,
-        "fx-command-legacy.log",
+        "pf-command-legacy.log",
         null,
         null,
         digest,
     );
     try std.testing.expect(!recoveredCommandArtifactIsAuthenticated(
         .command_replay,
-        "fx-command-replay-legacy.bin",
+        "pf-command-replay-legacy.bin",
     ));
     try std.testing.expect(!recoveredCommandArtifactIsAuthenticated(
         .command_log,
-        "fx-command-legacy.log",
+        "pf-command-legacy.log",
     ));
 }
 
@@ -4281,16 +4281,16 @@ test "session snapshot locators resolve through their owning store" {
         alloc,
         history,
         null,
-        "/new/fx-home/sessions",
+        "/new/pf-home/sessions",
         "id",
     );
 
     try std.testing.expectEqualStrings(
-        "/new/fx-home/sessions/id/images/image-1-aaaaaaaaaaaaaaaa.bin",
+        "/new/pf-home/sessions/id/images/image-1-aaaaaaaaaaaaaaaa.bin",
         history[0].assistant.user.images[0].snapshot_path.?,
     );
     try std.testing.expectEqualStrings(
-        "/new/fx-home/sessions/id/images/image-2-bbbbbbbbbbbbbbbb.bin",
+        "/new/pf-home/sessions/id/images/image-2-bbbbbbbbbbbbbbbb.bin",
         history[0].assistant.user.images[1].snapshot_path.?,
     );
     try std.testing.expect(history[0].assistant.user.images[2].snapshot_path == null);
@@ -4315,7 +4315,7 @@ test "current session snapshot locators reject absolute paths" {
             alloc,
             history,
             null,
-            "/new/fx-home/sessions",
+            "/new/pf-home/sessions",
             "id",
         ),
     );
@@ -4355,7 +4355,7 @@ test "session snapshot locator resolver rejects noncanonical tampering" {
                 alloc,
                 history,
                 null,
-                "/new/fx-home/sessions",
+                "/new/pf-home/sessions",
                 "id",
             ),
         );
@@ -4606,7 +4606,7 @@ const TempStore = struct {
 };
 
 fn initTempStore(alloc: Allocator, tmp: *std.testing.TmpDir) !TempStore {
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     errdefer alloc.free(home);
@@ -6293,7 +6293,7 @@ test "a writable session publishes latest after its Store is deinitialized" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace");
     const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
     defer alloc.free(home);
@@ -6599,7 +6599,7 @@ test "recovery command replay allocation failures propagate without changing sou
     }.check, .{ &source, &target, replay });
     try std.testing.expectEqual(before, try managedFileDigest(&source_file, replay.available.framed_bytes));
 
-    const legacy_handle = "fx-command-replay-legacy.bin";
+    const legacy_handle = "pf-command-replay-legacy.bin";
     const replay_bytes = try alloc.alloc(u8, replay.available.framed_bytes);
     defer alloc.free(replay_bytes);
     try std.testing.expectEqual(
@@ -6637,7 +6637,7 @@ test "recovery authenticates content-addressed command artifacts" {
     std.crypto.hash.sha2.Sha256.hash(contents, &digest, .{});
     const handle = try artifact_digest.contentAddressedHandle(
         alloc,
-        "fx-command-cancelled.log",
+        "pf-command-cancelled.log",
         ".log",
         digest,
     );
@@ -8114,7 +8114,7 @@ test "writable last reports unreadable sessions when nothing is resumable" {
     try std.testing.expectError(error.NoSavedSessions, ctx.store.resumeTargetForWrite(alloc, .last, ctx.workspace, .{}));
     const path = try writeSessionFixture(alloc, ctx.store, "broken", "{\"schema_version\":1,");
     alloc.free(path);
-    // `fx session last` reports the same error for the same store.
+    // `pf session last` reports the same error for the same store.
     try std.testing.expectError(error.NoReadableSessions, ctx.store.resumeTargetForWrite(alloc, .last, ctx.workspace, .{}));
 }
 
@@ -8321,7 +8321,7 @@ test "empty home read only operations create nothing" {
 
     try std.testing.expectError(
         error.FileNotFound,
-        tmp.dir.access(io_mod.getIo(), "home/.fx", .{}),
+        tmp.dir.access(io_mod.getIo(), "home/.pf", .{}),
     );
 }
 
@@ -8354,7 +8354,7 @@ test "missing home is empty for reads and bootstrapped privately for writes" {
     const home_stat = try home_dir.stat(io_mod.getIo());
     try std.testing.expectEqual(std.Io.File.Kind.directory, home_stat.kind);
     try std.testing.expectEqual(@as(u32, 0o700), home_stat.permissions.toMode() & 0o777);
-    const sessions_path = try std.fs.path.join(alloc, &.{ missing_home, ".fx", "sessions" });
+    const sessions_path = try std.fs.path.join(alloc, &.{ missing_home, ".pf", "sessions" });
     defer alloc.free(sessions_path);
     try std.Io.Dir.accessAbsolute(io_mod.getIo(), sessions_path, .{});
 }
@@ -8403,7 +8403,7 @@ test "first write traces and maps shared layout failure" {
     try std.testing.expect(std.mem.find(u8, trace, workspace) == null);
     try std.testing.expectError(
         error.FileNotFound,
-        tmp.dir.access(io_mod.getIo(), "home/.fx", .{}),
+        tmp.dir.access(io_mod.getIo(), "home/.pf", .{}),
     );
 }
 
@@ -8438,10 +8438,10 @@ test "first write creates only the private session layout" {
     var home_iter = home_dir.iterate();
     const durable_entry = (try home_iter.next(io_mod.getIo())) orelse
         return error.TestExpectedEqual;
-    try std.testing.expectEqualStrings(".fx", durable_entry.name);
+    try std.testing.expectEqualStrings(".pf", durable_entry.name);
     try std.testing.expect((try home_iter.next(io_mod.getIo())) == null);
 
-    var durable_dir = try home_dir.openDir(io_mod.getIo(), ".fx", .{
+    var durable_dir = try home_dir.openDir(io_mod.getIo(), ".pf", .{
         .iterate = true,
     });
     defer durable_dir.close(io_mod.getIo());
@@ -8509,7 +8509,7 @@ test "malformed settings do not block legacy detail or migration" {
     defer tmp.cleanup();
     var ctx = try initTempStore(alloc, &tmp);
     defer ctx.deinit(alloc);
-    const settings_path = try std.fs.path.join(alloc, &.{ ctx.home, ".fx", "settings.json" });
+    const settings_path = try std.fs.path.join(alloc, &.{ ctx.home, ".pf", "settings.json" });
     defer alloc.free(settings_path);
     try writeRawFile(settings_path, "{broken");
     try writeLegacyFixture(alloc, ctx.store, "legacy-with-bad-settings", ctx.workspace, 20);
@@ -8529,7 +8529,7 @@ test "explicit conversation resume rebinds workspace" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.createDirPath(io_mod.getIo(), "home/.fx");
+    try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace-a");
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace-b");
     const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
@@ -9047,7 +9047,7 @@ test "history page maps missing unsafe unavailable unsupported and corrupt sessi
     tmp.dir.symLink(
         io_mod.getIo(),
         "../../../outside-history-session",
-        "home/.fx/sessions/history-unsafe",
+        "home/.pf/sessions/history-unsafe",
         .{ .is_directory = true },
     ) catch |err| switch (err) {
         error.AccessDenied => return error.SkipZigTest,
@@ -9447,7 +9447,7 @@ test "remembered session selection is private per workspace and read-only lookup
     var ctx = try initTempStore(alloc, &tmp);
     defer ctx.deinit(alloc);
     try std.testing.expect((try ctx.store.readRememberedSessionId(alloc)) == null);
-    try std.testing.expectError(error.FileNotFound, tmp.dir.access(io_mod.getIo(), "home/.fx/continue", .{}));
+    try std.testing.expectError(error.FileNotFound, tmp.dir.access(io_mod.getIo(), "home/.pf/continue", .{}));
     try ctx.store.rememberSessionId(alloc, "first");
     try ctx.store.rememberSessionId(alloc, "second");
     var reader = try Store.initReadOnlyFromHome(alloc, ctx.home, ctx.workspace);
