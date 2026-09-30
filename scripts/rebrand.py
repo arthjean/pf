@@ -33,7 +33,7 @@ SKIP_FILES = {
 # Rewrites that retarget a value instead of renaming it. They run first.
 RETARGETS = [
     # Product identity sent to third parties points at the product site.
-    (r"https://github\.com/vercel-labs/fx(?=[\"')])", "https://paneflow.dev/agent"),
+    (r"(?<=[+\" ])https://github\.com/vercel-labs/fx(?=[\"')])", "https://paneflow.dev/agent"),
     (r"You are fx, a local coding CLI assistant", "You are Paneflow Agent (pf), a local coding CLI assistant"),
     # A renamed Zig package needs its own fingerprint.
     (r"\.fingerprint = 0x2ca027d00bcd652c", ".fingerprint = 0xca37af64c5d0d74e"),
@@ -60,6 +60,9 @@ PROTECTED = [
     # The Slack bridge runs on fx.sh with fx's Slack app.
     r"\"https://fx\.sh\"",
     r"https://fx\.sh/api/slack/[^\s\"'`)]*",
+    # Attribution that names fx on purpose.
+    r"\[fx\](?=\(https://github\.com/vercel-labs/fx\))",
+    r"the fx Slack app",
     # Repository names parsed from those fixtures.
     r"\"fx\", [A-Za-z_.?]*repo_name\)",
     # Vercel's macOS signing identity.
