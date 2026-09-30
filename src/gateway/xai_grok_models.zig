@@ -308,8 +308,8 @@ fn parseCatalog(
         if (!std.mem.eql(u8, api_backend, "responses")) continue;
         const raw_id = try requiredString(object, "model");
         try validateModelId(raw_id);
-        const modality_object = try findModalityModel(modality_models.array.items, raw_id) orelse
-            return error.InvalidGrokModelCatalog;
+        // The subscription proxy can list models the public modality catalog omits.
+        const modality_object = try findModalityModel(modality_models.array.items, raw_id) orelse continue;
         if (!try stringArrayContains(modality_object, "output_modalities", "text")) continue;
 
         const id = try alloc.dupe(u8, raw_id);
@@ -441,7 +441,8 @@ test "Grok catalog parser joins provider-owned subscription capabilities and mod
         \\{"data":[
         \\  {"id":"current-a","model":"current-a","api_backend":"responses","context_window":500123,"max_completion_tokens":32768,"supports_reasoning_effort":true,"reasoning_efforts":[{"value":"xhigh"},{"value":"medium"}]},
         \\  {"id":"current-b","model":"current-b","api_backend":"responses","context_window":480321,"supports_reasoning_effort":true,"reasoning_efforts":[{"value":"provider-next"},{"value":"low"}]},
-        \\  {"id":"chat-only","model":"chat-only","api_backend":"chat_completions","context_window":200000,"supports_reasoning_effort":false,"reasoning_efforts":[]}
+        \\  {"id":"chat-only","model":"chat-only","api_backend":"chat_completions","context_window":200000,"supports_reasoning_effort":false,"reasoning_efforts":[]},
+        \\  {"id":"subscription-only","model":"subscription-only","api_backend":"responses","context_window":256000,"supports_reasoning_effort":false,"reasoning_efforts":[]}
         \\]}
     ;
     const modalities_json =
@@ -489,13 +490,6 @@ test "Grok catalog rejects missing provider-owned capability metadata" {
     for (cases) |subscription| {
         try expectCatalogParseError(error.InvalidGrokModelCatalog, subscription, modalities);
     }
-    const missing_modalities =
-        \\{"models":[{"id":"other","input_modalities":["text"],"output_modalities":["text"]}]}
-    ;
-    const valid_subscription =
-        \\{"data":[{"id":"current","model":"current","api_backend":"responses","context_window":500000,"supports_reasoning_effort":false,"reasoning_efforts":[]}]}
-    ;
-    try expectCatalogParseError(error.InvalidGrokModelCatalog, valid_subscription, missing_modalities);
 }
 
 test "Grok catalog URLs use provider-owned subscription and modality endpoints" {
