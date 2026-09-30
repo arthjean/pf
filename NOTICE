@@ -1,0 +1,17 @@
+Paneflow Agent
+Copyright 2026 Arthur Jean
+
+This product is derived from fx (https://github.com/vercel-labs/fx),
+Copyright 2025 Vercel, Inc., licensed under the Apache License, Version 2.0.
+See LICENSE for the license text and THIRD_PARTY_NOTICES.md for third-party
+material included in fx.
+
+Paneflow Agent started from fx commit 1b1f9af1619de4dbf7b4a48a50bb11f77469e988
+and has been modified since. Notable modifications:
+
+- The product, command, configuration paths, environment variables, and
+  identifiers are renamed from fx to pf (Paneflow Agent).
+- Manual and automatic upgrades from fx release channels are disabled.
+
+"fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
+where this code comes from.

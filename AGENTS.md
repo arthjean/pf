@@ -441,7 +441,7 @@ Do not create version tags manually. Do not change `build.zig.zon` version (it i
 
 ## Repository and License
 
-The canonical repository is `vercel-labs/fx` on GitHub. All URLs, links, and references to the repo must use `vercel-labs/fx` (not `vercel/pf`, `user/pf`, or any other org/owner). Licensed under Apache-2.0.
+Paneflow Agent derives from `vercel-labs/fx` and is licensed under Apache-2.0. Keep links to `vercel-labs/fx` only for attribution; `NOTICE` and `UPSTREAM.md` record where the code comes from.
 
 ## What Not To Do
 

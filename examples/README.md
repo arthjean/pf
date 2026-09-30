@@ -9,15 +9,14 @@ the agent calls in its entry point. Start with the one that matches your runtime
 - [Nuxt](nuxt-agent): a Vue form and a streaming Nitro route.
 
 Use Node.js 24 and an [AI Gateway API key](https://vercel.com/docs/ai-gateway/authentication-and-byok).
-The examples pin libpf 0.0.8. They do not use the CLI's built-in tools.
+The examples pin libpf 0.0.8, which is not published to npm yet, so `npm install` fails until it is. They do not use the CLI's built-in tools.
 
 ## Run an example
 
-Clone this repository, then open the example directory:
+From a clone of this repository, open the example directory:
 
 ```sh
-git clone https://github.com/vercel-labs/fx.git
-cd pf/examples/node-chat
+cd examples/node-chat
 npm install
 ```
 
