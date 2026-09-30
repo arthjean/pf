@@ -54,12 +54,6 @@ RETARGETS = [
 PROTECTED = [
     # Upstream attribution and fixtures that parse real repository URLs.
     r"(?:https?://github\.com/|git@github\.com:|git\+https://github\.com/)?vercel-labs/fx\b(?:\.git)?",
-    # Grok client identifiers, kept as fx until a real login proves xAI accepts pf.
-    r"\"referrer\",\s*\"fx\"",
-    r"referrer=fx\b",
-    r"get\(\"referrer\"\)\s*!==\s*\"fx\"",
-    r"\"x-grok-client-identifier\",\s*\.value\s*=\s*\"fx\"",
-    r"clientIdentifier\)\.toBe\(\"fx\"\)",
     # The Slack bridge runs on fx.sh with fx's Slack app.
     r"\"https://fx\.sh\"",
     r"https://fx\.sh/api/slack/[^\s\"'`)]*",

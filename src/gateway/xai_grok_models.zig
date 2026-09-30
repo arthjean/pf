@@ -212,7 +212,7 @@ const FetchOperation = struct {
         if (self.client_version) |*version| {
             extra_headers_buffer[extra_headers_len] = .{ .name = "x-grok-client-version", .value = version.slice() };
             extra_headers_len += 1;
-            extra_headers_buffer[extra_headers_len] = .{ .name = "x-grok-client-identifier", .value = "fx" };
+            extra_headers_buffer[extra_headers_len] = .{ .name = "x-grok-client-identifier", .value = "pf" };
             extra_headers_len += 1;
         }
         const result = client.fetch(.{

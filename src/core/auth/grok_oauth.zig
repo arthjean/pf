@@ -801,7 +801,7 @@ fn buildBrowserAuthorizationUrl(
     try form.append(&out.writer, "code_challenge", code_challenge);
     try form.append(&out.writer, "code_challenge_method", "S256");
     try form.append(&out.writer, "state", state);
-    try form.append(&out.writer, "referrer", "fx");
+    try form.append(&out.writer, "referrer", "pf");
     return out.toOwnedSlice();
 }
 
@@ -937,7 +937,7 @@ test "Grok browser authorization URL uses PKCE without device authentication" {
     try std.testing.expect(std.mem.find(u8, url, "code_challenge=challenge-value") != null);
     try std.testing.expect(std.mem.find(u8, url, "code_challenge_method=S256") != null);
     try std.testing.expect(std.mem.find(u8, url, "state=state-value") != null);
-    try std.testing.expect(std.mem.find(u8, url, "referrer=fx") != null);
+    try std.testing.expect(std.mem.find(u8, url, "referrer=pf") != null);
     try std.testing.expect(std.mem.find(u8, url, "nonce") == null);
     try std.testing.expect(std.mem.find(u8, url, "device") == null);
 }

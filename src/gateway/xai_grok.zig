@@ -235,7 +235,7 @@ pub fn streamPrepared(
         extra_headers_buf[extra_count] = .{ .name = "x-grok-client-version", .value = version.slice() };
         extra_count += 1;
     }
-    extra_headers_buf[extra_count] = .{ .name = "x-grok-client-identifier", .value = "fx" };
+    extra_headers_buf[extra_count] = .{ .name = "x-grok-client-identifier", .value = "pf" };
     extra_count += 1;
     extra_headers_buf[extra_count] = .{ .name = "x-grok-model-override", .value = request.model };
     extra_count += 1;

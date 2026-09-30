@@ -12,13 +12,13 @@ This repository is Paneflow Agent, shipped as the `pf` binary. It started from `
 
 ### Kept as fx on purpose
 
-`scripts/rebrand.py` protects what pf does not own yet: the Grok `referrer` and `x-grok-client-identifier`, the Slack bridge on fx.sh, Vercel's macOS signing identity, and `vercel-labs/fx` links used for attribution or as test fixtures. Binary format magics such as `FXCP` and `FXTP` also stay.
+`scripts/rebrand.py` protects what pf does not own yet: the Slack bridge on fx.sh, Vercel's macOS signing identity, and `vercel-labs/fx` links used for attribution or as test fixtures. Binary format magics such as `FXCP` and `FXTP` also stay.
 
 ### Stop for Arthur
 
 Stop and present the options with their tradeoffs, without choosing, before changing:
 
-- authentication and provider access: the Vercel OAuth login and its client id, Vercel AI Gateway, the ChatGPT `client_id` (Codex CLI's public OAuth client) and `originator` (`pf`), the Grok identifiers above, and the Slack bridge, because each relies on credentials or agreements Paneflow does not own;
+- authentication and provider access: the Vercel OAuth login and its client id, Vercel AI Gateway, the ChatGPT `client_id` (Codex CLI's public OAuth client) and `originator` (`pf`), the Grok `client_id` (Grok Build's OAuth client) with its `referrer` and `x-grok-client-identifier` (`pf`), and the Slack bridge, because each relies on credentials or agreements Paneflow does not own;
 - distribution: install scripts, release channels, signing, and `pf upgrade`, which stays disabled until pf has its own release channel;
 - `.github/workflows/`: the workflows still assume Vercel secrets (Blob, AI Gateway, Apple signing, npm). Decide what to keep before this repository is pushed to GitHub with Actions enabled.
 
