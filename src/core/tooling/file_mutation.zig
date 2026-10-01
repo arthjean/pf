@@ -243,7 +243,12 @@ fn prepareInternal(
     // External anchors show the resolved target so a symlink redirect cannot look local.
     const approval_path = switch (policy_targets.anchor.scope) {
         .external => policy_targets.canonical_target_path,
-        .workspace => input.path(),
+        .workspace => if (builtin.os.tag == .windows and !std.fs.path.isAbsolute(input.path())) slash: {
+            // Workspace-relative paths read with `/` on every platform.
+            const slashed = try call_alloc.dupe(u8, input.path());
+            std.mem.replaceScalar(u8, slashed, '\\', '/');
+            break :slash slashed;
+        } else input.path(),
     };
     const encoded_path = text_utils.encodeTerminalSafePathTail(
         call_alloc,
@@ -1428,8 +1433,22 @@ fn derivePostimage(
     preimage: file_mutation_contract.Preimage,
 ) error{OutOfMemory}!PostimageResult {
     return switch (input) {
-        .write => |write| .{
-            .content = try alloc.dupe(u8, write.content),
+        .write => |write| blk: {
+            // Replacing a file keeps its dominant line ending; a new file is
+            // written as provided.
+            const ending = switch (preimage) {
+                .absent => null,
+                .present => |present| dominantLineEnding(present.content),
+            };
+            const content = if (ending) |value|
+                try withLineEnding(alloc, write.content, value)
+            else
+                try alloc.dupe(u8, write.content);
+            if (content.len > max_content_bytes) {
+                alloc.free(content);
+                break :blk .{ .semantic_failure = "write_file failed: postimage exceeds the 4 MiB preparation limit" };
+            }
+            break :blk .{ .content = content };
         },
         .edit => |edit| blk: {
             if (std.mem.eql(u8, edit.old_string, edit.new_string)) {
@@ -1439,29 +1458,36 @@ fn derivePostimage(
                 .absent => break :blk .{ .semantic_failure = identity_changed_message },
                 .present => |present| present.content,
             };
-            const occurrence_count = countOccurrences(before, edit.old_string);
-            if (occurrence_count == 0) {
+            const match = try findEditMatch(alloc, before, edit.old_string);
+            if (match.count == 0) {
                 break :blk .{ .semantic_failure = "edit_file failed: old_string not found in file. Re-read the file to see its current contents; if the change is already applied, do not retry this edit." };
             }
-            if (occurrence_count > 1) {
+            if (match.count > 1) {
                 break :blk .{ .semantic_failure = try std.fmt.allocPrint(
                     alloc,
                     "edit_file failed: old_string is not unique (found {d} occurrences), provide more context",
-                    .{occurrence_count},
+                    .{match.count},
                 ) };
             }
 
-            const match_start = std.mem.find(
-                u8,
-                before,
-                edit.old_string,
-            ).?;
-            const prefix_len = match_start;
-            const suffix_start = match_start + edit.old_string.len;
+            // The replacement takes the file's dominant line ending, and
+            // bytes outside the matched span are copied unchanged.
+            const new_string = if (match.line_break_cr_dropped and std.mem.endsWith(u8, edit.new_string, "\r"))
+                edit.new_string[0 .. edit.new_string.len - 1]
+            else
+                edit.new_string;
+            const replacement = try withLineEnding(
+                alloc,
+                new_string,
+                dominantLineEnding(before) orelse .lf,
+            );
+            defer alloc.free(replacement);
+            const prefix_len = match.start;
+            const suffix_start = match.end;
             var after_len = std.math.add(
                 usize,
                 prefix_len,
-                edit.new_string.len,
+                replacement.len,
             ) catch break :blk .{ .semantic_failure = "edit_file failed: postimage exceeds the 4 MiB preparation limit" };
             after_len = std.math.add(
                 usize,
@@ -1474,12 +1500,108 @@ fn derivePostimage(
 
             const after = try alloc.alloc(u8, after_len);
             @memcpy(after[0..prefix_len], before[0..prefix_len]);
-            const replacement_end = prefix_len + edit.new_string.len;
-            @memcpy(after[prefix_len..replacement_end], edit.new_string);
+            const replacement_end = prefix_len + replacement.len;
+            @memcpy(after[prefix_len..replacement_end], replacement);
             @memcpy(after[replacement_end..], before[suffix_start..]);
             break :blk .{ .content = after };
         },
     };
+}
+
+const LineEnding = enum { lf, crlf };
+
+/// Returns CRLF when a file has more CRLF pairs than bare LF bytes, LF when
+/// it has line breaks otherwise, and null when it has none.
+fn dominantLineEnding(content: []const u8) ?LineEnding {
+    var crlf_count: usize = 0;
+    var lf_count: usize = 0;
+    for (content, 0..) |byte, index| {
+        if (byte != '\n') continue;
+        if (index > 0 and content[index - 1] == '\r') crlf_count += 1 else lf_count += 1;
+    }
+    if (crlf_count == 0 and lf_count == 0) return null;
+    return if (crlf_count > lf_count) .crlf else .lf;
+}
+
+/// Returns `text` with every CRLF pair and bare LF written as `ending`. A CR
+/// that does not precede LF is kept. The caller owns the result.
+fn withLineEnding(alloc: Allocator, text: []const u8, ending: LineEnding) error{OutOfMemory}![]u8 {
+    var line_breaks: usize = 0;
+    var dropped_crs: usize = 0;
+    for (text, 0..) |byte, index| {
+        if (byte != '\n') continue;
+        line_breaks += 1;
+        if (index > 0 and text[index - 1] == '\r') dropped_crs += 1;
+    }
+    const len = text.len - dropped_crs + if (ending == .crlf) line_breaks else 0;
+    const out = try alloc.alloc(u8, len);
+    var out_len: usize = 0;
+    for (text, 0..) |byte, index| {
+        if (byte == '\r' and index + 1 < text.len and text[index + 1] == '\n') continue;
+        if (byte == '\n' and ending == .crlf) {
+            out[out_len] = '\r';
+            out_len += 1;
+        }
+        out[out_len] = byte;
+        out_len += 1;
+    }
+    return out;
+}
+
+const EditMatch = struct {
+    count: usize,
+    start: usize = 0,
+    end: usize = 0,
+    /// The needle ended with the CR of a CRLF pair, as a span copied from
+    /// read_file output can, and matched without it.
+    line_break_cr_dropped: bool = false,
+};
+
+/// Finds `needle` in `haystack` comparing text with CRLF pairs read as LF, so
+/// an LF `old_string` matches a CRLF file. The span maps back to the original
+/// bytes and includes the CR of a line break it covers. A needle that ends
+/// with the CR of a line break matches without it, and any other needle that
+/// only matches across a split CRLF pair keeps its exact match.
+fn findEditMatch(alloc: Allocator, haystack: []const u8, needle: []const u8) error{OutOfMemory}!EditMatch {
+    if (std.mem.findScalar(u8, haystack, '\r') == null and std.mem.findScalar(u8, needle, '\r') == null) {
+        return exactEditMatch(haystack, needle);
+    }
+    const normalized_haystack = try withLineEnding(alloc, haystack, .lf);
+    defer alloc.free(normalized_haystack);
+    const normalized_needle = try withLineEnding(alloc, needle, .lf);
+    defer alloc.free(normalized_needle);
+    var normalized = exactEditMatch(normalized_haystack, normalized_needle);
+    if (normalized.count == 0 and normalized_needle.len > 1 and std.mem.endsWith(u8, normalized_needle, "\r")) {
+        normalized = exactEditMatch(normalized_haystack, normalized_needle[0 .. normalized_needle.len - 1]);
+        normalized.line_break_cr_dropped = normalized.count == 1;
+    }
+    if (normalized.count == 0) return exactEditMatch(haystack, needle);
+    if (normalized.count > 1) return normalized;
+    return .{
+        .count = 1,
+        .start = originalLineEndingOffset(haystack, normalized.start),
+        .end = originalLineEndingOffset(haystack, normalized.end),
+        .line_break_cr_dropped = normalized.line_break_cr_dropped,
+    };
+}
+
+fn exactEditMatch(haystack: []const u8, needle: []const u8) EditMatch {
+    const count = countOccurrences(haystack, needle);
+    if (count != 1) return .{ .count = count };
+    const start = std.mem.find(u8, haystack, needle).?;
+    return .{ .count = 1, .start = start, .end = start + needle.len };
+}
+
+/// Maps an offset in the CRLF-normalized text back to `original`. The offset
+/// of an LF that came from a CRLF pair maps to its CR.
+fn originalLineEndingOffset(original: []const u8, normalized_offset: usize) usize {
+    var normalized_index: usize = 0;
+    for (original, 0..) |byte, index| {
+        if (normalized_index == normalized_offset) return index;
+        if (byte == '\r' and index + 1 < original.len and original[index + 1] == '\n') continue;
+        normalized_index += 1;
+    }
+    return original.len;
 }
 
 fn countOccurrences(haystack: []const u8, needle: []const u8) usize {
@@ -1968,6 +2090,142 @@ test "prepare preserves exact edit semantic failures" {
         "edit_file failed: old_string is not unique (found 2 occurrences), provide more context",
         try expectSemanticFailure(arena, duplicate_call, duplicate_policy),
     );
+}
+
+fn prepareEditForTest(
+    arena: Allocator,
+    tmp: std.testing.TmpDir,
+    path: []const u8,
+    old_string: []const u8,
+    new_string: []const u8,
+) !file_mutation_contract.PrepareResult {
+    const root = try workspaceRoot(arena, tmp);
+    const call: types.ToolCall = .{
+        .id = "edit-line-endings",
+        .name = "edit_file",
+        .arguments_json = try editArgumentsJson(arena, path, old_string, new_string),
+    };
+    const policy = try evaluatePolicy(arena, root, call);
+    return prepare(arena, call, try decodeTestMutationInput(arena, call), policy);
+}
+
+test "edit matches an LF old_string in a CRLF file and writes CRLF" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try createFile(&tmp, "note.txt", "head\r\nalpha\r\nbeta\r\ntail\r\n");
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const result = try prepareEditForTest(arena, tmp, "note.txt", "alpha\nbeta\n", "ALPHA\nBETA\nGAMMA\n");
+    try std.testing.expectEqualStrings(
+        "head\r\nALPHA\r\nBETA\r\nGAMMA\r\ntail\r\n",
+        result.prepared.after_content,
+    );
+}
+
+test "edit replacement takes the dominant line ending of the file" {
+    const cases = [_]struct { before: []const u8, after: []const u8 }{
+        // Two CRLF pairs and one bare LF: CRLF dominates.
+        .{ .before = "a\r\nb\r\nc\nd", .after = "a\r\nX\r\nY\r\nc\nd" },
+        // One CRLF pair and one bare LF: LF wins ties.
+        .{ .before = "a\r\nb\nc", .after = "a\r\nX\nY\nc" },
+        // No line breaks: LF.
+        .{ .before = "a b c", .after = "a X\nY c" },
+    };
+    for (cases) |case| {
+        var tmp = std.testing.tmpDir(.{});
+        defer tmp.cleanup();
+        try createFile(&tmp, "note.txt", case.before);
+        var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena_state.deinit();
+        const arena = arena_state.allocator();
+
+        const result = try prepareEditForTest(arena, tmp, "note.txt", "b", "X\r\nY");
+        try std.testing.expectEqualStrings(case.after, result.prepared.after_content);
+    }
+}
+
+test "edit keeps every byte outside the replaced span" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    // Mixed endings, a lone CR, and trailing bytes without a line break.
+    const before = "one\r\ntwo\nthree\rfour\r\nfive\r\nsix";
+    try createFile(&tmp, "note.txt", before);
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const result = try prepareEditForTest(arena, tmp, "note.txt", "four\nfive\n", "4\n5\n");
+    const after = result.prepared.after_content;
+    const prefix = "one\r\ntwo\nthree\r";
+    try std.testing.expectEqualStrings(prefix, after[0..prefix.len]);
+    try std.testing.expectEqualStrings("4\r\n5\r\n", after[prefix.len .. after.len - "six".len]);
+    try std.testing.expectEqualStrings("six", after[after.len - "six".len ..]);
+}
+
+test "edit accepts an old_string copied from read_file output of a CRLF file" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try createFile(&tmp, "note.txt", "alpha\r\nbeta\r\ngamma\r\n");
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    // read_file shows each line with its CR, so a copied span either keeps
+    // the CRLF pairs or, once a client folds them, carries LF only.
+    const cases = [_]struct { old_string: []const u8, new_string: []const u8 }{
+        .{ .old_string = "alpha\r\nbeta\r", .new_string = "ALPHA\r\nBETA\r" },
+        .{ .old_string = "alpha\r\nbeta\r\n", .new_string = "ALPHA\r\nBETA\r\n" },
+        .{ .old_string = "alpha\r\nbeta", .new_string = "ALPHA\nBETA" },
+        .{ .old_string = "alpha\nbeta", .new_string = "ALPHA\nBETA" },
+    };
+    for (cases) |case| {
+        const result = try prepareEditForTest(arena, tmp, "note.txt", case.old_string, case.new_string);
+        try std.testing.expectEqualStrings("ALPHA\r\nBETA\r\ngamma\r\n", result.prepared.after_content);
+    }
+}
+
+test "edit reports ambiguity when old_string matches twice after normalization" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try createFile(&tmp, "note.txt", "x\r\ny\r\nx\ny\n");
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const result = try prepareEditForTest(arena, tmp, "note.txt", "x\ny", "z");
+    try std.testing.expectEqualStrings(
+        "edit_file failed: old_string is not unique (found 2 occurrences), provide more context",
+        result.semantic_failure,
+    );
+}
+
+test "write keeps the line ending of the file it replaces and writes new files as provided" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try createFile(&tmp, "crlf.txt", "old\r\nfile\r\n");
+    try createFile(&tmp, "lf.txt", "old\nfile\n");
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const root = try workspaceRoot(arena, tmp);
+
+    const cases = [_]struct { path: []const u8, content: []const u8, after: []const u8 }{
+        .{ .path = "crlf.txt", .content = "new\nlines\n", .after = "new\r\nlines\r\n" },
+        .{ .path = "lf.txt", .content = "new\r\nlines\r\n", .after = "new\nlines\n" },
+        .{ .path = "fresh.txt", .content = "as\r\nprovided\n", .after = "as\r\nprovided\n" },
+    };
+    for (cases) |case| {
+        const call: types.ToolCall = .{
+            .id = "write-line-endings",
+            .name = "write_file",
+            .arguments_json = try writeArgumentsJson(arena, case.path, case.content),
+        };
+        const policy = try evaluatePolicy(arena, root, call);
+        const prepared = try expectPrepared(arena, call, policy);
+        try std.testing.expectEqualStrings(case.after, prepared.after_content);
+    }
 }
 
 test "zero-occurrence edit failure explains recovery and leaves the file untouched" {

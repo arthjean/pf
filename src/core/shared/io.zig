@@ -190,12 +190,26 @@ fn windowsDirOpenFile(
     sub_path: []const u8,
     options: std.Io.Dir.OpenFileOptions,
 ) std.Io.File.OpenError!std.Io.File {
-    var file = try windows_original_vtable.?.dirOpenFile(userdata, dir, sub_path, options);
+    const file = try windows_original_vtable.?.dirOpenFile(userdata, dir, sub_path, options);
+    if (options.follow_symlinks or (!options.isRead() and !options.isWrite())) return file;
     // Zig 0.16.0 opens a no-follow handle for asynchronous I/O but marks the
-    // File blocking, so the first read or write reaches `unreachable`. The
-    // nonblocking flag makes std wait for each operation to complete.
-    if (!options.follow_symlinks) file.flags.nonblocking = true;
-    return file;
+    // File blocking: a positional read or write reaches `unreachable`, and a
+    // streaming one fails with INVALID_PARAMETER because it has no offset.
+    // Reopening the same file object by handle gives synchronous I/O without
+    // resolving the path again.
+    const win32 = @import("win32.zig");
+    var access: std.os.windows.DWORD = 0;
+    if (options.isRead()) access |= win32.GENERIC_READ;
+    if (options.isWrite()) access |= win32.GENERIC_WRITE;
+    const reopened = win32.ReOpenFile(
+        file.handle,
+        access,
+        win32.FILE_SHARE_READ | win32.FILE_SHARE_WRITE | win32.FILE_SHARE_DELETE,
+        win32.FILE_FLAG_BACKUP_SEMANTICS | win32.FILE_FLAG_OPEN_REPARSE_POINT,
+    );
+    std.os.windows.CloseHandle(file.handle);
+    if (reopened == std.os.windows.INVALID_HANDLE_VALUE) return error.Unexpected;
+    return .{ .handle = reopened, .flags = .{ .nonblocking = false } };
 }
 
 pub fn getIo() std.Io {
@@ -1531,6 +1545,44 @@ fn windowsDosPathAlloc(alloc: std.mem.Allocator, final_path: []const u8) ![]u8 {
 pub fn pathsEqual(a: []const u8, b: []const u8) bool {
     if (comptime is_windows) return std.os.windows.eqlIgnoreCaseWtf8(a, b);
     return std.mem.eql(u8, a, b);
+}
+
+/// Writes `path`, an existing absolute Windows path, into `out` with every 8.3
+/// short name expanded to its long form, without resolving links. Returns null
+/// when the path does not exist or does not fit the bounded buffers.
+pub fn windowsLongPathInto(path: []const u8, out: []u8) ?[]const u8 {
+    if (comptime !is_windows) @compileError("windowsLongPathInto is Windows only");
+    const win32 = @import("win32.zig");
+    const unc = path.len > 2 and path[0] == '\\' and path[1] == '\\';
+    // The `\\?\` prefix lifts the MAX_PATH limit.
+    const prefix = if (unc) "\\\\?\\UNC\\" else "\\\\?\\";
+    const body = if (unc) path[2..] else path;
+    var wide_in: [1024:0]u16 = undefined;
+    var wide_len: usize = 0;
+    for (prefix) |byte| {
+        wide_in[wide_len] = byte;
+        wide_len += 1;
+    }
+    const body_wide_len = std.unicode.calcWtf16LeLen(body) catch return null;
+    if (body_wide_len > wide_in.len - wide_len) return null;
+    wide_len += std.unicode.wtf8ToWtf16Le(wide_in[wide_len..], body) catch return null;
+    wide_in[wide_len] = 0;
+
+    var wide_out: [1024]u16 = undefined;
+    const written = win32.GetLongPathNameW(wide_in[0..wide_len :0], &wide_out, wide_out.len);
+    if (written == 0 or written >= wide_out.len) return null;
+    var long_wide: []const u16 = wide_out[0..written];
+    if (!std.mem.startsWith(u16, long_wide, wide_in[0..prefix.len])) return null;
+    long_wide = long_wide[prefix.len..];
+    var out_len: usize = 0;
+    if (unc) {
+        if (out.len < 2) return null;
+        out[0..2].* = "\\\\".*;
+        out_len = 2;
+    }
+    if (std.unicode.calcWtf8Len(long_wide) > out.len - out_len) return null;
+    out_len += std.unicode.wtf16LeToWtf8(out[out_len..], long_wide);
+    return out[0..out_len];
 }
 
 /// Returns absolute path evidence reported by an already-open regular file

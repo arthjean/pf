@@ -2631,7 +2631,9 @@ fn openTopLevelMcpUrl(
     try writeStdout(presentation.deps, encoded_url.bytes);
     try writeStdout(presentation.deps, "\n\nWaiting for browser authorization...\n");
     if (io_mod.getenv("PF_NO_OPEN_BROWSER") == null) {
-        _ = try presentation.opener.open(alloc, url);
+        if (!try presentation.opener.open(alloc, url)) {
+            try writeStdout(presentation.deps, host.browser_unavailable_notice ++ "\n");
+        }
     }
     return true;
 }

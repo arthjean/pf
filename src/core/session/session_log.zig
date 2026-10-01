@@ -1625,6 +1625,23 @@ fn readConversationMetadataBytes(alloc: Allocator, dir: *io_mod.VerifiedDir) !?[
     return bytes;
 }
 
+/// Returns the `workspace_root` recorded in a current-schema session's
+/// metadata without opening the session for writing, or null when the
+/// metadata is absent or unreadable. The caller owns the returned path.
+pub fn conversationWorkspaceRoot(alloc: Allocator, dir: *io_mod.VerifiedDir) !?[]u8 {
+    const bytes = (try readConversationMetadataBytes(alloc, dir)) orelse return null;
+    defer alloc.free(bytes);
+    var parsed = std.json.parseFromSlice(std.json.Value, alloc, bytes, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => return null,
+    };
+    defer parsed.deinit();
+    if (parsed.value != .object) return null;
+    const root = parsed.value.object.get("workspace_root") orelse return null;
+    if (root != .string) return null;
+    return try alloc.dupe(u8, root.string);
+}
+
 fn isConversationMetadata(alloc: Allocator, bytes: []const u8) !bool {
     var parsed = std.json.parseFromSlice(std.json.Value, alloc, bytes, .{
         .parse_numbers = false,

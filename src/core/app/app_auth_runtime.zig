@@ -1681,6 +1681,13 @@ pub fn Runtime(comptime App: type) type {
             defer app.alloc.free(url);
             if (!try app.urlOpener().open(app.alloc, url)) {
                 debug_trace.logf("auth", "login browser launcher failed", .{});
+                const body = try std.fmt.allocPrint(
+                    app.alloc,
+                    "pf could not open a browser. Open this URL manually; pf keeps waiting: {s}",
+                    .{url},
+                );
+                defer app.alloc.free(body);
+                try app.writeDomainNotice(.{ .topic = "auth", .tone = .warning, .body = body }, true);
             }
         }
 
@@ -3001,6 +3008,7 @@ test "interactive manual code entry never reopens the browser on empty submit" {
 
 test "interactive sign-in preserves manual fallback when the host launcher fails" {
     var app: TestApp = .{};
+    defer app.deinit();
     app.auth.sign_in_url = "https://vercel.test/verify";
     app.test_url_opener.succeeds = false;
 
@@ -3012,6 +3020,11 @@ test "interactive sign-in preserves manual fallback when the host launcher fails
         app.test_url_opener.openedUrl(),
     );
     try std.testing.expectEqualStrings("https://vercel.test/verify", app.auth.sign_in_url.?);
+    try std.testing.expect(std.mem.find(
+        u8,
+        app.transcript.items,
+        "pf could not open a browser. Open this URL manually; pf keeps waiting: https://vercel.test/verify",
+    ) != null);
 }
 
 test "interactive sign-in frees its browser URL when the host opener errors" {

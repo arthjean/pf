@@ -404,6 +404,18 @@ pub fn prepareFileMutationCall(
     var input_owned = true;
     defer if (input_owned) input.deinit(alloc);
 
+    // Windows opens a device such as NUL or CON.txt in any directory, so a
+    // reserved name is refused before any file is opened.
+    if (builtin.os.tag == .windows) {
+        if (pathing.reservedWindowsDeviceName(input.path())) |name| {
+            return .{ .tool_failure = try std.fmt.allocPrint(
+                alloc,
+                "{s} is a reserved Windows device name.",
+                .{name},
+            ) };
+        }
+    }
+
     if (builtin.is_test) file_mutation_resolution_count += 1;
     var targets = switch (try permissions.prepareFileMutationTargets(
         alloc,

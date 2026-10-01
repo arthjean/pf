@@ -8,6 +8,7 @@ const cli_surface = @import("../cli/cli_surface.zig");
 const config_runtime = @import("../config/config_runtime.zig");
 const credentials = @import("../auth/credentials.zig");
 const process_provider = @import("../execution/process_provider.zig");
+const session_store = @import("../session/session_store.zig");
 const gateway_provider = @import("../gateway/gateway_provider.zig");
 const provider_set = @import("../gateway/provider_set.zig");
 const host = @import("../hosts/host.zig");
@@ -334,6 +335,10 @@ fn runInteractiveWithDeps(comptime App: type, comptime cooperative: bool, app: *
             },
             error.OneOffSessionNotResumable => {
                 writeStderr(deps, "pf: subagent child sessions cannot be resumed directly; message the named agent from its parent session\n");
+                return .{ .exit = 1 };
+            },
+            error.SessionFromAnotherPlatform => {
+                writeStderr(deps, "pf: " ++ session_store.another_platform_message ++ "\n");
                 return .{ .exit = 1 };
             },
             error.InvalidSessionFormat => {

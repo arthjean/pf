@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const debug_trace = @import("../shared/debug_trace.zig");
 const tool_contracts = @import("../agent/runtime/tool_contracts.zig");
 const diff_mod = @import("../output/diff.zig");
@@ -161,9 +162,15 @@ fn prepareFileMutationSuccessResult(
     result_alloc: Allocator,
     prepared: file_mutation_contract.PreparedFileMutation,
 ) Allocator.Error!tool_result_limits.PreparedInlineResult {
+    const display_path = try call_alloc.dupe(u8, fileMutationDisplayTargetPath(prepared.policy_targets));
+    defer call_alloc.free(display_path);
+    // Workspace-relative paths read with `/` on every platform.
+    if (builtin.os.tag == .windows and prepared.policy_targets.anchor.scope == .workspace) {
+        std.mem.replaceScalar(u8, display_path, '\\', '/');
+    }
     var encoded_path = try text_utils.encodeTerminalSafe(
         call_alloc,
-        fileMutationDisplayTargetPath(prepared.policy_targets),
+        display_path,
         diff_mod.max_encoded_path_bytes,
     );
     defer encoded_path.deinit(call_alloc);

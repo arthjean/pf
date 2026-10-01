@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const debug_trace = @import("../shared/debug_trace.zig");
 const io_mod = @import("../shared/io.zig");
 const mem_utils = @import("../shared/mem_utils.zig");
@@ -1462,12 +1463,52 @@ fn appendUniqueWorkspaceIdentity(
     return true;
 }
 
+/// Reports whether a `workspaces` key names `workspace_root`, the canonical
+/// root pf resolved. On Windows a key matches regardless of case, separator
+/// style, and trailing separators, so `c:/dev/pf/` and `C:\DEV\PF` both name
+/// `C:\dev\pf`. Elsewhere a key matches exactly.
+pub fn workspaceKeyMatches(key: []const u8, workspace_root: []const u8) bool {
+    if (comptime builtin.os.tag != .windows) return std.mem.eql(u8, key, workspace_root);
+    if (leadingSeparatorCount(key) != leadingSeparatorCount(workspace_root)) return false;
+    var key_parts = std.mem.tokenizeAny(u8, key, "\\/");
+    var root_parts = std.mem.tokenizeAny(u8, workspace_root, "\\/");
+    while (true) {
+        const key_part = key_parts.next();
+        const root_part = root_parts.next();
+        if (key_part == null or root_part == null) return key_part == null and root_part == null;
+        if (!io_mod.pathsEqual(key_part.?, root_part.?)) return false;
+    }
+}
+
+fn leadingSeparatorCount(path: []const u8) usize {
+    var count: usize = 0;
+    while (count < @min(path.len, 2) and (path[count] == '\\' or path[count] == '/')) count += 1;
+    return count;
+}
+
+/// Returns the existing `workspaces` key that names `workspace_root`. The
+/// user's key is read as written and never rewritten.
+pub fn workspaceKey(workspaces: std.json.ObjectMap, workspace_root: []const u8) ?[]const u8 {
+    if (workspaces.getKey(workspace_root)) |key| return key;
+    if (comptime builtin.os.tag != .windows) return null;
+    for (workspaces.keys()) |key| {
+        if (workspaceKeyMatches(key, workspace_root)) return key;
+    }
+    return null;
+}
+
+/// Returns the `workspaces` entry that names `workspace_root`.
+pub fn workspaceValue(workspaces: std.json.ObjectMap, workspace_root: []const u8) ?std.json.Value {
+    return workspaces.get(workspaceKey(workspaces, workspace_root) orelse return null);
+}
+
 fn removeWorkspaceIfEmpty(root: *std.json.Value, workspace_root: []const u8) void {
     const workspaces = root.object.getPtr("workspaces") orelse return;
     if (workspaces.* != .object) return;
-    const workspace = workspaces.object.get(workspace_root) orelse return;
+    const key = workspaceKey(workspaces.object, workspace_root) orelse return;
+    const workspace = workspaces.object.get(key).?;
     if (workspace != .object or workspace.object.count() != 0) return;
-    _ = workspaces.object.orderedRemove(workspace_root);
+    _ = workspaces.object.orderedRemove(key);
     if (workspaces.object.count() == 0) _ = root.object.orderedRemove("workspaces");
 }
 
@@ -1489,7 +1530,7 @@ fn applyProjectMcpMutationToRoot(
     mutation: ProjectMcpMutation,
 ) !PatchApplication {
     const existing_workspace = if (root.object.get("workspaces")) |workspaces|
-        if (workspaces == .object) workspaces.object.get(mutation.workspace_root) else null
+        if (workspaces == .object) workspaceValue(workspaces.object, mutation.workspace_root) else null
     else
         null;
     var diagnostics: std.ArrayList(project_config.WorkspaceDiagnostic) = .empty;
@@ -1548,7 +1589,9 @@ fn workspaceObject(
         try root.object.put(arena, "workspaces", .{ .object = .empty });
         break :blk root.object.getPtr("workspaces").?;
     };
-    const workspace = if (workspaces.object.getPtr(workspace_root)) |value| blk: {
+    const existing_key = workspaceKey(workspaces.object, workspace_root);
+    const workspace = if (existing_key) |key| blk: {
+        const value = workspaces.object.getPtr(key).?;
         if (value.* != .object) return error.InvalidSettingsFormat;
         break :blk value;
     } else blk: {
@@ -1844,7 +1887,7 @@ fn validateCandidate(
         return error.InvalidSettingsFormat;
     };
     if (workspaces != .object) return error.InvalidSettingsFormat;
-    const workspace = workspaces.object.get(workspace_root) orelse {
+    const workspace = workspaceValue(workspaces.object, workspace_root) orelse {
         if (workspace_may_be_absent) return;
         return error.InvalidSettingsFormat;
     };
@@ -3310,6 +3353,32 @@ test "post-rename failure returns SettingsCommitIndeterminate" {
         error.SettingsCommitIndeterminate,
         store.applyUserPatch(alloc, .{ .startup_scrollback = false }),
     );
+}
+
+test "workspace keys match the canonical root across Windows spellings only" {
+    const root = if (builtin.os.tag == .windows) "C:\\dev\\pf" else "/dev/pf";
+    try std.testing.expect(workspaceKeyMatches(root, root));
+    const windows_spellings = [_][]const u8{ "c:/dev/pf/", "C:\\DEV\\PF", "C:\\dev\\pf\\" };
+    for (windows_spellings) |key| {
+        try std.testing.expectEqual(builtin.os.tag == .windows, workspaceKeyMatches(key, "C:\\dev\\pf"));
+    }
+    for ([_][]const u8{ "C:\\dev\\pf2", "C:\\dev", "D:\\dev\\pf", "\\\\dev\\pf" }) |key| {
+        try std.testing.expect(!workspaceKeyMatches(key, "C:\\dev\\pf"));
+    }
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        std.testing.allocator,
+        "{\"c:/dev/pf/\":{\"permission_mode\":\"ask\"}}",
+        .{},
+    );
+    defer parsed.deinit();
+    const key = workspaceKey(parsed.value.object, "C:\\dev\\pf");
+    if (builtin.os.tag == .windows) {
+        try std.testing.expectEqualStrings("c:/dev/pf/", key.?);
+    } else {
+        try std.testing.expect(key == null);
+    }
 }
 
 test "project MCP mutation writes exact workspace keys and classifies reduction" {

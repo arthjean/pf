@@ -931,6 +931,7 @@ pub const LoginPollDeps = struct {
         std.Io.Clock.Timestamp,
     ) anyerror!oauth.PollResult = realPollDeviceToken,
     sleep_ms: *const fn (?*anyopaque, u64) void = realSleepMs,
+    write_notice: *const fn (?*anyopaque, []const u8) void = realWriteNotice,
     wait_for_enter: *const fn (?*anyopaque, u64) bool = if (host_target.is_wasm)
         unavailableWaitForEnter
     else
@@ -1067,7 +1068,9 @@ fn waitBetweenPolls(
         if (prompt.enabled and !prompt.opened) {
             if (deps.wait_for_enter(deps.ctx, slice_ms)) {
                 prompt.opened = true;
-                _ = deps.url_opener.open(alloc, prompt.url) catch false;
+                if (!(deps.url_opener.open(alloc, prompt.url) catch false)) {
+                    deps.write_notice(deps.ctx, host.browser_unavailable_notice ++ "\n");
+                }
             }
         } else {
             deps.sleep_ms(deps.ctx, slice_ms);
@@ -1136,6 +1139,10 @@ fn realPollDeviceToken(
 
 fn neverCancelled(_: ?*anyopaque) bool {
     return false;
+}
+
+fn realWriteNotice(_: ?*anyopaque, text: []const u8) void {
+    writeStdout(text) catch {};
 }
 
 fn realSleepMs(_: ?*anyopaque, ms: u64) void {
@@ -1699,6 +1706,7 @@ const LoginPollTestState = struct {
     opened_url: ?[]const u8 = null,
     open_available: bool = true,
     open_error: bool = false,
+    notice_count: usize = 0,
     now_ms: i64 = 0,
 
     fn init(alloc: Allocator, results: []const ScriptedPollResult) LoginPollTestState {
@@ -1716,6 +1724,7 @@ const LoginPollTestState = struct {
             .now_ms = testNowMs,
             .poll_device_token = testPollDeviceToken,
             .sleep_ms = testSleepMs,
+            .write_notice = testWriteNotice,
             .wait_for_enter = testWaitForEnter,
             .url_opener = .{
                 .context = self,
@@ -1754,6 +1763,11 @@ const LoginPollTestState = struct {
         const self = testState(raw);
         self.sleep_calls.append(self.alloc, ms) catch unreachable;
         self.now_ms += @intCast(ms);
+    }
+
+    fn testWriteNotice(raw: ?*anyopaque, text: []const u8) void {
+        const self = testState(raw);
+        if (std.mem.eql(u8, text, host.browser_unavailable_notice ++ "\n")) self.notice_count += 1;
     }
 
     fn testWaitForEnter(raw: ?*anyopaque, timeout_ms: u64) bool {
@@ -2512,6 +2526,7 @@ test "login polling continues when the URL opener is unavailable" {
 
     try std.testing.expectEqual(@as(usize, 3), state.poll_index);
     try std.testing.expectEqual(@as(usize, 1), state.open_count);
+    try std.testing.expectEqual(@as(usize, 1), state.notice_count);
     try std.testing.expect(prompt.opened);
 }
 
@@ -2528,6 +2543,7 @@ test "login polling continues when the URL opener fails" {
 
     try std.testing.expectEqual(@as(usize, 3), state.poll_index);
     try std.testing.expectEqual(@as(usize, 1), state.open_count);
+    try std.testing.expectEqual(@as(usize, 1), state.notice_count);
     try std.testing.expect(prompt.opened);
 }
 

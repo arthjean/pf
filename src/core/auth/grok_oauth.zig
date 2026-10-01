@@ -360,7 +360,9 @@ pub fn runLogin(
     try writeStdout("\n\nWaiting for browser authorization...\n");
     try writeStdout("Paste the code shown by xAI and press enter if the browser doesn't return.\n");
     if (io_mod.getenv("PF_NO_OPEN_BROWSER") == null) {
-        _ = url_opener.open(alloc, authorization_url) catch false;
+        if (!(url_opener.open(alloc, authorization_url) catch false)) {
+            try writeStdout(host.browser_unavailable_notice ++ "\n");
+        }
     }
 
     var stdin_code = console_prompt.LinePoller.init(.{

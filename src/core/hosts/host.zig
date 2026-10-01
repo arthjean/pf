@@ -20,6 +20,9 @@ pub const Capabilities = struct {
 
 pub const UrlOpenError = std.mem.Allocator.Error;
 
+/// Shown after a URL that pf printed could not be opened in a browser.
+pub const browser_unavailable_notice = "pf could not open a browser. Open the URL above manually; pf keeps waiting.";
+
 pub const UrlOpener = struct {
     context: ?*anyopaque = null,
     open_fn: *const fn (
@@ -265,8 +268,8 @@ pub fn terminalSupportForOs(os_tag: std.Target.Os.Tag) TerminalSupport {
 pub fn nativeForOs(os_tag: std.Target.Os.Tag) Capabilities {
     return .{
         .process_control = os_tag != .wasi,
-        .url_open = os_tag == .macos or os_tag == .linux,
-        .native_url_open = os_tag == .macos,
+        .url_open = os_tag == .macos or os_tag == .linux or os_tag == .windows,
+        .native_url_open = os_tag == .macos or os_tag == .windows,
         .terminal = terminalSupportForOs(os_tag),
     };
 }
@@ -359,8 +362,8 @@ test "native host capabilities expose process and URL support" {
 
     const windows = nativeForOs(.windows);
     try std.testing.expect(windows.process_control);
-    try std.testing.expect(!windows.url_open);
-    try std.testing.expect(!windows.native_url_open);
+    try std.testing.expect(windows.url_open);
+    try std.testing.expect(windows.native_url_open);
     try std.testing.expectEqual(TerminalSupport.unsupported, windows.terminal);
 
     const wasi = nativeForOs(.wasi);

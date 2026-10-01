@@ -75,6 +75,70 @@ const FileTargetResolveError = error{
 
 const path_entry_whitespace = " \t\r\n";
 const max_symbolic_link_expansions: usize = 40;
+const is_windows = builtin_mod.os.tag == .windows;
+
+/// Reports a path separator: `/` everywhere, and `\` as well on Windows.
+fn isPathSep(byte: u8) bool {
+    return byte == '/' or (is_windows and byte == '\\');
+}
+
+/// Returns the length of the root of an absolute path: `/` on POSIX, and
+/// `C:\` or `\\server\share\` on Windows. Returns null for a path without
+/// such a root, such as a rooted Windows path that names no drive.
+fn absoluteRootLen(path: []const u8) ?usize {
+    if (comptime !is_windows) return if (path.len > 0 and path[0] == '/') 1 else null;
+    if (path.len >= 3 and std.ascii.isAlphabetic(path[0]) and path[1] == ':' and isPathSep(path[2])) return 3;
+    if (path.len < 2 or !isPathSep(path[0]) or !isPathSep(path[1])) return null;
+    // A UNC root names a server and a share. Device paths such as `\\?\` and
+    // `\\.\` are rejected.
+    var index: usize = 2;
+    const server_start = index;
+    while (index < path.len and !isPathSep(path[index])) index += 1;
+    const server = path[server_start..index];
+    if (server.len == 0 or std.mem.eql(u8, server, "?") or std.mem.eql(u8, server, ".")) return null;
+    if (index == path.len) return null;
+    index += 1;
+    const share_start = index;
+    while (index < path.len and !isPathSep(path[index])) index += 1;
+    if (index == share_start) return null;
+    return if (index < path.len) index + 1 else index;
+}
+
+/// Writes the normalized form of an absolute root into `scratch`: `/` on
+/// POSIX, and on Windows backslash separators, an uppercase drive letter, and
+/// a trailing separator. Returns the written length.
+fn writeNormalizedRoot(scratch: []u8, root: []const u8) FileTargetResolveError!usize {
+    const needs_trailing = !isPathSep(root[root.len - 1]);
+    const len = root.len + @intFromBool(needs_trailing);
+    if (len > scratch.len) return error.InvalidPath;
+    for (root, 0..) |byte, index| scratch[index] = if (isPathSep(byte)) std.fs.path.sep else byte;
+    if (needs_trailing) scratch[root.len] = std.fs.path.sep;
+    if (is_windows and scratch[1] == ':') scratch[0] = std.ascii.toUpper(scratch[0]);
+    return len;
+}
+
+/// Replaces the last component of `scratch[0..path_len]` with its long form
+/// when Windows names it with an 8.3 short name, which always contains `~`.
+/// Other platforms and other names are unchanged. Returns the component span.
+fn expandShortComponent(
+    scratch: []u8,
+    path_len: *usize,
+    span: BoundedFileTargetComponent,
+) FileTargetResolveError!BoundedFileTargetComponent {
+    if (comptime !is_windows) return span;
+    if (span.end != path_len.* or std.mem.findScalar(u8, scratch[span.start..span.end], '~') == null) return span;
+    var long_buffer: [1024]u8 = undefined;
+    // A path Windows cannot expand keeps its short name, and containment then
+    // treats it as a path outside the workspace.
+    const long_path = io_mod.windowsLongPathInto(scratch[0..path_len.*], &long_buffer) orelse return span;
+    const long_name = std.fs.path.basename(long_path);
+    if (long_name.len == 0) return span;
+    const end = span.start + long_name.len;
+    if (end > scratch.len) return error.InvalidPath;
+    @memcpy(scratch[span.start..end], long_name);
+    path_len.* = end;
+    return .{ .start = span.start, .end = end };
+}
 
 pub const FileIdentityError = error{
     Unexpected,
@@ -432,6 +496,7 @@ fn resolveBoundedAbsoluteFileTarget(
     var output_scratch = primary_path_scratch;
     var pending_path_len = initial_absolute.len;
     var symbolic_link_expansions: usize = 0;
+    var long_form_restarted = false;
 
     while (true) {
         const step = try traverseBoundedAbsoluteFileTarget(
@@ -459,6 +524,19 @@ fn resolveBoundedAbsoluteFileTarget(
                 const canonical_target_path = output_scratch[0..complete.path_len];
                 if (!external_intent and !pathInside(workspace_root, canonical_target_path)) {
                     return error.PathOutsideWorkspace;
+                }
+                if (is_windows and !long_form_restarted and
+                    !pathInside(workspace_root, pending_scratch[0..pending_path_len]) and
+                    pathInside(workspace_root, canonical_target_path))
+                {
+                    // An 8.3 short name hid the workspace prefix, so the long
+                    // form is walked again to anchor it at the workspace root.
+                    long_form_restarted = true;
+                    const previous_pending = pending_scratch;
+                    pending_scratch = output_scratch;
+                    output_scratch = previous_pending;
+                    pending_path_len = complete.path_len;
+                    continue;
                 }
 
                 if (output_scratch.ptr != primary_path_scratch.ptr) {
@@ -500,17 +578,19 @@ fn traverseBoundedAbsoluteFileTarget(
     }
 
     const absolute = pending_scratch[0..pending_path_len];
-    path_scratch[0] = std.fs.path.sep;
-    var path_len: usize = 1;
+    const root_len = absoluteRootLen(absolute) orelse return error.InvalidPath;
+    if (root_len > path_scratch.len) return error.InvalidPath;
+    @memcpy(path_scratch[0..root_len], absolute[0..root_len]);
+    var path_len: usize = root_len;
     var component_count: usize = 0;
     const workspace_target = pathInside(workspace_root, absolute);
-    var workspace_anchor_end: ?usize = if (workspace_target and std.mem.eql(u8, workspace_root, "/"))
-        1
+    var workspace_anchor_end: ?usize = if (workspace_target and io_mod.pathsEqual(workspace_root, absolute[0..root_len]))
+        root_len
     else
         null;
 
     const zio = io_mod.getIo();
-    var current_dir = std.Io.Dir.openDirAbsolute(zio, "/", .{ .follow_symlinks = false }) catch |err| {
+    var current_dir = std.Io.Dir.openDirAbsolute(zio, absolute[0..root_len], .{ .follow_symlinks = false }) catch |err| {
         return mapDirOpenError(err);
     };
     defer current_dir.close(zio);
@@ -530,7 +610,7 @@ fn traverseBoundedAbsoluteFileTarget(
         const is_final = !iter.hasNext();
 
         if (is_final) {
-            _ = current_dir.statFile(zio, component, .{ .follow_symlinks = false }) catch |err| switch (mapStatFileError(err)) {
+            const final_stat = current_dir.statFile(zio, component, .{ .follow_symlinks = false }) catch |err| switch (mapStatFileError(err)) {
                 error.FileNotFound => {
                     if (mode == .existing) return error.FileNotFound;
                     try appendBoundedRelativeComponent(component_scratch, &component_count, span);
@@ -545,8 +625,12 @@ fn traverseBoundedAbsoluteFileTarget(
                 },
                 else => |mapped| return mapped,
             };
+            const final_span = if (final_stat.kind == .sym_link)
+                span
+            else
+                try expandShortComponent(path_scratch, &path_len, span);
 
-            if (workspace_target and std.mem.eql(u8, path_scratch[0..path_len], workspace_root)) {
+            if (workspace_target and io_mod.pathsEqual(path_scratch[0..path_len], workspace_root)) {
                 return .{ .complete = .{
                     .path_len = path_len,
                     .anchor_path_end = path_len,
@@ -554,7 +638,7 @@ fn traverseBoundedAbsoluteFileTarget(
                 } };
             }
 
-            try appendBoundedRelativeComponent(component_scratch, &component_count, span);
+            try appendBoundedRelativeComponent(component_scratch, &component_count, final_span);
             return .{ .complete = .{
                 .path_len = path_len,
                 .anchor_path_end = if (workspace_target)
@@ -601,14 +685,15 @@ fn traverseBoundedAbsoluteFileTarget(
 
         current_dir.close(zio);
         current_dir = next_dir.?;
+        const dir_span = try expandShortComponent(path_scratch, &path_len, span);
 
         if (workspace_target) {
             if (workspace_anchor_end == null) {
-                if (std.mem.eql(u8, path_scratch[0..path_len], workspace_root)) {
+                if (io_mod.pathsEqual(path_scratch[0..path_len], workspace_root)) {
                     workspace_anchor_end = path_len;
                 }
             } else {
-                try appendBoundedRelativeComponent(component_scratch, &component_count, span);
+                try appendBoundedRelativeComponent(component_scratch, &component_count, dir_span);
             }
         }
     }
@@ -645,14 +730,17 @@ fn resolveBoundedIntermediateSymlink(
     if (link_len == 0) return error.InvalidPath;
 
     const link_target = pending_scratch[0..link_len];
-    var resolved_len: usize = if (std.fs.path.isAbsolute(link_target)) absolute: {
-        if (output_scratch.len == 0) return error.InvalidPath;
-        output_scratch[0] = std.fs.path.sep;
-        break :absolute 1;
-    } else parent_path_end;
+    const link_root_len: usize = if (std.fs.path.isAbsolute(link_target))
+        absoluteRootLen(link_target) orelse return error.InvalidPath
+    else
+        0;
+    var resolved_len: usize = if (link_root_len > 0)
+        try writeNormalizedRoot(output_scratch, link_target[0..link_root_len])
+    else
+        parent_path_end;
 
     if (resolved_len > output_scratch.len) return error.InvalidPath;
-    try normalizeRelativePathPartInto(output_scratch, &resolved_len, link_target);
+    try normalizeRelativePathPartInto(output_scratch, &resolved_len, link_target[link_root_len..]);
     try normalizeRelativePathPartInto(
         output_scratch,
         &resolved_len,
@@ -668,18 +756,18 @@ const PathComponentIterator = struct {
     fn init(path: []const u8) PathComponentIterator {
         return .{
             .path = path,
-            .index = if (path.len > 0 and path[0] == std.fs.path.sep) 1 else 0,
+            .index = absoluteRootLen(path) orelse 0,
         };
     }
 
     fn next(self: *PathComponentIterator) ?[]const u8 {
-        while (self.index < self.path.len and self.path[self.index] == std.fs.path.sep) {
+        while (self.index < self.path.len and isPathSep(self.path[self.index])) {
             self.index += 1;
         }
         if (self.index >= self.path.len) return null;
 
         const start = self.index;
-        while (self.index < self.path.len and self.path[self.index] != std.fs.path.sep) {
+        while (self.index < self.path.len and !isPathSep(self.path[self.index])) {
             self.index += 1;
         }
         const end = self.index;
@@ -709,11 +797,10 @@ fn boundedResolution(
 
 fn normalizeAbsolutePathInto(scratch: []u8, raw_path: []const u8) FileTargetResolveError![]const u8 {
     if (!std.fs.path.isAbsolute(raw_path)) return error.InvalidPath;
-    if (scratch.len == 0) return error.InvalidPath;
+    const root_len = absoluteRootLen(raw_path) orelse return error.InvalidPath;
 
-    scratch[0] = std.fs.path.sep;
-    var len: usize = 1;
-    try normalizeRelativePathPartInto(scratch, &len, raw_path);
+    var len = try writeNormalizedRoot(scratch, raw_path[0..root_len]);
+    try normalizeRelativePathPartInto(scratch, &len, raw_path[root_len..]);
     return scratch[0..len];
 }
 
@@ -723,11 +810,10 @@ fn normalizeBaseRelativePathInto(
     relative_path: []const u8,
 ) FileTargetResolveError![]const u8 {
     if (!std.fs.path.isAbsolute(base_abs)) return error.InvalidPath;
-    if (scratch.len == 0) return error.InvalidPath;
+    const root_len = absoluteRootLen(base_abs) orelse return error.InvalidPath;
 
-    scratch[0] = std.fs.path.sep;
-    var len: usize = 1;
-    try normalizeRelativePathPartInto(scratch, &len, base_abs);
+    var len = try writeNormalizedRoot(scratch, base_abs[0..root_len]);
+    try normalizeRelativePathPartInto(scratch, &len, base_abs[root_len..]);
     try normalizeRelativePathPartInto(scratch, &len, relative_path);
     return scratch[0..len];
 }
@@ -739,13 +825,13 @@ fn normalizeRelativePathPartInto(
 ) FileTargetResolveError!void {
     var index: usize = 0;
     while (index < raw_path.len) {
-        while (index < raw_path.len and raw_path[index] == std.fs.path.sep) {
+        while (index < raw_path.len and isPathSep(raw_path[index])) {
             index += 1;
         }
         if (index >= raw_path.len) return;
 
         const start = index;
-        while (index < raw_path.len and raw_path[index] != std.fs.path.sep) : (index += 1) {
+        while (index < raw_path.len and !isPathSep(raw_path[index])) : (index += 1) {
             if (raw_path[index] == 0) return error.InvalidPath;
         }
         const component = raw_path[start..index];
@@ -761,13 +847,14 @@ fn normalizeRelativePathPartInto(
 }
 
 fn popNormalizedPathComponent(path: []const u8, path_len: *usize) void {
-    if (path_len.* <= 1) return;
+    const root_len = absoluteRootLen(path[0..path_len.*]) orelse 1;
+    if (path_len.* <= root_len) return;
 
     var index = path_len.* - 1;
     while (index > 0 and path[index] != std.fs.path.sep) {
         index -= 1;
     }
-    path_len.* = if (index == 0) 1 else index;
+    path_len.* = @max(index, root_len);
 }
 
 fn appendBoundedPathComponent(
@@ -779,7 +866,7 @@ fn appendBoundedPathComponent(
         return error.InvalidPath;
     }
 
-    const needs_separator = path_len.* > 1;
+    const needs_separator = path_len.* > 0 and !isPathSep(scratch[path_len.* - 1]);
     const required_len = path_len.* + component.len + @intFromBool(needs_separator);
     if (required_len > scratch.len) return error.InvalidPath;
 
@@ -806,6 +893,18 @@ fn appendBoundedRelativeComponent(
 
 fn openBoundedChildDirNoFollow(parent: std.Io.Dir, component: []const u8) FileTargetResolveError!?std.Io.Dir {
     const zio = io_mod.getIo();
+    if (comptime is_windows) {
+        // Windows opens a junction or directory symlink itself as a directory
+        // when links are not followed, so the link is detected from its kind.
+        const dir = parent.openDir(zio, component, .{ .follow_symlinks = false }) catch |err| return mapDirOpenError(err);
+        const stat = dir.statFile(zio, ".", .{ .follow_symlinks = false }) catch |err| {
+            dir.close(zio);
+            return mapStatFileError(err);
+        };
+        if (stat.kind == .directory) return dir;
+        dir.close(zio);
+        return if (stat.kind == .sym_link) null else error.NotDir;
+    }
     return parent.openDir(zio, component, .{ .follow_symlinks = false }) catch |err| {
         const mapped = mapDirOpenError(err);
         if (mapped == error.NotDir) {
@@ -1092,6 +1191,12 @@ pub fn workspaceRelativePath(
     absolute: []const u8,
 ) ![]const u8 {
     if (!pathInside(workspace_root, absolute)) return arena.dupe(u8, absolute);
+    if (comptime is_windows) {
+        // Tool output names workspace files with `/` on every platform.
+        const relative = try arena.dupe(u8, std.mem.trimStart(u8, absolute[workspace_root.len..], "\\/"));
+        std.mem.replaceScalar(u8, relative, '\\', '/');
+        return if (relative.len == 0) arena.dupe(u8, ".") else relative;
+    }
     return std.fs.path.relative(arena, "/", null, workspace_root, absolute) catch try arena.dupe(u8, absolute);
 }
 
@@ -1154,11 +1259,112 @@ fn invalidPathEntryBasename(basename: []const u8) bool {
 }
 
 pub fn pathInside(root: []const u8, candidate: []const u8) bool {
+    if (comptime is_windows) return pathInsideWindows(root, candidate);
     if (std.mem.eql(u8, root, candidate)) return true;
     if (!std.mem.startsWith(u8, candidate, root)) return false;
     if (root.len == 0) return false;
     if (root[root.len - 1] == std.fs.path.sep) return true;
     return candidate.len > root.len and candidate[root.len] == std.fs.path.sep;
+}
+
+/// Returns the first component of `path` that Windows reserves as a device
+/// name, such as `NUL`, `CON.txt`, or `com1.log`. Case, an extension, and
+/// trailing spaces do not change the device the name opens.
+pub fn reservedWindowsDeviceName(path: []const u8) ?[]const u8 {
+    var components = std.mem.tokenizeAny(u8, path, "\\/");
+    while (components.next()) |component| {
+        if (isReservedWindowsDeviceName(component)) return component;
+    }
+    return null;
+}
+
+fn isReservedWindowsDeviceName(component: []const u8) bool {
+    const stem_end = std.mem.findScalar(u8, component, '.') orelse component.len;
+    const stem = std.mem.trimEnd(u8, component[0..stem_end], " ");
+    for ([_][]const u8{ "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$" }) |name| {
+        if (std.ascii.eqlIgnoreCase(stem, name)) return true;
+    }
+    if (stem.len < 4) return false;
+    const prefix = stem[0..3];
+    if (!std.ascii.eqlIgnoreCase(prefix, "COM") and !std.ascii.eqlIgnoreCase(prefix, "LPT")) return false;
+    const suffix = stem[3..];
+    // Digits 0 to 9, and the superscript digits 1 to 3 in UTF-8.
+    if (suffix.len == 1) return std.ascii.isDigit(suffix[0]);
+    return suffix.len == 2 and suffix[0] == 0xC2 and (suffix[1] == 0xB9 or suffix[1] == 0xB2 or suffix[1] == 0xB3);
+}
+
+test "reserved Windows device names are found in any path component" {
+    const reserved = [_]struct { path: []const u8, name: []const u8 }{
+        .{ .path = "NUL", .name = "NUL" },
+        .{ .path = "notes/CON.txt", .name = "CON.txt" },
+        .{ .path = "logs\\com1.log", .name = "com1.log" },
+        .{ .path = "C:\\dev\\lpt9", .name = "lpt9" },
+        .{ .path = "aux .md", .name = "aux .md" },
+        .{ .path = "dir/conout$", .name = "conout$" },
+        .{ .path = "COM\u{B9}.txt", .name = "COM\u{B9}.txt" },
+    };
+    for (reserved) |case| {
+        try std.testing.expectEqualStrings(case.name, reservedWindowsDeviceName(case.path) orelse return error.TestExpectedReservedName);
+    }
+    for ([_][]const u8{ "null.txt", "console/x", "com10.log", "lpt", "src/main.zig", "C:\\dev\\pf", "auxiliary" }) |path| {
+        try std.testing.expect(reservedWindowsDeviceName(path) == null);
+    }
+}
+
+/// Windows containment: separators are `\` or `/`, and case is ignored with
+/// the NTFS upcase table, so `C:\DEV\PF\src` is inside `C:\dev\pf`.
+fn pathInsideWindows(root: []const u8, candidate: []const u8) bool {
+    if (root.len == 0) return candidate.len == 0;
+    if (candidate.len < root.len) return false;
+    if (isPathSep(root[root.len - 1])) {
+        if (!isPathSep(candidate[root.len - 1])) return false;
+        return io_mod.pathsEqual(root[0 .. root.len - 1], candidate[0 .. root.len - 1]);
+    }
+    // The byte after the root must be a separator, so the compared prefix
+    // never ends inside a UTF-8 sequence.
+    if (candidate.len > root.len and !isPathSep(candidate[root.len])) return false;
+    return io_mod.pathsEqual(root, candidate[0..root.len]);
+}
+
+test "bounded resolver contains Windows targets by case and rejects junction escapes" {
+    if (comptime !is_windows) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io_mod.getIo(), "workspace/src");
+    try tmp.dir.createDirPath(io_mod.getIo(), "outside");
+    const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
+    defer alloc.free(workspace);
+    const outside = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "outside");
+    defer alloc.free(outside);
+
+    var primary: [std.fs.max_path_bytes]u8 = undefined;
+    var secondary: [std.fs.max_path_bytes]u8 = undefined;
+    var components: [8]BoundedFileTargetComponent = undefined;
+
+    // `C:\DEV\PF\src\x.zig` is inside `C:\dev\pf`.
+    const upper = try std.ascii.allocUpperString(alloc, workspace);
+    defer alloc.free(upper);
+    const upper_target = try std.fs.path.join(alloc, &.{ upper, "src", "x.zig" });
+    defer alloc.free(upper_target);
+    const inside = try resolveFileMutationTargetBounded(workspace, upper_target, .create, &primary, &secondary, &components);
+    try std.testing.expect(!inside.anchor_is_external);
+    try std.testing.expect(pathInside(workspace, inside.canonical_target_path));
+
+    // A junction inside the workspace that points outside it is an escape.
+    const link = try std.fs.path.join(alloc, &.{ workspace, "link" });
+    defer alloc.free(link);
+    const result = try std.process.run(alloc, io_mod.getIo(), .{
+        .argv = &.{ "cmd.exe", "/c", "mklink", "/J", link, outside },
+    });
+    defer alloc.free(result.stdout);
+    defer alloc.free(result.stderr);
+    try std.testing.expectEqual(std.process.Child.Term{ .exited = 0 }, result.term);
+    try std.testing.expectError(
+        error.PathOutsideWorkspace,
+        resolveFileMutationTargetBounded(workspace, "link\\escape.txt", .create, &primary, &secondary, &components),
+    );
+    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(io_mod.getIo(), "outside/escape.txt", .{}));
 }
 
 test "home-relative inputs accept a backslash separator on Windows only" {

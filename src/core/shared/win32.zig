@@ -22,6 +22,30 @@ pub extern "kernel32" fn MoveFileExW(
     dwFlags: windows.DWORD,
 ) callconv(.winapi) windows.BOOL;
 
+pub const SW_SHOWNORMAL: c_int = 1;
+pub const COINIT_APARTMENTTHREADED: windows.DWORD = 0x2;
+pub const COINIT_DISABLE_OLE1DDE: windows.DWORD = 0x4;
+
+pub extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: windows.DWORD) callconv(.winapi) HRESULT;
+
+pub extern "ole32" fn CoUninitialize() callconv(.winapi) void;
+
+/// Returns a value greater than 32 on success, and an error code otherwise.
+pub extern "shell32" fn ShellExecuteW(
+    hwnd: ?windows.HWND,
+    lpOperation: ?[*:0]const u16,
+    lpFile: [*:0]const u16,
+    lpParameters: ?[*:0]const u16,
+    lpDirectory: ?[*:0]const u16,
+    nShowCmd: c_int,
+) callconv(.winapi) ?windows.HINSTANCE;
+
+pub extern "kernel32" fn GetLongPathNameW(
+    lpszShortPath: [*:0]const u16,
+    lpszLongPath: [*]u16,
+    cchBuffer: windows.DWORD,
+) callconv(.winapi) windows.DWORD;
+
 pub extern "kernel32" fn GetTempPathW(
     nBufferLength: windows.DWORD,
     lpBuffer: [*]u16,
@@ -35,6 +59,20 @@ pub extern "kernel32" fn CreateHardLinkW(
 
 pub const GENERIC_READ: windows.DWORD = 0x80000000;
 pub const FILE_SHARE_READ: windows.DWORD = 0x1;
+pub const FILE_SHARE_WRITE: windows.DWORD = 0x2;
+pub const FILE_SHARE_DELETE: windows.DWORD = 0x4;
+pub const GENERIC_WRITE: windows.DWORD = 0x40000000;
+pub const FILE_FLAG_BACKUP_SEMANTICS: windows.DWORD = 0x02000000;
+pub const FILE_FLAG_OPEN_REPARSE_POINT: windows.DWORD = 0x00200000;
+
+/// Reopens the file object behind `hOriginalFile` with new access and flags.
+/// Returns INVALID_HANDLE_VALUE on failure.
+pub extern "kernel32" fn ReOpenFile(
+    hOriginalFile: windows.HANDLE,
+    dwDesiredAccess: windows.DWORD,
+    dwShareMode: windows.DWORD,
+    dwFlagsAndAttributes: windows.DWORD,
+) callconv(.winapi) windows.HANDLE;
 pub const OPEN_EXISTING: windows.DWORD = 3;
 pub const FILE_ATTRIBUTE_NORMAL: windows.DWORD = 0x80;
 

@@ -1037,6 +1037,12 @@ fn handleLoadFailure(
             .message = "Subagent child sessions cannot be resumed directly",
         });
     }
+    if (err == error.SessionFromAnotherPlatform) {
+        return state.writer.writeError(alloc, msg.id, .{
+            .code = ErrorCode.invalid_params,
+            .message = session_store.another_platform_message,
+        });
+    }
     if (err == error.InvalidSessionFormat or
         err == error.UnsupportedSessionSchema or
         err == error.LegacySessionTooLarge or

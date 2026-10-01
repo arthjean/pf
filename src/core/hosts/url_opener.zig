@@ -19,7 +19,36 @@ fn openUrlForHost(_: ?*anyopaque, alloc: Allocator, url: []const u8) host.UrlOpe
 }
 
 fn openUrl(alloc: Allocator, url: []const u8) Allocator.Error!bool {
+    if (comptime builtin.os.tag == .windows) return shellExecuteOpen(alloc, url);
     return launchUrl(alloc, url, builtin.os.tag, .{}) == .opened;
+}
+
+/// Opens `url` with its registered handler through `ShellExecuteW` and the
+/// `open` verb. The URL is the file to open, passed whole, so `&`, `%`, and
+/// spaces reach the handler without shell quoting. Returns false when no
+/// handler, such as a default browser, accepts it.
+fn shellExecuteOpen(alloc: Allocator, url: []const u8) Allocator.Error!bool {
+    const win32 = @import("../shared/win32.zig");
+    const url_w = std.unicode.wtf8ToWtf16LeAllocZ(alloc, url) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return false,
+    };
+    defer alloc.free(url_w);
+    // Shell handlers may rely on COM, which this thread may not have set up.
+    const com = win32.CoInitializeEx(null, win32.COINIT_APARTMENTTHREADED | win32.COINIT_DISABLE_OLE1DDE);
+    defer if (com >= 0) win32.CoUninitialize();
+    const result = win32.ShellExecuteW(
+        null,
+        std.unicode.utf8ToUtf16LeStringLiteral("open"),
+        url_w,
+        null,
+        null,
+        win32.SW_SHOWNORMAL,
+    );
+    const code = @intFromPtr(result);
+    if (code > 32) return true;
+    debug_trace.logf("core", "url opener ShellExecuteW failed code={d}", .{code});
+    return false;
 }
 
 const LaunchResult = struct {

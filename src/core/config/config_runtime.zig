@@ -390,7 +390,7 @@ pub fn loadProjectMcpChoicesFromHome(
     const workspaces = parsed.value.object.get("workspaces") orelse return .{};
     if (workspaces != .object) return error.InvalidSettingsFormat;
     const normalized_root = normalizeWorkspaceRoot(workspace_root);
-    const workspace = workspaces.object.get(normalized_root) orelse return .{};
+    const workspace = settings_store.workspaceValue(workspaces.object, normalized_root) orelse return .{};
 
     var result: ProjectMcpChoiceLoad = .{};
     errdefer result.deinit(alloc);
@@ -579,7 +579,7 @@ fn loadMergedSettingsDetailedWithOptionalHome(
         if (workspaces) |workspaces_value| {
             if (workspaces_value != .object) {
                 try diagnostics.append(alloc, .{ .layer = .user, .cause = .malformed_settings });
-            } else if (workspaces_value.object.get(workspace_root)) |workspace_value| {
+            } else if (settings_store.workspaceValue(workspaces_value.object, workspace_root)) |workspace_value| {
                 if (workspace_value != .object) {
                     try diagnostics.append(alloc, .{ .layer = .user, .cause = .malformed_settings });
                 } else {
@@ -1350,7 +1350,7 @@ fn mergeWorkspaceOverridesFromValue(target: *Settings, alloc: Allocator, root_va
     const workspaces_val = root_value.object.get("workspaces") orelse return;
     if (workspaces_val != .object) return;
 
-    const override_val = workspaces_val.object.get(workspace_root) orelse return;
+    const override_val = settings_store.workspaceValue(workspaces_val.object, workspace_root) orelse return;
     if (override_val != .object) return;
 
     var override_settings = try parseSettingsValueForLayer(alloc, override_val, .profile_workspace, true, false);
@@ -1482,7 +1482,7 @@ fn parseStartupStatusWorkspaceOverrides(scanner: *std.json.Scanner, alloc: Alloc
                 const key = try configJsonStringFromToken(token);
                 defer key.deinit(alloc);
 
-                if (std.mem.eql(u8, key.text, target_workspace)) {
+                if (settings_store.workspaceKeyMatches(key.text, target_workspace)) {
                     var workspace_settings = try parseStartupStatusObject(scanner, alloc, null, .profile);
                     defer workspace_settings.deinit(alloc);
                     mergeStartupStatusSettings(&settings, &workspace_settings, alloc);

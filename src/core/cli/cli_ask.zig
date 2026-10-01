@@ -1339,6 +1339,7 @@ fn askErrorNotice(err: anyerror) ?[]const u8 {
     return switch (err) {
         error.ImagePreparationFailed => image_attachments.image_preparation_failed_notice,
         error.ModelImageCapabilityUnavailable => image_attachments.model_image_capability_unavailable_notice,
+        error.SessionFromAnotherPlatform => session_store.another_platform_message,
         else => null,
     };
 }

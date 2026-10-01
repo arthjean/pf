@@ -523,6 +523,24 @@ fn validateUsageRecoveryMarker(
     return timestamp_ms;
 }
 
+/// Message for a resume of a session saved on another platform.
+pub const another_platform_message = "This session belongs to another platform. Resume it on the original machine or start a new session.";
+
+/// Reports whether a saved workspace root is an absolute path on this
+/// platform: `/...` on POSIX, and a drive or UNC root on Windows, where a
+/// POSIX root such as `/home/a/x` names no drive.
+fn isNativeWorkspaceRoot(workspace_root: []const u8) bool {
+    if (comptime builtin.os.tag != .windows) return workspace_root.len > 0 and workspace_root[0] == '/';
+    const is_sep = struct {
+        fn f(byte: u8) bool {
+            return byte == '\\' or byte == '/';
+        }
+    }.f;
+    if (workspace_root.len >= 3 and std.ascii.isAlphabetic(workspace_root[0]) and
+        workspace_root[1] == ':' and is_sep(workspace_root[2])) return true;
+    return workspace_root.len > 2 and is_sep(workspace_root[0]) and is_sep(workspace_root[1]) and !is_sep(workspace_root[2]);
+}
+
 pub const Store = struct {
     sessions_dir: []u8,
     home_dir: []u8,
@@ -2725,6 +2743,10 @@ pub const Store = struct {
         }
         defer session_dir.close();
         if (try session_log.hasConversationMetadata(alloc, &session_dir)) {
+            if (try session_log.conversationWorkspaceRoot(alloc, &session_dir)) |saved_root| {
+                defer alloc.free(saved_root);
+                if (!isNativeWorkspaceRoot(saved_root)) return error.SessionFromAnotherPlatform;
+            }
             var root = self.canonical_root;
             const loaded = try root.resumeForWrite(alloc, session_id, options.log);
             return self.finishWorkspaceResume(
@@ -2787,6 +2809,11 @@ pub const Store = struct {
     ) !LoadedWritableSession {
         var loaded = loaded_value;
         errdefer loaded.deinit(alloc);
+        // A session saved on another platform names a workspace this
+        // platform cannot open, so it is refused before anything is written.
+        if (!isNativeWorkspaceRoot(loaded.state.workspace_root)) {
+            return error.SessionFromAnotherPlatform;
+        }
         try resolveSessionSnapshotLocators(
             alloc,
             loaded.state.history,
@@ -5508,6 +5535,45 @@ test "store start does not publish session caches" {
         try std.testing.expectEqualStrings("cache-free-store", entry.name);
     }
     try std.testing.expectEqual(@as(usize, 1), count);
+}
+
+test "resume refuses a session saved on another platform without writing" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var ctx = try initTempStore(alloc, &tmp);
+    defer ctx.deinit(alloc);
+    var state = try testDurableState(alloc, "foreign-platform", ctx.workspace);
+    defer state.deinit(alloc);
+    {
+        var writable = try ctx.store.startWritableSession(alloc, state);
+        writable.deinit(alloc);
+    }
+
+    // Rewrite the saved roots as the other platform would have written them.
+    const foreign_root = if (builtin.os.tag == .windows) "/home/a/x" else "C:\\dev\\x";
+    const metadata_path = "home/.pf/sessions/foreign-platform/session.json";
+    const original = try tmp.dir.readFileAlloc(std.testing.io, metadata_path, alloc, .limited(64 * 1024));
+    defer alloc.free(original);
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, original, .{});
+    defer parsed.deinit();
+    try parsed.value.object.put(parsed.arena.allocator(), "workspace_root", .{ .string = foreign_root });
+    try parsed.value.object.put(parsed.arena.allocator(), "origin_workspace_root", .{ .string = foreign_root });
+    const foreign = try std.json.Stringify.valueAlloc(alloc, parsed.value, .{});
+    defer alloc.free(foreign);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = metadata_path, .data = foreign });
+
+    try std.testing.expectError(
+        error.SessionFromAnotherPlatform,
+        ctx.store.resumeTargetForWrite(alloc, .{ .id = "foreign-platform" }, ctx.workspace, .{}),
+    );
+    const after = try tmp.dir.readFileAlloc(std.testing.io, metadata_path, alloc, .limited(64 * 1024));
+    defer alloc.free(after);
+    try std.testing.expectEqualStrings(foreign, after);
+    try std.testing.expectError(
+        error.FileNotFound,
+        tmp.dir.statFile(std.testing.io, "home/.pf/sessions/foreign-platform/history-cache.bin", .{}),
+    );
 }
 
 test "resume last selects conversation metadata without cache files" {

@@ -330,7 +330,9 @@ pub fn runLogin(
     try writeStdout(authorization_url);
     try writeStdout("\n\nWaiting for browser authorization...\n");
     if (io_mod.getenv("PF_NO_OPEN_BROWSER") == null) {
-        _ = url_opener.open(alloc, authorization_url) catch false;
+        if (!(url_opener.open(alloc, authorization_url) catch false)) {
+            try writeStdout(host.browser_unavailable_notice ++ "\n");
+        }
     }
 
     while (true) {

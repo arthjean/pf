@@ -242,14 +242,15 @@ fn loadResolvedImageAttachment(
 }
 
 pub fn createTempSnapshotDir(alloc: std.mem.Allocator) ![]u8 {
-    const temp_root = try io_mod.realpathAlloc(alloc, "/tmp");
+    // Windows has no /tmp, so snapshots go to its resolved temp directory.
+    const temp_root = try io_mod.realpathAlloc(alloc, if (comptime builtin.os.tag == .windows) io_mod.tempDir() else "/tmp");
     defer alloc.free(temp_root);
     for (0..16) |_| {
         var suffix: u64 = undefined;
         io_mod.getIo().random(std.mem.asBytes(&suffix));
         const path = try std.fmt.allocPrint(
             alloc,
-            "{s}/pf-image-snapshots-{x}",
+            "{s}" ++ std.fs.path.sep_str ++ "pf-image-snapshots-{x}",
             .{ temp_root, suffix },
         );
         errdefer alloc.free(path);
@@ -1761,8 +1762,8 @@ pub fn discardImageAttachmentSlice(alloc: std.mem.Allocator, attachments: []type
 }
 
 pub fn writeImageBadge(writer: *std.Io.Writer, image_id: usize, abs_path: []const u8) !void {
-    try writer.writeAll("\x1b]8;;file://");
-    try writePercentEncodedPath(writer, abs_path);
+    try writer.writeAll("\x1b]8;;");
+    try writeFileUri(writer, abs_path);
     try writer.print("\x1b\\[Image {d}]\x1b]8;;\x1b\\", .{image_id});
 }
 
@@ -1773,8 +1774,8 @@ pub fn writeImageBadgeClipped(writer: *std.Io.Writer, image_id: usize, abs_path:
     const label = try std.fmt.bufPrint(&label_buf, "[Image {d}]", .{image_id});
     const clipped_label = display_width.prefixByWidth(label, max_cells);
 
-    try writer.writeAll("\x1b]8;;file://");
-    try writePercentEncodedPath(writer, abs_path);
+    try writer.writeAll("\x1b]8;;");
+    try writeFileUri(writer, abs_path);
     try writer.writeAll("\x1b\\");
     try writer.writeAll(clipped_label);
     try writer.writeAll("\x1b]8;;\x1b\\");
@@ -2056,9 +2057,30 @@ fn findImageById(images: []const types.ImageAttachment, id: usize) ?types.ImageA
     return null;
 }
 
+/// Writes `abs_path` as a file URI: `file:///tmp/a.png` on POSIX, and on
+/// Windows `file:///C:/path/image.png` or `file://server/share/a.png` with
+/// `/` separators.
+fn writeFileUri(writer: *std.Io.Writer, abs_path: []const u8) !void {
+    try writer.writeAll("file://");
+    if (comptime builtin.os.tag != .windows) return writePercentEncodedPath(writer, abs_path);
+    if (abs_path.len >= 2 and std.ascii.isAlphabetic(abs_path[0]) and abs_path[1] == ':') {
+        try writer.writeByte('/');
+        try writer.writeAll(abs_path[0..2]);
+        return writePercentEncodedPath(writer, abs_path[2..]);
+    }
+    const unc = abs_path.len >= 2 and isWindowsPathSeparator(abs_path[0]) and isWindowsPathSeparator(abs_path[1]);
+    return writePercentEncodedPath(writer, if (unc) abs_path[2..] else abs_path);
+}
+
+fn isWindowsPathSeparator(byte: u8) bool {
+    return byte == '\\' or byte == '/';
+}
+
 fn writePercentEncodedPath(writer: *std.Io.Writer, path: []const u8) !void {
     for (path) |byte| {
-        if (isUriPathSafe(byte)) {
+        if (builtin.os.tag == .windows and byte == '\\') {
+            try writer.writeByte('/');
+        } else if (isUriPathSafe(byte)) {
             try writer.writeByte(byte);
         } else {
             try writer.print("%{X:0>2}", .{byte});
@@ -2448,6 +2470,22 @@ test "writeImageBadge percent-encodes spaces in path" {
         "\x1b]8;;file:///Users/me/CleanShot%202026.png\x1b\\[Image 1]\x1b]8;;\x1b\\",
         out.written(),
     );
+}
+
+test "writeImageBadge writes Windows drive and UNC paths as file URIs" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    const cases = [_]struct { path: []const u8, uri: []const u8 }{
+        .{ .path = "C:\\Users\\me\\shot 1.png", .uri = "file:///C:/Users/me/shot%201.png" },
+        .{ .path = "\\\\server\\share\\a.png", .uri = "file://server/share/a.png" },
+    };
+    for (cases) |case| {
+        var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer out.deinit();
+        try writeImageBadge(&out.writer, 1, case.path);
+        const expected = try std.fmt.allocPrint(std.testing.allocator, "\x1b]8;;{s}\x1b\\[Image 1]\x1b]8;;\x1b\\", .{case.uri});
+        defer std.testing.allocator.free(expected);
+        try std.testing.expectEqualStrings(expected, out.written());
+    }
 }
 
 test "writeImageBadge percent-encodes URI-reserved characters" {

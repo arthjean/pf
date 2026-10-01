@@ -1,10 +1,14 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const image_attachments = @import("image_attachments.zig");
 const types = @import("../shared/types.zig");
 const entity_spans = @import("../shared/entity_spans.zig");
 const render_request = @import("../../ui/render_request.zig");
 const edit_contract = @import("../input/editor_state.zig");
 const registered_entities = @import("../input/registered_entities.zig");
+
+/// Reported when an image clipboard request reaches a Windows build.
+const windows_clipboard_image_unavailable = "Image clipboard copy and paste are unavailable on Windows.";
 
 const InsertImageResult = enum { inserted, rejected, input_full };
 const ImageSourceLifetime = enum { retained, temporary };
@@ -87,7 +91,13 @@ pub fn Commands(comptime App: type) type {
             var loaded = image_attachments.loadClipboardImageAttachment(app.alloc) catch |err| {
                 if (err == error.NoClipboardImage) {
                     try app.writeDomainNotice(.{ .topic = "images", .tone = .neutral, .body = "no image found on clipboard" }, true);
-                } else if (err != error.Unsupported) {
+                } else if (err == error.Unsupported) {
+                    // Windows has no clipboard image support yet, so the
+                    // request reports it instead of doing nothing.
+                    if (comptime builtin.os.tag == .windows) {
+                        try app.writeDomainNotice(.{ .topic = "images", .tone = .neutral, .body = windows_clipboard_image_unavailable }, true);
+                    }
+                } else {
                     const line = try std.fmt.allocPrint(app.alloc, "failed to paste clipboard image: {s}", .{@errorName(err)});
                     defer app.alloc.free(line);
                     try app.writeDomainNotice(.{ .topic = "images", .tone = .@"error", .body = line }, true);
@@ -982,6 +992,10 @@ test "attachClipboard is silent on unsupported platforms" {
 
     try Commands(FakeApp).attachClipboard(&app);
 
-    try std.testing.expectEqual(@as(usize, 0), app.transcript.items.len);
+    if (@import("builtin").os.tag == .windows) {
+        try expectTranscriptContains(&app, windows_clipboard_image_unavailable);
+    } else {
+        try std.testing.expectEqual(@as(usize, 0), app.transcript.items.len);
+    }
     try std.testing.expect(!app.shell.render_requests.hasReason(.footer));
 }
