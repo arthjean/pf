@@ -129,6 +129,9 @@ pub fn environment(
     configured_login_shell: ?[]const u8,
     profile: ?Profile,
 ) (ResolveError || Allocator.Error)!Environment {
+    // Windows has no login shell: captured commands run in the shell that
+    // `shell_selection` picks, which has no clean or user profile.
+    if (comptime builtin.os.tag == .windows) return .legacy;
     const selected = profile orelse .user;
     const path = try supportedLoginShell(configured_login_shell);
     _ = try resolve(null, switch (selected) {

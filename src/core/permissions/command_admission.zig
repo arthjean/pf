@@ -2,6 +2,7 @@ const std = @import("std");
 const auto_classifier = @import("auto_classifier.zig");
 const command_effect = @import("../shell_command/command_effect.zig");
 const command_environment = @import("../execution/command_environment.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 const file_mutation_contract = @import("../tooling/file_mutation_contract.zig");
 const types = @import("../shared/types.zig");
 
@@ -16,6 +17,9 @@ pub const CommandContext = struct {
     target_os: std.Target.Os.Tag,
     environment: command_environment.Environment = .legacy,
     execution_mode: CommandExecutionMode = .captured,
+    /// The dialect of the shell that runs the command, from
+    /// `shell_selection.dialect()`.
+    dialect: shell_selection.Dialect = shell_selection.default_dialect,
 };
 
 pub const AdmissionFingerprint = struct {
@@ -24,6 +28,7 @@ pub const AdmissionFingerprint = struct {
     target_os: std.Target.Os.Tag,
     environment: command_environment.Environment = .legacy,
     execution_mode: CommandExecutionMode = .captured,
+    dialect: shell_selection.Dialect = shell_selection.default_dialect,
 
     pub fn init(ctx: CommandContext) AdmissionFingerprint {
         return .{
@@ -32,6 +37,7 @@ pub const AdmissionFingerprint = struct {
             .target_os = ctx.target_os,
             .environment = ctx.environment,
             .execution_mode = ctx.execution_mode,
+            .dialect = ctx.dialect,
         };
     }
 
@@ -40,7 +46,8 @@ pub const AdmissionFingerprint = struct {
             std.mem.eql(u8, self.resolved_cwd, ctx.resolved_cwd) and
             self.target_os == ctx.target_os and
             self.environment.eql(ctx.environment) and
-            self.execution_mode == ctx.execution_mode;
+            self.execution_mode == ctx.execution_mode and
+            self.dialect == ctx.dialect;
     }
 
     pub fn eql(self: AdmissionFingerprint, other: AdmissionFingerprint) bool {
@@ -50,6 +57,7 @@ pub const AdmissionFingerprint = struct {
             .target_os = other.target_os,
             .environment = other.environment,
             .execution_mode = other.execution_mode,
+            .dialect = other.dialect,
         });
     }
 };
@@ -140,6 +148,7 @@ pub fn defaultForRunCommand(
         command_ctx.resolved_cwd,
         false,
         command_ctx.target_os,
+        command_ctx.dialect,
     ) catch return .{ .approval_required = .planning_failure };
     defer admission.deinit(alloc);
 

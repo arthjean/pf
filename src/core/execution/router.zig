@@ -36,6 +36,7 @@ pub fn prepareAuthorizedRoute(
                 command_ctx.resolved_cwd,
                 false,
                 command_ctx.target_os,
+                command_ctx.dialect,
             ) catch return error.CommandAdmissionChanged;
             switch (admission) {
                 .direct_read_only => |plan| {
@@ -73,6 +74,7 @@ pub fn prepareAuthorizedRoute(
                 command_ctx.resolved_cwd,
                 false,
                 command_ctx.target_os,
+                command_ctx.dialect,
             ) catch break :blk .{ .approved_shell = .{
                 .command_ctx = command_ctx,
                 .reason = .planning_failure,

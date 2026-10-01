@@ -19,6 +19,21 @@ pub const ProcessInstanceToken = struct {
         var parts = std.mem.splitScalar(u8, text, ':');
         const platform = parts.next() orelse
             return error.InvalidProcessInstanceToken;
+        // A Windows creation time is absolute, so the process id and its
+        // creation time name one instance across boots without a boot id.
+        if (std.mem.eql(u8, platform, "windows")) {
+            const pid = parts.next() orelse
+                return error.InvalidProcessInstanceToken;
+            const created = parts.next() orelse
+                return error.InvalidProcessInstanceToken;
+            if (parts.next() != null or
+                !isCanonicalDecimal(pid) or
+                !isCanonicalDecimal(created))
+            {
+                return error.InvalidProcessInstanceToken;
+            }
+            return fromText(text);
+        }
         const boot_id = parts.next() orelse
             return error.InvalidProcessInstanceToken;
         if (!isLowerHex(boot_id, 32)) {
@@ -46,6 +61,10 @@ pub const ProcessInstanceToken = struct {
         } else {
             return error.InvalidProcessInstanceToken;
         }
+        return fromText(text);
+    }
+
+    fn fromText(text: []const u8) ProcessInstanceToken {
         var token = ProcessInstanceToken{};
         @memcpy(token.bytes[0..text.len], text);
         token.len = @intCast(text.len);
@@ -138,4 +157,18 @@ test "process instance tokens are canonical and require exact match" {
             "linux:00112233445566778899AABBCCDDEEFF:12345",
         ),
     );
+}
+
+test "Windows process tokens name a process id and its creation time" {
+    const token = try ProcessInstanceToken.parse("windows:4242:133700000000000000");
+    try std.testing.expectEqualStrings("windows:4242:133700000000000000", token.view());
+    try std.testing.expect(!token.eql(try ProcessInstanceToken.parse("windows:4242:133700000000000001")));
+    for ([_][]const u8{
+        "windows:4242",
+        "windows:04242:1",
+        "windows:4242:1:2",
+        "windows:00112233445566778899aabbccddeeff:1",
+    }) |text| {
+        try std.testing.expectError(error.InvalidProcessInstanceToken, ProcessInstanceToken.parse(text));
+    }
 }

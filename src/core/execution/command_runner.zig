@@ -14,6 +14,8 @@ const text_utils = @import("../shared/text_utils.zig");
 const types = @import("../shared/types.zig");
 const shell_resolver = @import("../terminal/shell_resolver.zig");
 const darwin_process_spawn = @import("../shared/darwin_process_spawn.zig");
+const shell_selection = @import("shell_selection.zig");
+const process_job = @import("../shared/process_job.zig");
 
 const Allocator = std.mem.Allocator;
 const ProcessId = io_mod.ProcessId;
@@ -109,6 +111,7 @@ const foreground_session_replace_error_name_bytes = blk: {
     }
     break :blk max_len;
 };
+const max_powershell_encoded_command_bytes: usize = 32_000;
 const script_from_stdin_launcher =
     "script=$(command cat; command printf .)\n" ++
     "script=${script%.}\n" ++
@@ -1110,14 +1113,16 @@ fn executeProcessWithInput(
     isolate_process_group: bool,
 ) !CollectedProcess {
     const started_ms = io_mod.milliTimestamp();
-    var child = try std.process.spawn(io_mod.getIo(), .{
+    var job = try createCommandJob();
+    defer closeCommandJob(&job);
+    var child = try spawnCommand(.{
         .argv = argv,
         .stdin = if (closed_input) .pipe else .ignore,
         .stdout = .pipe,
         .stderr = .pipe,
         .cwd = .{ .path = cwd },
         .pgid = if (isolate_process_group and builtin.os.tag != .windows and builtin.os.tag != .wasi) 0 else null,
-    });
+    }, job);
     if (child.stdin) |input| {
         input.close(io_mod.getIo());
         child.stdin = null;
@@ -1143,6 +1148,7 @@ fn executeProcessWithInput(
         null,
         process_group_id,
         .process_group,
+        job,
     );
     const duration_ms = elapsedMs(started_ms, io_mod.milliTimestamp());
 
@@ -1267,6 +1273,7 @@ fn executeProcessWithDetachedSession(
         &launch_failure_probe,
         process_group_id,
         .foreground_supervisor,
+        null,
     );
     // Judge the deadline at the supervisor's exit, not after the output drain.
     collected.source = reconcileForegroundTerminationSource(
@@ -1393,14 +1400,16 @@ fn executeProcessWithScriptUnisolated(
     script: []const u8,
 ) !CollectedProcess {
     const started_ms = io_mod.milliTimestamp();
-    var child = try std.process.spawn(io_mod.getIo(), .{
+    var job = try createCommandJob();
+    defer closeCommandJob(&job);
+    var child = try spawnCommand(.{
         .argv = argv,
         .stdin = .pipe,
         .stdout = .pipe,
         .stderr = .pipe,
         .cwd = .{ .path = cwd },
         .pgid = if (builtin.os.tag != .windows and builtin.os.tag != .wasi) 0 else null,
-    });
+    }, job);
 
     var output = OutputCollector.init(scratch, cfg);
     defer output.deinit();
@@ -1416,7 +1425,7 @@ fn executeProcessWithScriptUnisolated(
     script_write.close(io_mod.getIo());
     script_write_open = false;
 
-    const process_group_id = io_mod.childProcessId(child.id.?);
+    const process_group_id: ?ProcessId = if (builtin.os.tag == .windows) null else io_mod.childProcessId(child.id.?);
     child_needs_cleanup = false;
     const collected = try collectSpawnedProcess(
         scratch,
@@ -1426,6 +1435,7 @@ fn executeProcessWithScriptUnisolated(
         null,
         process_group_id,
         .process_group,
+        job,
     );
     const duration_ms = elapsedMs(started_ms, io_mod.milliTimestamp());
 
@@ -1629,8 +1639,32 @@ fn executeRawBashWithResultCommand(
     cwd: []const u8,
 ) !command_contract.RunCommandResult {
     if (builtin.os.tag == .windows) {
-        const argv = [_][]const u8{ "cmd", "/C", execution_command };
-        const result = try executeProcess(scratch, cfg, &argv, cwd);
+        const shell = try shell_selection.current();
+        const result = switch (shell.dialect) {
+            .posix_sh => try executeProcessWithScript(
+                scratch,
+                cfg,
+                &.{ shell.path, "-lc", script_from_stdin_launcher },
+                cwd,
+                execution_command,
+            ),
+            .powershell => blk: {
+                const encoded = shell_selection.powershellEncodedCommandAlloc(scratch, execution_command) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    error.InvalidWtf8 => return error.InvalidCommandEncoding,
+                };
+                // CreateProcess limits a command line to 32,767 characters.
+                if (encoded.len > max_powershell_encoded_command_bytes) return error.PowerShellCommandTooLong;
+                break :blk try executeProcessWithInput(
+                    scratch,
+                    cfg,
+                    &.{ shell.path, "-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-EncodedCommand", encoded },
+                    cwd,
+                    true,
+                    true,
+                );
+            },
+        };
         return formatCollectedOutput(alloc, result_command, cwd, result);
     }
 
@@ -2260,19 +2294,40 @@ fn parseReplaceError(name: []const u8) ?std.process.ReplaceError {
     return null;
 }
 
+/// The Job Object that contains a command's process tree on Windows.
+const CommandJob = if (builtin.os.tag == .windows) process_job.Job else void;
+
+fn createCommandJob() !CommandJob {
+    if (comptime builtin.os.tag == .windows) return process_job.Job.create();
+}
+
+/// Closing the job kills whatever the command left running.
+fn closeCommandJob(job: *CommandJob) void {
+    if (comptime builtin.os.tag == .windows) job.close();
+}
+
+/// Spawns a command. On Windows the child starts suspended and joins `job`
+/// before it runs, so every descendant belongs to the job.
+fn spawnCommand(options: std.process.SpawnOptions, job: CommandJob) !std.process.Child {
+    if (comptime builtin.os.tag == .windows) return process_job.spawn(io_mod.getIo(), options, job);
+    return std.process.spawn(io_mod.getIo(), options);
+}
+
 const ProcessObserver = struct {
     waiter: ChildWaiter,
     process_id: std.process.Child.Id,
     stdout: std.Io.File,
     stderr: std.Io.File,
     detached_pipes: bool = false,
+    job: ?CommandJob = null,
 
-    fn init(child: *std.process.Child) !ProcessObserver {
+    fn init(child: *std.process.Child, job: ?CommandJob) !ProcessObserver {
         const process_id = child.id orelse return error.SpawnFailed;
         const stdout = child.stdout orelse return error.SpawnFailed;
         const stderr = child.stderr orelse return error.SpawnFailed;
-        const detached_pipes = comptime builtin.os.tag != .windows and
-            builtin.os.tag != .wasi;
+        // The waiter reaps the child while the pipes are still read, so the
+        // observer owns the pipes. Windows reaping would close them.
+        const detached_pipes = comptime builtin.os.tag != .wasi;
         if (detached_pipes) {
             child.stdout = null;
             child.stderr = null;
@@ -2283,7 +2338,14 @@ const ProcessObserver = struct {
             .stdout = stdout,
             .stderr = stderr,
             .detached_pipes = detached_pipes,
+            .job = job,
         };
+    }
+
+    /// Kills every process left in the command's job. Windows only.
+    fn terminateJob(self: *ProcessObserver) void {
+        if (comptime builtin.os.tag != .windows) return;
+        if (self.job) |job| job.terminate();
     }
 
     fn deinit(self: *ProcessObserver) void {
@@ -2295,12 +2357,12 @@ const ProcessObserver = struct {
     }
 
     fn start(self: *ProcessObserver) !void {
-        if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) return;
+        if (comptime builtin.os.tag == .wasi) return;
         try self.waiter.start();
     }
 
     fn observe(self: *ProcessObserver) ?command_contract.CommandStatus {
-        if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) return null;
+        if (comptime builtin.os.tag == .wasi) return null;
         if (!self.waiter.isReady()) return null;
         const term = self.waiter.awaitReady() catch |err| {
             return indeterminateStatus(err);
@@ -2312,7 +2374,7 @@ const ProcessObserver = struct {
         self: *ProcessObserver,
         source: TerminationSource,
     ) !command_contract.CommandStatus {
-        if (comptime builtin.os.tag != .windows and builtin.os.tag != .wasi) {
+        if (comptime builtin.os.tag != .wasi) {
             self.waiter.awaitDiscard();
             return self.observe().?;
         }
@@ -2372,7 +2434,17 @@ const ProcessObserver = struct {
         protocol: TerminationProtocol,
         intent: TerminationIntent,
     ) !void {
-        if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+        if (builtin.os.tag == .windows) {
+            // Windows has no graceful stop for a console tree, so both
+            // intents end the whole job.
+            if (self.job) |job| {
+                job.terminate();
+            } else {
+                _ = @import("../shared/win32.zig").TerminateProcess(self.process_id, 1);
+            }
+            return;
+        }
+        if (builtin.os.tag == .wasi) {
             self.waiter.child.kill(self.waiter.io);
             return;
         }
@@ -2385,8 +2457,16 @@ const ProcessObserver = struct {
     }
 
     fn abort(self: *ProcessObserver, process_group_id: ?ProcessId) void {
-        if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+        if (builtin.os.tag == .wasi) {
             cleanupChild(self.waiter.child);
+            return;
+        }
+        if (builtin.os.tag == .windows) {
+            if (!self.waiter.isReady()) {
+                self.terminateJob();
+                if (self.job == null) _ = @import("../shared/win32.zig").TerminateProcess(self.process_id, 1);
+            }
+            self.waiter.awaitDiscard();
             return;
         }
         if (self.waiter.isReady()) {
@@ -2474,6 +2554,10 @@ fn collectOutput(
                             .{@tagName(source.*)},
                         );
                     }
+                }
+                if (source.* == .natural and observer.job != null) {
+                    observer.terminateJob();
+                    debug_trace.logf("core", "captured command leader completed; remaining job processes terminated", .{});
                 }
             }
         }
@@ -2758,7 +2842,7 @@ fn waitForCollectedProcess(
     leader_status: ?command_contract.CommandStatus,
 ) !command_contract.CommandStatus {
     if (leader_status) |status| {
-        if (comptime builtin.os.tag != .windows and builtin.os.tag != .wasi) {
+        if (comptime builtin.os.tag != .wasi) {
             observer.waiter.awaitDiscard();
         }
         return status;
@@ -2767,6 +2851,7 @@ fn waitForCollectedProcess(
     if (process_group_id) |pid| {
         terminateRemainingProcessGroup(pid);
     }
+    observer.terminateJob();
     return status;
 }
 
@@ -2785,8 +2870,9 @@ fn collectSpawnedProcess(
     launch_failure_probe: ?*ForegroundLaunchFailureProbe,
     process_group_id: ?ProcessId,
     termination_protocol: TerminationProtocol,
+    job: ?CommandJob,
 ) !CollectedTermination {
-    var observer = ProcessObserver.init(child) catch |err| {
+    var observer = ProcessObserver.init(child, job) catch |err| {
         cleanupChild(child);
         return err;
     };
@@ -4431,7 +4517,7 @@ test "artifact write failure after cancellation remains a bare error" {
     defer watcher.join();
 
     const process_group_id = io_mod.childProcessId(child.id.?);
-    var observer = try ProcessObserver.init(&child);
+    var observer = try ProcessObserver.init(&child, null);
     defer observer.deinit();
     try observer.start();
     defer observer.abort(process_group_id);

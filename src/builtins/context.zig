@@ -1,8 +1,10 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const debug_trace = @import("../core/shared/debug_trace.zig");
 const host = @import("../core/hosts/host.zig");
 const host_target = @import("../core/hosts/target.zig");
 const io_mod = @import("../core/shared/io.zig");
+const shell_selection = @import("../core/execution/shell_selection.zig");
 const model_context_encoding = @import("../core/shared/model_context_encoding.zig");
 const pathing = @import("../core/workspace/pathing.zig");
 const session_runtime = @import("../core/session/session.zig");
@@ -2094,9 +2096,13 @@ fn buildTurnContextFragment(arena: Allocator, workspace_root: []const u8) ![]con
     try model_context_encoding.writeScalar(&out.writer, cwd);
     try out.writer.writeByte('\n');
     try out.writer.print("operating_system: {s}\n", .{os_text});
-    try out.writer.writeAll("shell_path: ");
-    try model_context_encoding.writeScalar(&out.writer, shell);
-    try out.writer.writeByte('\n');
+    if (comptime builtin.os.tag == .windows) {
+        try writeWindowsShellContext(arena, &out.writer);
+    } else {
+        try out.writer.writeAll("shell_path: ");
+        try model_context_encoding.writeScalar(&out.writer, shell);
+        try out.writer.writeByte('\n');
+    }
     try out.writer.print("date_utc: {s}\n", .{date_text});
     try out.writer.writeAll("home_directory: ");
     try model_context_encoding.writeScalar(&out.writer, home);
@@ -2151,6 +2157,31 @@ fn buildTurnContextFragmentForHost(
 
 fn currentWorkingDirectory(arena: Allocator) ![]const u8 {
     return std.process.currentPathAlloc(io_mod.getIo(), arena);
+}
+
+/// States the shell that runs the model's commands, its dialect, and the path
+/// conventions that dialect expects, so the model does not write bash for
+/// PowerShell or the reverse.
+fn writeWindowsShellContext(arena: Allocator, writer: *std.Io.Writer) !void {
+    const shell = shell_selection.current() catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => |selection_err| {
+            try writer.writeAll("shell_dialect: unavailable\nshell_error: ");
+            try model_context_encoding.writeScalar(writer, shell_selection.errorMessage(selection_err));
+            try writer.writeByte('\n');
+            return;
+        },
+    };
+    try writer.writeAll("shell_path: ");
+    try model_context_encoding.writeScalar(writer, shell.path);
+    try writer.writeAll("\nshell_dialect: ");
+    try model_context_encoding.writeScalar(writer, try shell.dialectLabel(arena));
+    try writer.writeAll("\npath_conventions: ");
+    try model_context_encoding.writeScalar(writer, switch (shell.dialect) {
+        .posix_sh => "Commands run in Git Bash: use POSIX shell syntax. Drives appear as /c/..., so C:\\Users is /c/Users; quote Windows paths with backslashes. Windows programs on PATH are available.",
+        .powershell => "Commands run in PowerShell, not bash: use PowerShell syntax and cmdlets (Get-ChildItem, Get-Content, $env:NAME), ';' to separate statements, and Windows paths such as C:\\Users. POSIX tools such as grep, sed, and ls flags are not available.",
+    });
+    try writer.writeByte('\n');
 }
 
 fn shellPath() ?[]const u8 {

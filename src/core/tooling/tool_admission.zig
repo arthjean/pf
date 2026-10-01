@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const debug_trace = @import("../shared/debug_trace.zig");
 const vision_contracts = @import("../agent/runtime/vision_contracts.zig");
 const command_admission = @import("../permissions/command_admission.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 const command_environment = @import("../execution/command_environment.zig");
 const command_effect = @import("../shell_command/command_effect.zig");
 const command_lex = @import("../shell_command/command_lex.zig");
@@ -1127,6 +1128,7 @@ fn resolveOrdinaryPermissionOutcome(
         if (command_call) {
             const command = try runCommandContext(input, arena, call);
             if (command.execution_mode == .captured and
+                command.dialect == .posix_sh and
                 try command_effect.knownReversibleAutoCommand(
                     arena,
                     command.command,
@@ -2094,6 +2096,7 @@ pub fn runCommandContext(
         .target_os = builtin.os.tag,
         .environment = environment_value,
         .execution_mode = execution_mode,
+        .dialect = shell_selection.dialect(),
     };
 }
 
@@ -5321,6 +5324,42 @@ test "exhausted review transport preserves deterministic auto lanes" {
         unresolved.auto_review_failure.?,
     );
     try std.testing.expectEqual(@as(usize, 0), fake.calls);
+}
+
+test "PowerShell commands in auto mode always go to the security review" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    var worker: WorkerRuntime = .{};
+    defer worker.deinit(std.testing.allocator);
+    var fake = FakeAutoClassifier{};
+    const input = testInputWithClassifier(
+        &worker,
+        permission_auto_classifier.Classifier.withOverride(
+            @ptrCast(&fake),
+            FakeAutoClassifier.classify,
+        ),
+    );
+    shell_selection.test_dialect = .powershell;
+    defer shell_selection.test_dialect = null;
+
+    for ([_][]const u8{ "git status --short --branch", "ls", "Get-ChildItem" }, 1..) |command, calls| {
+        const arguments = try std.fmt.allocPrint(arena_state.allocator(), "{{\"action\":\"run\",\"command\":\"{s}\"}}", .{command});
+        const outcome = requestPermissionOutcome(
+            input,
+            arena_state.allocator(),
+            .{ .id = "powershell", .name = "shell", .arguments_json = arguments },
+            .auto,
+            &.{},
+        ) catch |err| switch (err) {
+            error.MissingLoginShell, error.UnsupportedShell => return error.SkipZigTest,
+            else => return err,
+        };
+        try std.testing.expectEqual(calls, fake.calls);
+        try std.testing.expectEqual(ToolPermissionDecision.once, outcome.decision);
+        const authority = outcome.execution_authority.?.run_command.shell_allowed;
+        try std.testing.expectEqual(command_admission.ShellAuthorizationSource.auto_classifier, authority.source);
+        try std.testing.expectEqual(shell_selection.Dialect.powershell, authority.fingerprint.dialect);
+    }
 }
 
 test "configured command authority skips automatic review" {

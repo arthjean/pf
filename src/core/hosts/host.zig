@@ -264,7 +264,7 @@ pub fn terminalSupportForOs(os_tag: std.Target.Os.Tag) TerminalSupport {
 
 pub fn nativeForOs(os_tag: std.Target.Os.Tag) Capabilities {
     return .{
-        .process_control = os_tag != .windows and os_tag != .wasi,
+        .process_control = os_tag != .wasi,
         .url_open = os_tag == .macos or os_tag == .linux,
         .native_url_open = os_tag == .macos,
         .terminal = terminalSupportForOs(os_tag),
@@ -277,7 +277,22 @@ pub fn operatingSystemText(alloc: std.mem.Allocator) std.mem.Allocator.Error![]u
     if (comptime wasm.isTarget(builtin.cpu.arch)) {
         return wasm.operatingSystemText(alloc, builtin.os.tag);
     }
-    if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (comptime builtin.os.tag == .windows) {
+        var info: std.os.windows.RTL_OSVERSIONINFOW = undefined;
+        info.dwOSVersionInfoSize = @sizeOf(std.os.windows.RTL_OSVERSIONINFOW);
+        if (std.os.windows.ntdll.RtlGetVersion(&info) != .SUCCESS) return alloc.dupe(u8, "Windows");
+        // Windows 11 kept major version 10 and starts at build 22000.
+        const product = if (info.dwMajorVersion != 10)
+            "Windows"
+        else if (info.dwBuildNumber >= 22000) "Windows 11" else "Windows 10";
+        return std.fmt.allocPrint(alloc, "{s} (version {d}.{d}, build {d})", .{
+            product,
+            info.dwMajorVersion,
+            info.dwMinorVersion,
+            info.dwBuildNumber,
+        });
+    }
+    if (comptime builtin.os.tag == .wasi) {
         return alloc.dupe(u8, @tagName(builtin.os.tag));
     }
 
@@ -343,7 +358,7 @@ test "native host capabilities expose process and URL support" {
     try std.testing.expectEqual(TerminalSupport.supported, linux.terminal);
 
     const windows = nativeForOs(.windows);
-    try std.testing.expect(!windows.process_control);
+    try std.testing.expect(windows.process_control);
     try std.testing.expect(!windows.url_open);
     try std.testing.expect(!windows.native_url_open);
     try std.testing.expectEqual(TerminalSupport.unsupported, windows.terminal);

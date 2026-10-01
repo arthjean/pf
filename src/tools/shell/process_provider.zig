@@ -31,26 +31,29 @@ fn captureToken(
             error.ProcessNotFound => error.ProcessNotFound,
             else => error.ProcessIdentityUnavailable,
         },
-        .windows => if (windowsProcessExists(pid))
-            error.ProcessIdentityUnsupported
-        else
-            error.ProcessNotFound,
+        .windows => captureWindowsToken(pid) catch |err| switch (err) {
+            error.ProcessNotFound => error.ProcessNotFound,
+            else => error.ProcessIdentityUnavailable,
+        },
         else => error.ProcessIdentityUnsupported,
     };
 }
 
-/// Reports whether a Windows process id names a live process. Process
-/// identity tokens arrive with US-019; until then an exited process still
-/// reads as missing rather than unavailable.
-fn windowsProcessExists(pid: io_mod.ProcessId) bool {
-    const win32 = @import("../../core/shared/win32.zig");
-    const windows = std.os.windows;
-    const handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, .FALSE, pid) orelse
-        return windows.GetLastError() != .INVALID_PARAMETER;
-    defer windows.CloseHandle(handle);
-    var exit_code: windows.DWORD = 0;
-    if (!win32.GetExitCodeProcess(handle, &exit_code).toBool()) return true;
-    return exit_code == win32.STILL_ACTIVE;
+/// A Windows token is the process id and its creation time from
+/// `GetProcessTimes`: `windows:<pid>:<creation>`.
+fn captureWindowsToken(pid: io_mod.ProcessId) !process_identity.ProcessInstanceToken {
+    const created = try process_tree.windowsProcessCreationTime(pid);
+    var token_buf: [64]u8 = undefined;
+    const text = try std.fmt.bufPrint(&token_buf, "windows:{d}:{d}", .{ pid, created });
+    return process_identity.ProcessInstanceToken.parse(text);
+}
+
+/// Returns the creation time a Windows token recorded.
+fn windowsTokenCreationTime(token: process_identity.ProcessInstanceToken) ?u64 {
+    const text = token.view();
+    if (!std.mem.startsWith(u8, text, "windows:")) return null;
+    const separator = std.mem.findScalarLast(u8, text, ':') orelse return null;
+    return std.fmt.parseInt(u64, text[separator + 1 ..], 10) catch null;
 }
 
 fn matchToken(
@@ -242,14 +245,24 @@ fn signalProcess(
 ) process_provider.ProviderError!void {
     switch (matchToken(context, alloc, pid_text, expected)) {
         .matched => {},
-        .missing, .mismatched => return error.ProcessIdentityMismatch,
+        .missing => return error.ProcessNotFound,
+        .mismatched => return error.ProcessIdentityMismatch,
         .unavailable => return error.ProcessIdentityIndeterminate,
     }
     if (!host.current().process_control) return error.Unsupported;
     const pid = std.fmt.parseInt(io_mod.ProcessId, pid_text, 10) catch
         return error.InvalidPid;
-    // Windows process control arrives with the Job Object backend (US-019).
-    if (comptime builtin.os.tag == .windows) return error.Unsupported;
+    if (comptime builtin.os.tag == .windows) {
+        const created = windowsTokenCreationTime(expected) orelse return error.ProcessIdentityMismatch;
+        _ = process_tree.terminateWindowsTree(alloc, pid, created) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ProcessNotFound => return error.ProcessNotFound,
+            error.ProcessIdentityMismatch => return error.ProcessIdentityMismatch,
+            error.PermissionDenied => return error.PermissionDenied,
+            error.ProcessIdentityUnavailable => return error.ProcessIdentityUnavailable,
+        };
+        return;
+    }
     var tracker = try process_tree.Tracker.init(alloc);
     defer tracker.deinit();
     tracker.refresh(pid) catch |err| switch (err) {
@@ -288,4 +301,56 @@ test "native process provider delegates tree signaling to the neutral tracker" {
     try std.testing.expect(provider.capture_token_fn == captureToken);
     try std.testing.expect(provider.match_token_fn == matchToken);
     try std.testing.expect(provider.signal_process_fn == signalProcess);
+}
+
+test "Windows stop verifies the process token and ends the whole tree" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Windows process tokens and Job Objects.
+    const alloc = std.testing.allocator;
+    const process_job = @import("../../core/shared/process_job.zig");
+    var child = try std.process.spawn(io_mod.getIo(), .{
+        .argv = &.{ "cmd.exe", "/d", "/c", "ping -n 30 127.0.0.1 | ping -n 30 127.0.0.1" },
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
+    defer _ = child.wait(io_mod.getIo()) catch {};
+    const cmd_pid = io_mod.childProcessId(child.id.?);
+    var pid_buf: [16]u8 = undefined;
+    const pid_text = try std.fmt.bufPrint(&pid_buf, "{d}", .{cmd_pid});
+
+    var descendants: []u32 = &.{};
+    defer alloc.free(descendants);
+    const deadline = io_mod.milliTimestamp() + 5_000;
+    while (descendants.len < 2 and io_mod.milliTimestamp() < deadline) {
+        alloc.free(descendants);
+        descendants = try process_job.childProcessIdsAlloc(alloc, cmd_pid);
+        io_mod.sleep(20 * std.time.ns_per_ms);
+    }
+    try std.testing.expect(descendants.len >= 2);
+
+    const token = try captureToken(null, alloc, pid_text);
+    try std.testing.expect(std.mem.startsWith(u8, token.view(), "windows:"));
+    try std.testing.expectEqual(process_identity.TokenMatch.matched, matchToken(null, alloc, pid_text, token));
+
+    // A token from another instance of the same id is refused without effect.
+    var stale_buf: [64]u8 = undefined;
+    const stale = try process_identity.ProcessInstanceToken.parse(try std.fmt.bufPrint(
+        &stale_buf,
+        "windows:{d}:{d}",
+        .{ cmd_pid, windowsTokenCreationTime(token).? - 1 },
+    ));
+    try std.testing.expectEqual(process_identity.TokenMatch.mismatched, matchToken(null, alloc, pid_text, stale));
+    try std.testing.expectError(error.ProcessIdentityMismatch, signalProcess(null, alloc, pid_text, stale));
+    for (descendants) |pid| _ = try process_tree.windowsProcessCreationTime(pid);
+
+    const stopped_at = io_mod.milliTimestamp();
+    try signalProcess(null, alloc, pid_text, token);
+    try std.testing.expect(io_mod.milliTimestamp() - stopped_at < 2_000);
+    for (descendants) |pid| {
+        try std.testing.expectError(error.ProcessNotFound, process_tree.windowsProcessCreationTime(pid));
+    }
+
+    // A stop for a process that already exited says so.
+    try std.testing.expectEqual(process_identity.TokenMatch.missing, matchToken(null, alloc, pid_text, token));
+    try std.testing.expectError(error.ProcessNotFound, signalProcess(null, alloc, pid_text, token));
 }

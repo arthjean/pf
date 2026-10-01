@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const auto_classifier = @import("../permissions/auto_classifier.zig");
 const text_utils = @import("../shared/text_utils.zig");
 const types = @import("../shared/types.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -321,6 +322,12 @@ pub fn executionErrorMessage(err: anyerror) ?[]const u8 {
     return switch (err) {
         error.McpInputTimedOut => "MCP elicitation timed out while user input was pending",
         error.McpAuthorityChanged => "MCP configuration or authority changed before execution",
+        error.InvalidWindowsShell,
+        error.GitBashPathNotFound,
+        error.GitBashNotFound,
+        error.NoSupportedShell,
+        => shell_selection.errorMessage(@errorCast(err)),
+        error.PowerShellCommandTooLong => "The command is too long for PowerShell -EncodedCommand. Write it to a script file and run the file.",
         else => null,
     };
 }

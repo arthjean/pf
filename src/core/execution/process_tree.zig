@@ -1245,6 +1245,148 @@ fn snapshotIsAlive(snapshot: ProcessSnapshot) bool {
     return !snapshot.zombie;
 }
 
+/// One row of a Windows process snapshot.
+const WindowsProcessEntry = struct {
+    pid: ProcessId,
+    parent_pid: ProcessId,
+};
+
+/// Lists every running Windows process with its parent through a Toolhelp
+/// snapshot. Caller owns the returned slice.
+fn windowsProcessSnapshotAlloc(alloc: Allocator) ![]WindowsProcessEntry {
+    comptime std.debug.assert(builtin.os.tag == .windows);
+    const win32 = @import("../shared/win32.zig");
+    const windows = std.os.windows;
+    const snapshot = win32.CreateToolhelp32Snapshot(win32.TH32CS_SNAPPROCESS, 0);
+    if (snapshot == windows.INVALID_HANDLE_VALUE) return error.ProcessTreeUnavailable;
+    defer windows.CloseHandle(snapshot);
+    var entries: std.ArrayList(WindowsProcessEntry) = .empty;
+    errdefer entries.deinit(alloc);
+    var entry: win32.PROCESSENTRY32W = .{};
+    var more = win32.Process32FirstW(snapshot, &entry).toBool();
+    while (more) : (more = win32.Process32NextW(snapshot, &entry).toBool()) {
+        try entries.append(alloc, .{ .pid = entry.th32ProcessID, .parent_pid = entry.th32ParentProcessID });
+    }
+    return entries.toOwnedSlice(alloc);
+}
+
+pub const WindowsProcessError = error{
+    ProcessNotFound,
+    ProcessIdentityMismatch,
+    ProcessIdentityUnavailable,
+    PermissionDenied,
+};
+
+/// Returns the creation time of a running Windows process in 100 ns units
+/// since 1601. The pair of process id and creation time names one process
+/// instance, so a reused id never matches an older record.
+pub fn windowsProcessCreationTime(pid: ProcessId) WindowsProcessError!u64 {
+    const win32 = @import("../shared/win32.zig");
+    const handle = try openWindowsProcess(pid, win32.PROCESS_QUERY_LIMITED_INFORMATION);
+    defer std.os.windows.CloseHandle(handle);
+    return windowsHandleCreationTime(handle);
+}
+
+fn openWindowsProcess(pid: ProcessId, access: std.os.windows.DWORD) WindowsProcessError!std.os.windows.HANDLE {
+    const win32 = @import("../shared/win32.zig");
+    const windows = std.os.windows;
+    return win32.OpenProcess(access, .FALSE, pid) orelse switch (windows.GetLastError()) {
+        .INVALID_PARAMETER => error.ProcessNotFound,
+        .ACCESS_DENIED => error.PermissionDenied,
+        else => error.ProcessIdentityUnavailable,
+    };
+}
+
+fn windowsHandleCreationTime(handle: std.os.windows.HANDLE) WindowsProcessError!u64 {
+    const win32 = @import("../shared/win32.zig");
+    const windows = std.os.windows;
+    var exit_code: windows.DWORD = 0;
+    if (!win32.GetExitCodeProcess(handle, &exit_code).toBool()) return error.ProcessIdentityUnavailable;
+    if (exit_code != win32.STILL_ACTIVE) return error.ProcessNotFound;
+    var created: windows.FILETIME = undefined;
+    var exited: windows.FILETIME = undefined;
+    var kernel: windows.FILETIME = undefined;
+    var user: windows.FILETIME = undefined;
+    if (!win32.GetProcessTimes(handle, &created, &exited, &kernel, &user).toBool()) {
+        return error.ProcessIdentityUnavailable;
+    }
+    return (@as(u64, created.dwHighDateTime) << 32) | created.dwLowDateTime;
+}
+
+/// Ends the Windows process `pid` and its descendants, when `pid` still names
+/// the instance created at `created`. Windows has no signals or process
+/// groups, so the verified process joins a fresh Job Object first, which also
+/// captures every process it creates afterward. Snapshot passes then add the
+/// descendants that already existed, and terminating the job ends them all.
+/// Returns how many processes joined the job.
+pub fn terminateWindowsTree(alloc: Allocator, pid: ProcessId, created: u64) (Allocator.Error || WindowsProcessError)!usize {
+    comptime std.debug.assert(builtin.os.tag == .windows);
+    const win32 = @import("../shared/win32.zig");
+    const windows = std.os.windows;
+    const process_job = @import("../shared/process_job.zig");
+    const access = win32.PROCESS_QUERY_LIMITED_INFORMATION | win32.PROCESS_SET_QUOTA | win32.PROCESS_TERMINATE;
+
+    // The open handle pins the instance, so the check and the kill below
+    // cannot land on a process that reused the id in between.
+    const root = try openWindowsProcess(pid, access);
+    defer windows.CloseHandle(root);
+    if (try windowsHandleCreationTime(root) != created) return error.ProcessIdentityMismatch;
+    var job = process_job.Job.create() catch return error.ProcessIdentityUnavailable;
+    defer job.close();
+    if (!win32.AssignProcessToJobObject(job.handle, root).toBool()) return error.ProcessIdentityUnavailable;
+
+    // Each descendant's handle stays open until the job is terminated, so no
+    // member id can be reused by an unrelated process whose children a later
+    // pass would otherwise match. The root is pinned by `root` above.
+    const Member = struct { pid: ProcessId, created: u64, handle: ?windows.HANDLE };
+    var members: std.ArrayList(Member) = .empty;
+    defer {
+        for (members.items) |member| if (member.handle) |handle| windows.CloseHandle(handle);
+        members.deinit(alloc);
+    }
+    try members.append(alloc, .{ .pid = pid, .created = created, .handle = null });
+    // A process outside the job may create a child between a snapshot and its
+    // assignment, so passes repeat until one adds nothing.
+    var pass: usize = 0;
+    while (pass < 8) : (pass += 1) {
+        const entries = windowsProcessSnapshotAlloc(alloc) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => break,
+        };
+        defer alloc.free(entries);
+        const before = members.items.len;
+        var index: usize = 0;
+        while (index < members.items.len) : (index += 1) {
+            const parent = members.items[index];
+            for (entries) |entry| {
+                if (entry.parent_pid != parent.pid or entry.pid == parent.pid) continue;
+                const known = for (members.items) |member| {
+                    if (member.pid == entry.pid) break true;
+                } else false;
+                if (known) continue;
+                const child = openWindowsProcess(entry.pid, access) catch continue;
+                var child_owned = true;
+                defer if (child_owned) windows.CloseHandle(child);
+                const child_created = windowsHandleCreationTime(child) catch continue;
+                // A child never predates its parent. An older process only
+                // carries a parent id that this parent later reused.
+                if (child_created < parent.created) continue;
+                if (!win32.AssignProcessToJobObject(job.handle, child).toBool()) continue;
+                try members.append(alloc, .{ .pid = entry.pid, .created = child_created, .handle = child });
+                child_owned = false;
+            }
+        }
+        if (members.items.len == before) break;
+    }
+
+    job.terminate();
+    const deadline = io_mod.milliTimestamp() + 2_000;
+    while (job.activeProcessCount() != 0 and io_mod.milliTimestamp() < deadline) {
+        io_mod.sleep(10 * std.time.ns_per_ms);
+    }
+    return members.items.len;
+}
+
 const Darwin = struct {
     // Stable libproc process-identity flavor; the SDK omits this constant from
     // its public header, but XNU defines the record as API with a fixed size.

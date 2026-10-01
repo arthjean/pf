@@ -5,6 +5,7 @@ const debug_trace = @import("../shared/debug_trace.zig");
 const io_mod = @import("../shared/io.zig");
 const mcp_contract = @import("mcp_contract.zig");
 const docker_run = @import("docker_run.zig");
+const process_job = @import("../shared/process_job.zig");
 const operation_control = @import("operation_control.zig");
 
 const Allocator = std.mem.Allocator;
@@ -343,6 +344,8 @@ pub const StdioDispatcher = struct {
     generation: u64,
     max_frame_bytes: std.atomic.Value(usize),
     docker_cleanup: ?docker_run.Cleanup = null,
+    /// The Job Object that holds the server's process tree on Windows.
+    process_job: ProcessJob = no_process_job,
     notification_sink: ?NotificationSink = null,
     notification_callback_active: bool = false,
     active_server_request_workers: usize = 0,
@@ -401,7 +404,7 @@ pub const StdioDispatcher = struct {
         stderr_owned = false;
         errdefer {
             self.closePipes();
-            terminateChild(self.child_id);
+            self.terminateProcessTree();
             self.stopStderrDrain();
             _ = self.child.wait(io_mod.getIo()) catch {};
             self.pending.deinit();
@@ -436,8 +439,33 @@ pub const StdioDispatcher = struct {
         self.docker_cleanup = cleanup;
     }
 
+    /// Hands the server's Job Object to the dispatcher, which terminates it
+    /// with the server and closes it on destruction. Windows only.
+    pub fn installProcessJob(self: *StdioDispatcher, job: process_job.Job) void {
+        comptime std.debug.assert(builtin.os.tag == .windows);
+        std.debug.assert(self.process_job == null);
+        self.process_job = job;
+    }
+
+    /// Ends the server and, on Windows, every process in its job, so a
+    /// launcher such as `npx.cmd` cannot leave `node.exe` holding the pipes.
+    fn terminateProcessTree(self: *StdioDispatcher) void {
+        if (comptime builtin.os.tag == .windows) {
+            if (self.process_job) |job| job.terminate();
+        }
+        terminateChild(self.child_id);
+    }
+
+    fn terminateProcessTreeGracefully(self: *StdioDispatcher) void {
+        if (comptime builtin.os.tag == .windows) return self.terminateProcessTree();
+        terminateChildGracefully(self.child_id);
+    }
+
     fn destroy(self: *StdioDispatcher) void {
         std.debug.assert(self.docker_cleanup == null);
+        if (comptime builtin.os.tag == .windows) {
+            if (self.process_job) |*job| job.close();
+        }
         std.debug.assert(self.stderr_thread == null and self.stderr == null and self.stderr_wake == null);
         self.pending.deinit();
         const owner_allocator = self.owner_allocator;
@@ -586,7 +614,7 @@ pub const StdioDispatcher = struct {
                 // A closed stdin means the child already ended; fail like the
                 // reader's end of stream so waiters see one consistent reason.
                 self.failConnection(if (err == error.BrokenPipe) error.McpConnectionClosed else err);
-                if (self.childMayBeRunning()) terminateChild(self.child_id);
+                if (self.childMayBeRunning()) self.terminateProcessTree();
             },
         };
         if (write_outcome.phase == .committed) {
@@ -683,7 +711,7 @@ pub const StdioDispatcher = struct {
             if (taint_connection and !connection_tainted) {
                 connection_tainted = true;
                 self.failConnection(error.McpWriteInterrupted);
-                terminateChild(self.child_id);
+                self.terminateProcessTree();
             }
             if (send_cancel) {
                 self.sendCancellation(request_id, @errorName(pending.failure.?));
@@ -741,7 +769,7 @@ pub const StdioDispatcher = struct {
                 (err != error.McpRequestTimedOut and err != error.Cancelled))
             {
                 self.failConnection(err);
-                terminateChild(self.child_id);
+                self.terminateProcessTree();
             }
             return err;
         };
@@ -969,7 +997,7 @@ pub const StdioDispatcher = struct {
                 "stdio dispatcher requesting child termination generation={d}",
                 .{self.generation},
             );
-            terminateChildGracefully(self.child_id);
+            self.terminateProcessTreeGracefully();
             const deadline_ms = std.math.add(
                 i64,
                 io_mod.milliTimestamp(),
@@ -985,7 +1013,7 @@ pub const StdioDispatcher = struct {
                 "stdio dispatcher forcing child termination generation={d}",
                 .{self.generation},
             );
-            terminateChild(self.child_id);
+            self.terminateProcessTree();
         }
 
         if (self.reader_thread) |thread| {
@@ -1113,7 +1141,7 @@ pub const StdioDispatcher = struct {
         // Fail waiters first so no new request writes into the ended child.
         // childDiagnostics waits for the reap and stderr below.
         self.failConnection(terminal_error orelse error.McpConnectionClosed);
-        terminateChild(self.child_id);
+        self.terminateProcessTree();
         self.reapChild();
         self.awaitStderrEof();
     }
@@ -1195,7 +1223,12 @@ pub const StdioDispatcher = struct {
     }
 
     fn startStderrDrain(self: *StdioDispatcher) !void {
-        if (comptime builtin.os.tag == .windows or host_target.is_wasm) return;
+        if (comptime host_target.is_wasm) return;
+        if (comptime builtin.os.tag == .windows) {
+            self.stderr_done = false;
+            self.stderr_thread = try std.Thread.spawn(.{}, stderrMainWindows, .{self});
+            return;
+        }
         self.stderr_wake = try std.Io.Threaded.pipe2(.{ .CLOEXEC = true });
         self.stderr_done = false;
         self.stderr_thread = try std.Thread.spawn(.{}, stderrMain, .{self});
@@ -1239,8 +1272,43 @@ pub const StdioDispatcher = struct {
         }
     }
 
+    /// Windows has no poll for pipes, so a blocking read drains stderr. It
+    /// ends at end of file, which comes when the server's job is terminated
+    /// and no process holds the pipe any more.
+    fn stderrMainWindows(self: *StdioDispatcher) void {
+        defer {
+            self.state_mutex.lockUncancelable(io_mod.getIo());
+            self.stderr_done = true;
+            self.state_mutex.unlock(io_mod.getIo());
+        }
+        const file = self.stderr orelse return;
+        var buffer: [1024]u8 = undefined;
+        while (true) {
+            const count = file.readStreaming(io_mod.getIo(), &.{&buffer}) catch |err| switch (err) {
+                error.EndOfStream => return,
+                else => {
+                    logStderrFailure(self.generation, "read", "err", @errorName(err));
+                    return;
+                },
+            };
+            if (count == 0) return;
+            self.state_mutex.lockUncancelable(io_mod.getIo());
+            self.diagnostics.stderr.append(buffer[0..count]);
+            self.state_mutex.unlock(io_mod.getIo());
+        }
+    }
+
     /// Idempotent: wakes and joins the stderr drain, then closes its pipes.
     fn stopStderrDrain(self: *StdioDispatcher) void {
+        if (comptime builtin.os.tag == .windows) {
+            // The drain ends once the server's tree is gone; terminate it
+            // first so the join cannot wait on a live writer.
+            if (self.stderr_thread) |thread| {
+                self.terminateProcessTree();
+                thread.join();
+                self.stderr_thread = null;
+            }
+        }
         if (comptime builtin.os.tag != .windows and !host_target.is_wasm) {
             if (self.stderr_wake) |wake| {
                 if (self.stderr_thread) |thread| {
@@ -1322,7 +1390,7 @@ pub const StdioDispatcher = struct {
                         self.shared_allocator.free(frame);
                         self.state_mutex.unlock(io_mod.getIo());
                         self.failConnection(error.McpResponseFrameTooLarge);
-                        terminateChild(self.child_id);
+                        self.terminateProcessTree();
                         return;
                     } else {
                         pending.response = frame;
@@ -1702,7 +1770,7 @@ pub const StdioDispatcher = struct {
                 "stdio dispatcher interrupting active writer generation={d}",
                 .{self.generation},
             );
-            if (self.childMayBeRunning()) terminateChild(self.child_id);
+            if (self.childMayBeRunning()) self.terminateProcessTree();
             self.write_mutex.lockUncancelable(io_mod.getIo());
         }
         defer self.write_mutex.unlock(io_mod.getIo());
@@ -1979,6 +2047,9 @@ fn jsonNumber(value: std.json.Value) !f64 {
         else => error.McpInvalidProgress,
     };
 }
+
+const ProcessJob = if (builtin.os.tag == .windows) ?process_job.Job else void;
+const no_process_job: ProcessJob = if (builtin.os.tag == .windows) null else {};
 
 fn terminateChild(child_id: std.process.Child.Id) void {
     switch (builtin.os.tag) {
@@ -3405,4 +3476,62 @@ test "operation deadline includes waiting for the serialized writer" {
 
     try std.testing.expect(finished_while_locked);
     try std.testing.expectEqual(error.McpRequestTimedOut, request.err.?);
+}
+
+test "Windows MCP server teardown ends every process in the server's job" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    // A uniquely named copy of ping makes the server's grandchildren countable.
+    const probe_name = "pf-mcp-tree-probe.exe";
+    const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(root);
+    const probe = try std.fs.path.join(alloc, &.{ root, probe_name });
+    defer alloc.free(probe);
+    try std.Io.Dir.copyFileAbsolute("C:\\Windows\\System32\\PING.EXE", probe, io_mod.getIo(), .{});
+    const script = try std.fmt.allocPrint(alloc, "{s} -n 30 127.0.0.1 | {s} -n 30 127.0.0.1", .{ probe, probe });
+    defer alloc.free(script);
+
+    for ([_]StdioDispatcher.ShutdownMode{ .graceful, .abandon }) |mode| {
+        var job = try process_job.Job.create();
+        errdefer job.close();
+        const child = try process_job.spawn(io_mod.getIo(), .{
+            .argv = &.{ "cmd.exe", "/d", "/c", script },
+            .stdin = .pipe,
+            .stdout = .pipe,
+            .stderr = .pipe,
+        }, job);
+        const dispatcher = try StdioDispatcher.create(alloc, alloc, child, 1, 1024);
+        dispatcher.installProcessJob(job);
+        try std.testing.expect(try waitForProbeCount(probe_name, 2, 5_000));
+        const stopped_at = io_mod.milliTimestamp();
+        switch (mode) {
+            .graceful => dispatcher.deinit(),
+            else => dispatcher.deinitAbandoned(),
+        }
+        try std.testing.expect(try waitForProbeCount(probe_name, 0, 2_000));
+        try std.testing.expect(io_mod.milliTimestamp() - stopped_at < 2_000);
+    }
+}
+
+fn waitForProbeCount(exe_name: []const u8, expected: usize, timeout_ms: i64) !bool {
+    const win32 = @import("../shared/win32.zig");
+    const deadline = io_mod.milliTimestamp() + timeout_ms;
+    while (true) {
+        const snapshot = win32.CreateToolhelp32Snapshot(win32.TH32CS_SNAPPROCESS, 0);
+        if (snapshot == std.os.windows.INVALID_HANDLE_VALUE) return error.ProcessSnapshotUnavailable;
+        var entry: win32.PROCESSENTRY32W = .{};
+        var count: usize = 0;
+        var more = win32.Process32FirstW(snapshot, &entry).toBool();
+        while (more) : (more = win32.Process32NextW(snapshot, &entry).toBool()) {
+            var name_buffer: [std.os.windows.MAX_PATH * 3]u8 = undefined;
+            const name_len = std.unicode.wtf16LeToWtf8(&name_buffer, std.mem.sliceTo(&entry.szExeFile, 0));
+            if (std.ascii.eqlIgnoreCase(name_buffer[0..name_len], exe_name)) count += 1;
+        }
+        std.os.windows.CloseHandle(snapshot);
+        if (count == expected) return true;
+        if (io_mod.milliTimestamp() >= deadline) return false;
+        io_mod.sleep(20 * std.time.ns_per_ms);
+    }
 }

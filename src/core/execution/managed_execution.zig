@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const command_admission = @import("../permissions/command_admission.zig");
+const shell_selection = @import("shell_selection.zig");
 const command_contract = @import("command_contract.zig");
 const command_environment = @import("command_environment.zig");
 const command_runner = @import("command_runner.zig");
@@ -228,6 +229,7 @@ const Entry = struct {
             .resolved_cwd = cwd,
             .target_os = builtin.os.tag,
             .environment = environment,
+            .dialect = shell_selection.dialect(),
         };
         const authority = rebindAuthority(input.authority, command_ctx);
         var route = try execution_router.prepareAuthorizedRoute(

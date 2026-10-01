@@ -1,5 +1,6 @@
 const std = @import("std");
 const command_lex = @import("command_lex.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 
 const max_command_bytes = 8 * 1024;
 const max_ls_operands = 64;
@@ -307,9 +308,14 @@ pub fn plan(
     resolved_cwd: []const u8,
     background: bool,
     target_os: std.Target.Os.Tag,
+    dialect: shell_selection.Dialect,
 ) std.mem.Allocator.Error!Admission {
     if (background) return .{ .approval_required = .background_process };
-    if (target_os != .macos and target_os != .linux) {
+    // pf does not parse PowerShell, so its commands are never planned.
+    if (dialect == .powershell) return .{ .approval_required = .unsupported_shell };
+    // Git Bash on Windows runs the GNU tools of its MSYS `/usr/bin`, so the
+    // plans are the Linux ones; the direct executor maps their paths.
+    if (target_os != .macos and target_os != .linux and target_os != .windows) {
         return .{ .approval_required = .unsupported_platform };
     }
 
@@ -506,7 +512,7 @@ fn planPrintf(
 
 fn printfPolicy(target_os: std.Target.Os.Tag) PrintfPolicy {
     return switch (target_os) {
-        .macos, .linux => .{ .executable = "/usr/bin/printf" },
+        .macos, .linux, .windows => .{ .executable = "/usr/bin/printf" },
         else => unreachable,
     };
 }
@@ -608,7 +614,7 @@ fn planLs(
 
 fn lsPolicy(target_os: std.Target.Os.Tag) LsPolicy {
     return switch (target_os) {
-        .macos, .linux => .{
+        .macos, .linux, .windows => .{
             .executable = "/bin/ls",
             .forced_argv = &.{"-q"},
         },
@@ -958,6 +964,7 @@ test "planner canonicalizes pwd to a fixed physical path" {
         "/workspace",
         false,
         .macos,
+        .posix_sh,
     );
     defer admission.deinit(std.testing.allocator);
 
@@ -985,6 +992,7 @@ fn expectDirect(command: []const u8, target_os: std.Target.Os.Tag) !Admission {
         "/workspace",
         false,
         target_os,
+        .posix_sh,
     );
     if (admission == .approval_required) {
         std.debug.print(
@@ -1010,6 +1018,7 @@ fn expectApproval(
         "/workspace",
         background,
         target_os,
+        .posix_sh,
     );
     defer admission.deinit(std.testing.allocator);
 
@@ -1263,7 +1272,13 @@ test "planner preserves quoted shell metacharacters as literal argv" {
 
 test "planner enforces background and platform boundaries" {
     try expectApproval("pwd", true, .macos, .background_process);
-    try expectApproval("pwd", false, .windows, .unsupported_platform);
+    try expectApproval("pwd", false, .freebsd, .unsupported_platform);
+    // Git Bash on Windows plans like Linux; PowerShell is never planned.
+    var git_bash = try expectDirect("pwd", .windows);
+    git_bash.deinit(std.testing.allocator);
+    var powershell = try plan(std.testing.allocator, "pwd", "/workspace", false, .windows, .powershell);
+    defer powershell.deinit(std.testing.allocator);
+    try std.testing.expectEqual(ApprovalReason.unsupported_shell, powershell.approval_required);
 }
 
 test "planner bounds direct pipelines at eight stages" {

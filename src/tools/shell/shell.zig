@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const command_admission = @import("../../core/permissions/command_admission.zig");
+const shell_selection = @import("../../core/execution/shell_selection.zig");
 const command_contract = @import("../../core/execution/command_contract.zig");
 const command_environment = @import("../../core/execution/command_environment.zig");
 const debug_trace = @import("../../core/shared/debug_trace.zig");
@@ -504,6 +505,12 @@ fn validateRun(
                 .{@errorName(err)},
             );
         };
+        if (builtin.os.tag == .windows and ctx.captured_command_host == .native) {
+            _ = shell_selection.current() catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => |selection_err| return try ctx.allocator.dupe(u8, shell_selection.errorMessage(selection_err)),
+            };
+        }
     }
     return null;
 }
@@ -704,6 +711,7 @@ fn callTtyRun(
         .target_os = builtin.os.tag,
         .environment = environment,
         .execution_mode = .tty,
+        .dialect = shell_selection.dialect(),
     }) catch |err| return runtimeFailure(ctx, err);
     runtime.reserveTtyCapacity() catch |err| return runtimeFailure(ctx, err);
     var capacity_reserved = true;

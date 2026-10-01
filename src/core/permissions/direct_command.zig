@@ -3,6 +3,8 @@ const builtin = @import("builtin");
 const command_effect = @import("../shell_command/command_effect.zig");
 const command_contract = @import("../execution/command_contract.zig");
 const command_runner = @import("../execution/command_runner.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
+const process_job = @import("../shared/process_job.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const io_mod = @import("../shared/io.zig");
 const mem_utils = @import("../shared/mem_utils.zig");
@@ -195,7 +197,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
     }
     try checkControl(execution_cfg);
 
-    if (builtin.os.tag != .macos and builtin.os.tag != .linux) {
+    if (builtin.os.tag != .macos and builtin.os.tag != .linux and builtin.os.tag != .windows) {
         return error.UnsupportedDirectPlatform;
     }
 
@@ -203,12 +205,16 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
     defer mem_utils.deinit_arena(scratch_state);
     const scratch = scratch_state.allocator();
 
+    const msys_usr_bin = if (builtin.os.tag == .windows) try windowsMsysUsrBin(scratch) else {};
+    var job = try createDirectJob();
+    defer closeDirectJob(&job);
+
     var children = try scratch.alloc(std.process.Child, plan.stages.len);
     var child_count: usize = 0;
     var group_id: ?io_mod.ProcessId = null;
     var pre_worker_cleanup_pending = true;
     errdefer if (pre_worker_cleanup_pending) {
-        cleanupChildren(children[0..child_count], group_id);
+        cleanupChildren(children[0..child_count], group_id, job);
     };
     const started_ms = io_mod.milliTimestamp();
 
@@ -217,9 +223,14 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
         const stage = plan.stages[child_count];
         var environment = try environmentForProfile(scratch, stage.environment_profile);
         defer environment.deinit();
+        const argv = if (builtin.os.tag == .windows)
+            try windowsDirectArgv(scratch, msys_usr_bin, stage.argv)
+        else
+            stage.argv;
+        if (builtin.os.tag == .windows) try environment.put("PATH", msys_usr_bin);
 
-        const child = std.process.spawn(io_mod.getIo(), .{
-            .argv = stage.argv,
+        const child = spawnDirect(.{
+            .argv = argv,
             .cwd = .{ .path = plan.cwd },
             .environ_map = &environment,
             .stdin = if (child_count == 0) .ignore else .pipe,
@@ -229,7 +240,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
                 (if (child_count == 0) 0 else io_mod.posixPid(group_id.?))
             else
                 null,
-        }) catch |err| {
+        }, job) catch |err| {
             return switch (err) {
                 error.FileNotFound => error.DirectExecutableUnavailable,
                 else => err,
@@ -296,7 +307,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
             .{&workers[started_workers]},
         ) catch |err| {
             shared.commit(.output_failure, err);
-            signalGroup(group_id, true);
+            signalGroup(group_id, job, true);
             for (workers[started_workers..]) |*worker| worker.closeUnstarted();
             for (workers[0..started_workers]) |*worker| worker.thread.?.join();
             waitChildren(children[0..child_count]);
@@ -331,10 +342,10 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
         if (shared.isStopping()) {
             const now = io_mod.milliTimestamp();
             if (termination_started_ms == null) {
-                signalGroup(group_id, false);
+                signalGroup(group_id, job, false);
                 termination_started_ms = now;
             } else if (!force_kill_sent and now - termination_started_ms.? >= 800) {
-                signalGroup(group_id, true);
+                signalGroup(group_id, job, true);
                 force_kill_sent = true;
             }
         }
@@ -418,6 +429,10 @@ fn environmentForProfile(
             try environment.put("LC_ALL", "C");
             try environment.put("LANG", "C");
         },
+    }
+    if (builtin.os.tag == .windows) {
+        // Windows system DLLs that the MSYS runtime loads need SYSTEMROOT.
+        if (io_mod.getenv("SYSTEMROOT")) |system_root| try environment.put("SYSTEMROOT", system_root);
     }
     if (profile == .git_read_only) {
         try environment.put("GIT_CONFIG_NOSYSTEM", "1");
@@ -726,8 +741,57 @@ fn deadlineExpired(cfg: command_runner.Config) bool {
     return io_mod.milliTimestamp() - started_ms >= @as(i64, @intCast(timeout_ms));
 }
 
-fn signalGroup(group_id: ?io_mod.ProcessId, force: bool) void {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return;
+/// The Job Object that contains a direct pipeline on Windows.
+const DirectJob = if (builtin.os.tag == .windows) process_job.Job else void;
+
+fn createDirectJob() !DirectJob {
+    if (comptime builtin.os.tag == .windows) return process_job.Job.create();
+}
+
+fn closeDirectJob(job: *DirectJob) void {
+    if (comptime builtin.os.tag == .windows) job.close();
+}
+
+fn spawnDirect(options: std.process.SpawnOptions, job: DirectJob) !std.process.Child {
+    if (comptime builtin.os.tag == .windows) return process_job.spawn(io_mod.getIo(), options, job);
+    return std.process.spawn(io_mod.getIo(), options);
+}
+
+/// The MSYS `usr\bin` of the selected Git Bash, whose GNU tools are the ones
+/// bash itself runs. Direct plans exist only for the bash dialect.
+fn windowsMsysUsrBin(alloc: std.mem.Allocator) ![]const u8 {
+    const shell = shell_selection.current() catch return error.UnsupportedDirectPlatform;
+    if (shell.dialect != .posix_sh) return error.UnsupportedDirectPlatform;
+    return try shell_selection.msysUsrBinAlloc(alloc, shell.path) orelse error.UnsupportedDirectPlatform;
+}
+
+/// Maps a plan's POSIX executable to the tool Git Bash runs for it:
+/// `/usr/bin/<name>` and `/bin/<name>` to `<usr\bin>\<name>.exe`, and git to
+/// the Git for Windows `git.exe` that Git Bash puts first on its `PATH`.
+fn windowsDirectArgv(alloc: std.mem.Allocator, usr_bin: []const u8, argv: []const []const u8) ![]const []const u8 {
+    const mapped = try alloc.dupe([]const u8, argv);
+    const name = std.fs.path.basenamePosix(argv[0]);
+    if (std.mem.eql(u8, name, "git")) {
+        const root = std.fs.path.dirname(std.fs.path.dirname(usr_bin) orelse usr_bin) orelse usr_bin;
+        for ([_][]const u8{ "mingw64\\bin\\git.exe", "cmd\\git.exe" }) |relative| {
+            const candidate = try std.fs.path.join(alloc, &.{ root, relative });
+            const stat = std.Io.Dir.cwd().statFile(io_mod.getIo(), candidate, .{}) catch continue;
+            if (stat.kind != .file) continue;
+            mapped[0] = candidate;
+            return mapped;
+        }
+        return error.DirectExecutableUnavailable;
+    }
+    mapped[0] = try std.fmt.allocPrint(alloc, "{s}\\{s}.exe", .{ usr_bin, name });
+    return mapped;
+}
+
+fn signalGroup(group_id: ?io_mod.ProcessId, job: DirectJob, force: bool) void {
+    if (builtin.os.tag == .windows) {
+        job.terminate();
+        return;
+    }
+    if (builtin.os.tag == .wasi) return;
     const pid = group_id orelse return;
     std.posix.kill(-io_mod.posixPid(pid), if (force) std.posix.SIG.KILL else std.posix.SIG.TERM) catch |err| switch (err) {
         error.ProcessNotFound => {},
@@ -744,8 +808,8 @@ fn closeChildPipes(child: *std.process.Child) void {
     child.stderr = null;
 }
 
-fn cleanupChildren(children: []std.process.Child, group_id: ?io_mod.ProcessId) void {
-    signalGroup(group_id, true);
+fn cleanupChildren(children: []std.process.Child, group_id: ?io_mod.ProcessId, job: DirectJob) void {
+    signalGroup(group_id, job, true);
     for (children) |*child| closeChildPipes(child);
     waitChildren(children);
 }
@@ -976,6 +1040,7 @@ test "direct executor runs a supported pipeline and reports final output" {
         "/tmp",
         false,
         @import("builtin").os.tag,
+        .posix_sh,
     );
     defer admission.deinit(std.testing.allocator);
     const plan = admission.direct_read_only;
@@ -1082,6 +1147,7 @@ test "direct executor enforces canonical capacity with native large ls output" {
             cwd,
             false,
             builtin.os.tag,
+            .posix_sh,
         );
         defer admission.deinit(alloc);
         const result = try executeDirectReadOnly(.{
@@ -1108,6 +1174,7 @@ test "direct executor enforces canonical capacity with native large ls output" {
         cwd,
         false,
         builtin.os.tag,
+        .posix_sh,
     );
     defer over_admission.deinit(alloc);
     try std.testing.expectError(

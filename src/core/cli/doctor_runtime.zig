@@ -9,6 +9,7 @@ const mcp_contract = @import("../mcp/mcp_contract.zig");
 const session_store = @import("../session/session_store.zig");
 const types = @import("../shared/types.zig");
 const model_provider = @import("../config/model_provider.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 
 const Allocator = std.mem.Allocator;
 const default_session_diagnostics_limit: usize = 64;
@@ -99,6 +100,7 @@ pub fn collect(
         try appendStateChecks(&checks, alloc, snapshot.workspace_root);
         try appendGitCheck(&checks, alloc, snapshot.workspace_root);
         try appendGhCheck(&checks, alloc);
+        try appendShellCheck(&checks, alloc);
 
         snapshot.checks = try checks.toOwnedSlice(alloc);
         return snapshot;
@@ -130,6 +132,7 @@ pub fn collect(
     try appendStateChecks(&checks, alloc, snapshot.workspace_root);
     try appendGitCheck(&checks, alloc, snapshot.workspace_root);
     try appendGhCheck(&checks, alloc);
+    try appendShellCheck(&checks, alloc);
 
     snapshot.checks = try checks.toOwnedSlice(alloc);
     return snapshot;
@@ -511,6 +514,20 @@ fn appendGhCheck(checks: *std.ArrayList(Check), alloc: Allocator) !void {
         return;
     }
     try appendCheck(checks, alloc, "gh", .warn, "GitHub CLI not found in PATH; publish workflows unavailable");
+}
+
+/// Reports the shell that runs model commands on Windows, its path, and why
+/// it was selected.
+fn appendShellCheck(checks: *std.ArrayList(Check), alloc: Allocator) !void {
+    if (comptime @import("builtin").os.tag != .windows) return;
+    const shell = shell_selection.current() catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => |selection_err| return appendCheck(checks, alloc, "shell", .fail, shell_selection.errorMessage(selection_err)),
+    };
+    const label = try shell.dialectLabel(alloc);
+    defer alloc.free(label);
+    const detail = try std.fmt.allocPrint(alloc, "{s} at {s}, selected because {s}", .{ label, shell.path, shell.reason.text() });
+    try appendCheckOwned(checks, alloc, "shell", .ok, detail);
 }
 
 fn resolvePermissionMode(configured: ?types.PermissionMode) !types.PermissionMode {

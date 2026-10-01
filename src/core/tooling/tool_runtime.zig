@@ -25,6 +25,7 @@ const glob_pattern = @import("../workspace/glob_pattern.zig");
 const permission_prompter = @import("../permissions/permission_prompter.zig");
 const permission_request = @import("../permissions/permission_request.zig");
 const command_admission = @import("../permissions/command_admission.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 const pathing = @import("../workspace/pathing.zig");
 const execution_router = @import("../execution/router.zig");
 const skill_runtime = @import("../skills/skill_runtime.zig");
@@ -1525,6 +1526,7 @@ fn toolRunCommand(
         .resolved_cwd = cwd,
         .target_os = builtin.os.tag,
         .environment = request.environment,
+        .dialect = shell_selection.dialect(),
     };
     const timeout = try effectiveCommandTimeout(
         request.timeout_ms,

@@ -82,6 +82,8 @@ pub extern "kernel32" fn TerminateProcess(
 ) callconv(.winapi) windows.BOOL;
 
 pub const PROCESS_QUERY_LIMITED_INFORMATION: windows.DWORD = 0x1000;
+pub const PROCESS_TERMINATE: windows.DWORD = 0x0001;
+pub const PROCESS_SET_QUOTA: windows.DWORD = 0x0100;
 
 pub extern "kernel32" fn OpenProcess(
     dwDesiredAccess: windows.DWORD,
@@ -94,6 +96,168 @@ pub const STILL_ACTIVE: windows.DWORD = 259;
 pub extern "kernel32" fn GetExitCodeProcess(
     hProcess: windows.HANDLE,
     lpExitCode: *windows.DWORD,
+) callconv(.winapi) windows.BOOL;
+
+// Job Objects
+
+pub const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: windows.DWORD = 0x2000;
+pub const JobObjectBasicAccountingInformation: windows.DWORD = 1;
+pub const JobObjectExtendedLimitInformation: windows.DWORD = 9;
+
+pub const JOBOBJECT_BASIC_LIMIT_INFORMATION = extern struct {
+    PerProcessUserTimeLimit: windows.LARGE_INTEGER = 0,
+    PerJobUserTimeLimit: windows.LARGE_INTEGER = 0,
+    LimitFlags: windows.DWORD = 0,
+    MinimumWorkingSetSize: usize = 0,
+    MaximumWorkingSetSize: usize = 0,
+    ActiveProcessLimit: windows.DWORD = 0,
+    Affinity: usize = 0,
+    PriorityClass: windows.DWORD = 0,
+    SchedulingClass: windows.DWORD = 0,
+};
+
+pub const IO_COUNTERS = extern struct {
+    ReadOperationCount: u64 = 0,
+    WriteOperationCount: u64 = 0,
+    OtherOperationCount: u64 = 0,
+    ReadTransferCount: u64 = 0,
+    WriteTransferCount: u64 = 0,
+    OtherTransferCount: u64 = 0,
+};
+
+pub const JOBOBJECT_EXTENDED_LIMIT_INFORMATION = extern struct {
+    BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION = .{},
+    IoInfo: IO_COUNTERS = .{},
+    ProcessMemoryLimit: usize = 0,
+    JobMemoryLimit: usize = 0,
+    PeakProcessMemoryUsed: usize = 0,
+    PeakJobMemoryUsed: usize = 0,
+};
+
+pub const JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = extern struct {
+    TotalUserTime: windows.LARGE_INTEGER,
+    TotalKernelTime: windows.LARGE_INTEGER,
+    ThisPeriodTotalUserTime: windows.LARGE_INTEGER,
+    ThisPeriodTotalKernelTime: windows.LARGE_INTEGER,
+    TotalPageFaultCount: windows.DWORD,
+    TotalProcesses: windows.DWORD,
+    ActiveProcesses: windows.DWORD,
+    TotalTerminatedProcesses: windows.DWORD,
+};
+
+pub extern "kernel32" fn CreateJobObjectW(
+    lpJobAttributes: ?*anyopaque,
+    lpName: ?[*:0]const u16,
+) callconv(.winapi) ?windows.HANDLE;
+
+pub extern "kernel32" fn SetInformationJobObject(
+    hJob: windows.HANDLE,
+    JobObjectInformationClass: windows.DWORD,
+    lpJobObjectInformation: *anyopaque,
+    cbJobObjectInformationLength: windows.DWORD,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn QueryInformationJobObject(
+    hJob: ?windows.HANDLE,
+    JobObjectInformationClass: windows.DWORD,
+    lpJobObjectInformation: *anyopaque,
+    cbJobObjectInformationLength: windows.DWORD,
+    lpReturnLength: ?*windows.DWORD,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn AssignProcessToJobObject(
+    hJob: windows.HANDLE,
+    hProcess: windows.HANDLE,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn TerminateJobObject(
+    hJob: windows.HANDLE,
+    uExitCode: windows.UINT,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn IsProcessInJob(
+    ProcessHandle: windows.HANDLE,
+    JobHandle: ?windows.HANDLE,
+    Result: *windows.BOOL,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn ResumeThread(hThread: windows.HANDLE) callconv(.winapi) windows.DWORD;
+
+// File version resources
+
+pub const VS_FIXEDFILEINFO = extern struct {
+    dwSignature: windows.DWORD,
+    dwStrucVersion: windows.DWORD,
+    dwFileVersionMS: windows.DWORD,
+    dwFileVersionLS: windows.DWORD,
+    dwProductVersionMS: windows.DWORD,
+    dwProductVersionLS: windows.DWORD,
+    dwFileFlagsMask: windows.DWORD,
+    dwFileFlags: windows.DWORD,
+    dwFileOS: windows.DWORD,
+    dwFileType: windows.DWORD,
+    dwFileSubtype: windows.DWORD,
+    dwFileDateMS: windows.DWORD,
+    dwFileDateLS: windows.DWORD,
+};
+
+pub extern "version" fn GetFileVersionInfoSizeW(
+    lptstrFilename: [*:0]const u16,
+    lpdwHandle: ?*windows.DWORD,
+) callconv(.winapi) windows.DWORD;
+
+pub extern "version" fn GetFileVersionInfoW(
+    lptstrFilename: [*:0]const u16,
+    dwHandle: windows.DWORD,
+    dwLen: windows.DWORD,
+    lpData: *anyopaque,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "version" fn VerQueryValueW(
+    pBlock: *const anyopaque,
+    lpSubBlock: [*:0]const u16,
+    lplpBuffer: *?*anyopaque,
+    puLen: *windows.UINT,
+) callconv(.winapi) windows.BOOL;
+
+// Process snapshots
+
+pub const TH32CS_SNAPPROCESS: windows.DWORD = 0x2;
+
+pub const PROCESSENTRY32W = extern struct {
+    dwSize: windows.DWORD = @sizeOf(PROCESSENTRY32W),
+    cntUsage: windows.DWORD = 0,
+    th32ProcessID: windows.DWORD = 0,
+    th32DefaultHeapID: usize = 0,
+    th32ModuleID: windows.DWORD = 0,
+    cntThreads: windows.DWORD = 0,
+    th32ParentProcessID: windows.DWORD = 0,
+    pcPriClassBase: i32 = 0,
+    dwFlags: windows.DWORD = 0,
+    szExeFile: [windows.MAX_PATH]u16 = undefined,
+};
+
+pub extern "kernel32" fn CreateToolhelp32Snapshot(
+    dwFlags: windows.DWORD,
+    th32ProcessID: windows.DWORD,
+) callconv(.winapi) windows.HANDLE;
+
+pub extern "kernel32" fn Process32FirstW(
+    hSnapshot: windows.HANDLE,
+    lppe: *PROCESSENTRY32W,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn Process32NextW(
+    hSnapshot: windows.HANDLE,
+    lppe: *PROCESSENTRY32W,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn GetProcessTimes(
+    hProcess: windows.HANDLE,
+    lpCreationTime: *windows.FILETIME,
+    lpExitTime: *windows.FILETIME,
+    lpKernelTime: *windows.FILETIME,
+    lpUserTime: *windows.FILETIME,
 ) callconv(.winapi) windows.BOOL;
 
 // Console

@@ -25,6 +25,7 @@ const parseServerCapabilities = protocol_messages.parseServerCapabilities;
 const featureProtocol = protocol_messages.featureProtocol;
 const docker_run = @import("docker_run.zig");
 const stdio_dispatcher = @import("stdio_dispatcher.zig");
+const process_job = @import("../shared/process_job.zig");
 const streamable_http = @import("streamable_http.zig");
 const tools_feature = @import("features/tools.zig");
 const tool_result = @import("tool_result.zig");
@@ -921,14 +922,30 @@ fn spawnStdioServer(alloc: Allocator, server: *McpServer, argv: []const []const 
             try cleanup.cloneEnvironment(alloc, environment);
         }
     }
-    const child = try std.process.spawn(io_mod.getIo(), .{
+    const options: std.process.SpawnOptions = .{
         .argv = prepared.argv,
         .stdin = .pipe,
         .stdout = .pipe,
-        .stderr = if (builtin.os.tag == .windows) .ignore else .pipe,
+        .stderr = .pipe,
         .environ_map = if (server.env_map != null) &server.env_map.? else null,
         .pgid = if (builtin.os.tag == .windows) null else 0,
-    });
+    };
+    // On Windows the server runs in its own Job Object, so a launcher such as
+    // `npx.cmd` cannot leave its `node.exe` running after pf stops the server.
+    var job = if (builtin.os.tag == .windows) try process_job.Job.create() else {};
+    var job_owned = builtin.os.tag == .windows;
+    defer if (builtin.os.tag == .windows and job_owned) job.close();
+    const spawned = if (builtin.os.tag == .windows)
+        process_job.spawn(io_mod.getIo(), options, job)
+    else
+        std.process.spawn(io_mod.getIo(), options);
+    const child = spawned catch |err| {
+        if (try io_mod.spawnFailureMessageAlloc(alloc, prepared.argv, err)) |message| {
+            defer alloc.free(message);
+            server.setFailed(alloc, message);
+        }
+        return err;
+    };
 
     server.dispatcher = stdio_dispatcher.StdioDispatcher.create(
         alloc,
@@ -940,6 +957,10 @@ fn spawnStdioServer(alloc: Allocator, server: *McpServer, argv: []const []const 
         if (docker_cleanup) |*cleanup| cleanup.run(alloc);
         return err;
     };
+    if (builtin.os.tag == .windows) {
+        server.dispatcher.?.installProcessJob(job);
+        job_owned = false;
+    }
     if (docker_cleanup) |cleanup| {
         server.dispatcher.?.installDockerCleanup(cleanup);
         docker_cleanup = null;

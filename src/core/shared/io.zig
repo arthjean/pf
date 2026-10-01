@@ -36,9 +36,152 @@ fn wrapWindowsIo(original: std.Io) std.Io {
     } else {
         windows_vtable = original.vtable.*;
         windows_vtable.dirOpenFile = windowsDirOpenFile;
+        windows_vtable.processSpawn = windowsProcessSpawn;
         windows_original_vtable = original.vtable;
     }
     return .{ .userdata = original.userdata, .vtable = &windows_vtable };
+}
+
+// Zig 0.16.0 resolves a bare argv[0] in the child's working directory before
+// `PATH`, so a `git.exe` planted in a repository would run. Every spawn
+// through `getIo` resolves a bare name with `resolveExecutableAlloc` first and
+// passes the absolute path, which std launches without any search.
+/// Serializes Windows spawns. The standard library creates each child's pipe
+/// ends as inheritable and calls `CreateProcessW` with handle inheritance on,
+/// so a second spawn running at the same moment would inherit the first
+/// child's pipes. Its process would then hold them open, and the first
+/// child's reader would never see end of file.
+var windows_spawn_mutex: std.Io.Mutex = .init;
+
+fn windowsProcessSpawn(
+    userdata: ?*anyopaque,
+    options: std.process.SpawnOptions,
+) std.process.SpawnError!std.process.Child {
+    const original = windows_original_vtable.?;
+    windows_spawn_mutex.lockUncancelable(getIo());
+    defer windows_spawn_mutex.unlock(getIo());
+    if (options.argv.len == 0 or !isBareExecutableName(options.argv[0])) {
+        return original.processSpawn(userdata, options);
+    }
+    const alloc = std.heap.smp_allocator;
+    const resolved = try resolveExecutableAlloc(alloc, options.argv[0]) orelse return error.FileNotFound;
+    defer alloc.free(resolved);
+    const argv = try alloc.dupe([]const u8, options.argv);
+    defer alloc.free(argv);
+    argv[0] = resolved;
+    var resolved_options = options;
+    resolved_options.argv = argv;
+    return original.processSpawn(userdata, resolved_options);
+}
+
+/// Extensions pf launches by bare name on Windows, in search order.
+const windows_executable_extensions = [_][]const u8{ ".exe", ".com", ".cmd", ".bat" };
+
+/// Whether `name` is a bare executable name: no directory part and no drive.
+pub fn isBareExecutableName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    return std.mem.findAny(u8, name, if (is_windows) "/\\:" else "/") == null;
+}
+
+/// Resolves a bare executable name to an absolute path on Windows. Only the
+/// absolute entries of `PATH` are searched, never the working directory, and
+/// a name without a launchable extension tries `.exe`, `.com`, `.cmd`, then
+/// `.bat` in each entry. Returns null when nothing matches. Caller owns the
+/// returned path. Windows only: elsewhere std resolves names through `PATH`
+/// without the working directory already. `PATH` comes from the process
+/// environment block, the same source std's own search reads.
+pub fn resolveExecutableAlloc(alloc: std.mem.Allocator, name: []const u8) error{OutOfMemory}!?[]u8 {
+    const path_value = try processPathAlloc(alloc) orelse return null;
+    defer alloc.free(path_value);
+    return resolveExecutableInPathAlloc(alloc, name, path_value);
+}
+
+/// Returns this process's `PATH` from the Windows environment block. Caller
+/// owns the returned text. Windows only.
+pub fn processPathAlloc(alloc: std.mem.Allocator) error{OutOfMemory}!?[]u8 {
+    comptime std.debug.assert(is_windows);
+    const environ: std.process.Environ = .{ .block = .global };
+    const path_w = environ.getWindows(std.unicode.wtf8ToWtf16LeStringLiteral("PATH")) orelse return null;
+    return try std.unicode.wtf16LeToWtf8Alloc(alloc, path_w);
+}
+
+/// `resolveExecutableAlloc` against an explicit `PATH` value.
+pub fn resolveExecutableInPathAlloc(alloc: std.mem.Allocator, name: []const u8, path_value: []const u8) error{OutOfMemory}!?[]u8 {
+    if (!isBareExecutableName(name)) return null;
+    const has_extension = for (windows_executable_extensions) |extension| {
+        if (std.ascii.endsWithIgnoreCase(name, extension)) break true;
+    } else false;
+    var entries = std.mem.tokenizeScalar(u8, path_value, ';');
+    while (entries.next()) |raw_entry| {
+        const entry = std.mem.trim(u8, std.mem.trim(u8, raw_entry, " "), "\"");
+        if (!isFullyQualifiedWindowsPath(entry)) continue;
+        if (has_extension) {
+            if (try existingFileAlloc(alloc, entry, name, "")) |path| return path;
+            continue;
+        }
+        for (windows_executable_extensions) |extension| {
+            if (try existingFileAlloc(alloc, entry, name, extension)) |path| return path;
+        }
+    }
+    return null;
+}
+
+/// A drive path such as `C:\tools` or a UNC path. Rooted paths without a
+/// drive (`\tools`) and drive-relative paths (`C:tools`) depend on the
+/// current directory, so they are not accepted.
+fn isFullyQualifiedWindowsPath(path: []const u8) bool {
+    if (path.len >= 3 and std.ascii.isAlphabetic(path[0]) and path[1] == ':' and
+        isWindowsSeparator(path[2])) return true;
+    return path.len >= 3 and isWindowsSeparator(path[0]) and isWindowsSeparator(path[1]);
+}
+
+fn isWindowsSeparator(byte: u8) bool {
+    return byte == '\\' or byte == '/';
+}
+
+fn existingFileAlloc(alloc: std.mem.Allocator, dir: []const u8, name: []const u8, extension: []const u8) error{OutOfMemory}!?[]u8 {
+    const trimmed_dir = std.mem.trimEnd(u8, dir, "\\/");
+    const path = try std.fmt.allocPrint(alloc, "{s}\\{s}{s}", .{ trimmed_dir, name, extension });
+    const stat = std.Io.Dir.cwd().statFile(getIo(), path, .{}) catch {
+        alloc.free(path);
+        return null;
+    };
+    if (stat.kind != .file) {
+        alloc.free(path);
+        return null;
+    }
+    return path;
+}
+
+/// Describes a failed spawn of `argv` for the user when the failure is one pf
+/// can name: an executable missing from `PATH`, or a batch script argument
+/// that Windows cannot pass safely. Returns null for other errors. Caller owns
+/// the returned text.
+pub fn spawnFailureMessageAlloc(
+    alloc: std.mem.Allocator,
+    argv: []const []const u8,
+    err: anyerror,
+) error{OutOfMemory}!?[]u8 {
+    if (argv.len == 0) return null;
+    switch (err) {
+        error.FileNotFound => {
+            if (!isBareExecutableName(argv[0])) return null;
+            return try std.fmt.allocPrint(alloc, "{s} was not found on PATH", .{argv[0]});
+        },
+        error.InvalidBatchScriptArg => {
+            for (argv[1..], 1..) |arg, position| {
+                if (std.mem.findAny(u8, arg, "\r\n\x00") != null) {
+                    return try std.fmt.allocPrint(
+                        alloc,
+                        "Argument {d} contains a line break, which Windows batch files cannot receive safely",
+                        .{position},
+                    );
+                }
+            }
+            return try std.fmt.allocPrint(alloc, "An argument contains a line break, which Windows batch files cannot receive safely", .{});
+        },
+        else => return null,
+    }
 }
 
 fn windowsDirOpenFile(
@@ -2185,6 +2328,111 @@ test "syncVerifiedDir succeeds after a durable write" {
     try syncVerifiedDir(dir);
 }
 
+test "Windows executable resolution searches only absolute PATH entries" {
+    if (comptime !is_windows) return error.SkipZigTest; // Windows PATH and extension rules.
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(getIo(), "first");
+    try tmp.dir.createDirPath(getIo(), "second");
+    try writeTempFile(tmp.dir, "tool.exe", "planted");
+    try writeTempFile(tmp.dir, "first/npx.cmd", "");
+    try writeTempFile(tmp.dir, "second/tool.cmd", "");
+    try writeTempFile(tmp.dir, "second/tool.exe", "");
+    try writeTempFile(tmp.dir, "second/script.ps1", "");
+    try tmp.dir.createDirPath(getIo(), "second/dir.exe");
+    const root = try dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(root);
+    const path_value = try std.fmt.allocPrint(
+        alloc,
+        ".;{s};relative\\bin;\\rooted;\"{s}\\first\";{s}\\second\\",
+        .{ root[0..2], root, root },
+    );
+    defer alloc.free(path_value);
+
+    const tool = (try resolveExecutableInPathAlloc(alloc, "tool", path_value)).?;
+    defer alloc.free(tool);
+    const expected_tool = try std.fmt.allocPrint(alloc, "{s}\\second\\tool.exe", .{root});
+    defer alloc.free(expected_tool);
+    try std.testing.expectEqualStrings(expected_tool, tool);
+
+    const npx = (try resolveExecutableInPathAlloc(alloc, "npx", path_value)).?;
+    defer alloc.free(npx);
+    const expected_npx = try std.fmt.allocPrint(alloc, "{s}\\first\\npx.cmd", .{root});
+    defer alloc.free(expected_npx);
+    try std.testing.expectEqualStrings(expected_npx, npx);
+
+    const explicit = (try resolveExecutableInPathAlloc(alloc, "TOOL.CMD", path_value)).?;
+    defer alloc.free(explicit);
+    try std.testing.expect(std.ascii.endsWithIgnoreCase(explicit, "\\second\\TOOL.CMD"));
+
+    try std.testing.expect(try resolveExecutableInPathAlloc(alloc, "script", path_value) == null);
+    try std.testing.expect(try resolveExecutableInPathAlloc(alloc, "dir", path_value) == null);
+    try std.testing.expect(try resolveExecutableInPathAlloc(alloc, "missing", path_value) == null);
+    try std.testing.expect(try resolveExecutableInPathAlloc(alloc, ".\\tool", path_value) == null);
+    try std.testing.expect(!isBareExecutableName("C:tool"));
+    try std.testing.expect(!isBareExecutableName("bin/tool"));
+    try std.testing.expect(isBareExecutableName("tool.exe"));
+}
+
+test "Windows spawn never runs an executable planted in the working directory" {
+    if (comptime !is_windows) return error.SkipZigTest; // Windows-only working-directory search.
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeTempFile(tmp.dir, "whoami.bat", "@echo planted> marker.txt\r\n");
+    try writeTempFile(tmp.dir, "whoami.cmd", "@echo planted> marker.txt\r\n");
+    const root = try dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(root);
+
+    // Unwrapped, std runs the planted script from the working directory.
+    const planted = try std.process.run(alloc, std.testing.io, .{
+        .argv = &.{"whoami"},
+        .cwd = .{ .path = root },
+    });
+    alloc.free(planted.stdout);
+    alloc.free(planted.stderr);
+    _ = try tmp.dir.statFile(getIo(), "marker.txt", .{});
+    try tmp.dir.deleteFile(getIo(), "marker.txt");
+
+    const result = try std.process.run(alloc, getIo(), .{
+        .argv = &.{"whoami"},
+        .cwd = .{ .path = root },
+    });
+    defer alloc.free(result.stdout);
+    defer alloc.free(result.stderr);
+    try std.testing.expectEqual(std.process.Child.Term{ .exited = 0 }, result.term);
+    try std.testing.expect(result.stdout.len > 0);
+    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(getIo(), "marker.txt", .{}));
+
+    try std.testing.expectError(error.FileNotFound, std.process.run(alloc, getIo(), .{
+        .argv = &.{"pf-missing-executable-for-test"},
+    }));
+    const missing = (try spawnFailureMessageAlloc(alloc, &.{"pf-missing-executable-for-test"}, error.FileNotFound)).?;
+    defer alloc.free(missing);
+    try std.testing.expectEqualStrings("pf-missing-executable-for-test was not found on PATH", missing);
+}
+
+test "Windows batch script arguments with line breaks fail and name their position" {
+    if (comptime !is_windows) return error.SkipZigTest; // Batch script quoting is Windows-only.
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeTempFile(tmp.dir, "echo-args.cmd", "@echo %*\r\n");
+    const script = try dirRealpathAlloc(alloc, tmp.dir, "echo-args.cmd");
+    defer alloc.free(script);
+
+    const argv = [_][]const u8{ script, "safe", "two\nlines" };
+    const err = std.process.run(alloc, getIo(), .{ .argv = &argv });
+    try std.testing.expectError(error.InvalidBatchScriptArg, err);
+    const message = (try spawnFailureMessageAlloc(alloc, &argv, error.InvalidBatchScriptArg)).?;
+    defer alloc.free(message);
+    try std.testing.expectEqualStrings(
+        "Argument 2 contains a line break, which Windows batch files cannot receive safely",
+        message,
+    );
+}
+
 test "windowsDosPathAlloc strips verbatim prefixes and uppercases the drive" {
     const alloc = std.testing.allocator;
     const cases = [_][2][]const u8{
@@ -2350,4 +2598,47 @@ test "concurrent locked durable writers both complete with one valid result" {
     defer parsed.deinit();
     const writer = parsed.value.object.get("writer").?.string;
     try std.testing.expect(std.mem.eql(u8, writer, "a") or std.mem.eql(u8, writer, "b"));
+}
+
+test "Windows concurrent spawns never inherit each other's pipes" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Handle inheritance races are Windows-specific.
+    const Holder = struct {
+        // Starts processes that outlive the reads below, so any pipe they
+        // inherited would delay that read's end of file.
+        fn run(done: *std.atomic.Value(bool)) void {
+            while (!done.load(.acquire)) {
+                var child = std.process.spawn(getIo(), .{
+                    .argv = &.{ "ping", "-n", "4", "127.0.0.1" },
+                    .stdin = .ignore,
+                    .stdout = .ignore,
+                    .stderr = .ignore,
+                }) catch return;
+                _ = child.wait(getIo()) catch {};
+            }
+        }
+    };
+    var done = std.atomic.Value(bool).init(false);
+    var holders: [4]std.Thread = undefined;
+    for (&holders) |*thread| thread.* = try std.Thread.spawn(.{}, Holder.run, .{&done});
+    defer {
+        done.store(true, .release);
+        for (holders) |thread| thread.join();
+    }
+
+    for (0..20) |_| {
+        var child = try std.process.spawn(getIo(), .{
+            .argv = &.{ "cmd.exe", "/d", "/c", "exit 0" },
+            .stdin = .pipe,
+            .stdout = .pipe,
+            .stderr = .pipe,
+        });
+        const started = milliTimestamp();
+        var buffer: [256]u8 = undefined;
+        while (true) {
+            const count = child.stdout.?.readStreaming(getIo(), &.{&buffer}) catch break;
+            if (count == 0) break;
+        }
+        _ = child.wait(getIo()) catch {};
+        try std.testing.expect(milliTimestamp() - started < 1_500);
+    }
 }

@@ -1,5 +1,6 @@
 const std = @import("std");
 const command_environment = @import("../execution/command_environment.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 
 const io_mod = @import("../shared/io.zig");
 const pathing = @import("../workspace/pathing.zig");
@@ -1592,6 +1593,9 @@ fn ruleTargetMatches(permission: []const u8, action: RuleDecision, pattern: []co
     }
 
     if (!containsWildcard(pattern)) return std.mem.eql(u8, pattern, candidate);
+    // A wildcard allow needs the command proven static, and pf does not
+    // parse PowerShell, so only exact allows apply there.
+    if (shell_selection.dialect() == .powershell) return false;
     if (!isStaticCommand(pattern, true) or !isStaticCommand(candidate, false)) return false;
     return staticCommandWildcardMatch(pattern, candidate);
 }
@@ -2641,6 +2645,34 @@ test "configured command rules match explicit environments by command" {
         RuleDecision.allow,
         try ruleDecisionFor(alloc, rules, "/tmp/workspace", "run_command", target, .command_cwd),
     );
+}
+
+test "PowerShell commands match only exact allows while denies keep wildcards" {
+    const alloc = std.testing.allocator;
+    var rules_buf = [_]types.PermissionRule{
+        .{ .permission = @constCast("bash"), .pattern = @constCast("git *"), .action = .allow },
+        .{ .permission = @constCast("bash"), .pattern = @constCast("npm test"), .action = .allow },
+        .{ .permission = @constCast("bash"), .pattern = @constCast("rm *"), .action = .deny },
+    };
+    const rules: types.PermissionRuleSet = .{ .rules = &rules_buf };
+    const decide = struct {
+        fn run(a: std.mem.Allocator, set: types.PermissionRuleSet, command: []const u8) !RuleDecision {
+            const target = try std.fmt.allocPrint(a, "/tmp/workspace::{s}", .{command});
+            defer a.free(target);
+            return ruleDecisionFor(a, set, "/tmp/workspace", "run_command", target, .command_cwd);
+        }
+    }.run;
+
+    shell_selection.test_dialect = .posix_sh;
+    defer shell_selection.test_dialect = null;
+    try std.testing.expectEqual(RuleDecision.allow, try decide(alloc, rules, "git status"));
+    try std.testing.expectEqual(RuleDecision.none, try decide(alloc, rules, "git status; Remove-Item -Recurse x"));
+
+    shell_selection.test_dialect = .powershell;
+    try std.testing.expectEqual(RuleDecision.none, try decide(alloc, rules, "git status"));
+    try std.testing.expectEqual(RuleDecision.none, try decide(alloc, rules, "git status; Remove-Item -Recurse x"));
+    try std.testing.expectEqual(RuleDecision.allow, try decide(alloc, rules, "npm test"));
+    try std.testing.expectEqual(RuleDecision.deny, try decide(alloc, rules, "rm -rf build"));
 }
 
 test "directory tree permission patterns match directory and descendants only" {
