@@ -17,10 +17,10 @@
     {
       "id": "EP-002",
       "title": "Native Windows runtime",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 8,
-      "stories_done": 0
+      "stories_done": 8
     },
     {
       "id": "EP-003",
@@ -128,35 +128,35 @@
       "id": "US-006",
       "title": "Replace POSIX process ids with a platform-neutral type",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-001"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-007",
       "title": "Move pf sockets onto std.Io.net",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-001"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-008",
       "title": "Reach a green native Windows build with headless commands",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
@@ -167,80 +167,80 @@
         "US-006",
         "US-007"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-009",
       "title": "Validate assumption: VT console input reaches pf intact through ConPTY",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-001"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-010",
       "title": "Run the TUI on the Windows console",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-008",
         "US-009"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-011",
       "title": "Read console prompts outside the TUI",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-010"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-012",
       "title": "Handle Ctrl+C and console close events",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-010"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-013",
       "title": "Tune terminal capabilities and path input for Windows",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-010"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-014",
