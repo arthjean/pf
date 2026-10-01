@@ -1,0 +1,29 @@
+{
+  "host": "conpty-driver.exe at 120x30 on Windows 11 Pro 10.0.26300, inputs from windows-vt-input-probe.script",
+  "reader": "ReadConsoleW with ENABLE_VIRTUAL_TERMINAL_INPUT, line, echo, and processed input disabled",
+  "inputs": [
+    {"label": "Up", "utf8_hex": "1b5b41", "utf16": ["001b", "005b", "0041"], "text": "\u001b[A"},
+    {"label": "Shift+Up", "utf8_hex": "1b5b313b3241", "utf16": ["001b", "005b", "0031", "003b", "0032", "0041"], "text": "\u001b[1;2A"},
+    {"label": "Alt+Up", "utf8_hex": "1b5b313b3341", "utf16": ["001b", "005b", "0031", "003b", "0033", "0041"], "text": "\u001b[1;3A"},
+    {"label": "Ctrl+Up", "utf8_hex": "1b5b313b3541", "utf16": ["001b", "005b", "0031", "003b", "0035", "0041"], "text": "\u001b[1;5A"},
+    {"label": "Shift+Left", "utf8_hex": "1b5b313b3244", "utf16": ["001b", "005b", "0031", "003b", "0032", "0044"], "text": "\u001b[1;2D"},
+    {"label": "Ctrl+Left", "utf8_hex": "1b5b313b3544", "utf16": ["001b", "005b", "0031", "003b", "0035", "0044"], "text": "\u001b[1;5D"},
+    {"label": "Alt+Right", "utf8_hex": "1b5b313b3343", "utf16": ["001b", "005b", "0031", "003b", "0033", "0043"], "text": "\u001b[1;3C"},
+    {"label": "Ctrl+Right", "utf8_hex": "1b5b313b3543", "utf16": ["001b", "005b", "0031", "003b", "0035", "0043"], "text": "\u001b[1;5C"},
+    {"label": "Down", "utf8_hex": "1b5b42", "utf16": ["001b", "005b", "0042"], "text": "\u001b[B"},
+    {"label": "Home", "utf8_hex": "1b5b48", "utf16": ["001b", "005b", "0048"], "text": "\u001b[H"},
+    {"label": "End", "utf8_hex": "1b5b46", "utf16": ["001b", "005b", "0046"], "text": "\u001b[F"},
+    {"label": "Delete", "utf8_hex": "1b5b337e", "utf16": ["001b", "005b", "0033", "007e"], "text": "\u001b[3~"},
+    {"label": "Enter", "utf8_hex": "0d", "utf16": ["000d"], "text": "\r"},
+    {"label": "Backspace", "utf8_hex": "7f", "utf16": ["007f"], "text": ""},
+    {"label": "Tab", "utf8_hex": "09", "utf16": ["0009"], "text": "\t"},
+    {"label": "Shift+Tab", "utf8_hex": "1b5b5a", "utf16": ["001b", "005b", "005a"], "text": "\u001b[Z"},
+    {"label": "Escape", "utf8_hex": "1b", "utf16": ["001b"], "text": "\u001b"},
+    {"label": "Bracketed paste of two lines", "utf8_hex": "1b5b3230307e6c696e65206f6e650d0a6c696e652074776f1b5b3230317e", "utf16": ["001b", "005b", "0032", "0030", "0030", "007e", "006c", "0069", "006e", "0065", "0020", "006f", "006e", "0065", "000d", "000a", "006c", "0069", "006e", "0065", "0020", "0074", "0077", "006f", "001b", "005b", "0032", "0030", "0031", "007e"], "text": "\u001b[200~line one\r\nline two\u001b[201~"},
+    {"label": "Non-ASCII text with a surrogate pair", "utf8_hex": "68c3a96c6c6f20e29c9320e697a5e69cac20f09d9291", "utf16": ["0068", "00e9", "006c", "006c", "006f", "0020", "2713", "0020", "65e5", "672c", "0020", "d835", "dc91"], "text": "héllo ✓ 日本 𝒑"},
+    {"label": "Ctrl+C", "utf8_hex": "03", "utf16": ["0003"], "text": "\u0003"},
+    {"label": "Alt+b", "utf8_hex": "1b62", "utf16": ["001b", "0062"], "text": "\u001bb"},
+    {"label": "Focus in report", "utf8_hex": "1b5b49", "utf16": ["001b", "005b", "0049"], "text": "\u001b[I"},
+    {"label": "Kitty keyboard Ctrl+a (CSI 97;5u)", "utf8_hex": "1b5b39373b3575", "utf16": ["001b", "005b", "0039", "0037", "003b", "0035", "0075"], "text": "\u001b[97;5u"}
+  ]
+}

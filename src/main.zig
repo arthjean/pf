@@ -619,6 +619,7 @@ const App = struct {
             .input_runtime = undefined,
             .session = undefined,
             .shell = TranscriptRuntime.init(),
+            .terminal = TerminalState.init(),
             .lifecycle_runtime = hooks.Runtime.init(alloc),
             .terminal_client = terminal_client_runtime.Runtime.init(if (comptime host_target.is_wasm)
                 process_provider.unavailable_provider
@@ -750,6 +751,7 @@ const App = struct {
 
     pub fn rebindAfterInit(self: *App) void {
         SessionAppRuntime.rebindSubagentHost(self);
+        app_lifecycle.bindConsoleCloseHandler(&self.terminal, &self.should_exit);
     }
 
     pub fn setNotificationPreferences(
@@ -4009,12 +4011,14 @@ fn handleSigWinchNative(_: std.posix.SIG) callconv(.c) void {
     resize_interlock.noteResizeSignal();
 }
 
-fn handleSigWinchWeb() callconv(.c) void {
+/// Resize notification without a signal number, for JavaScript hosts and
+/// Windows console input records.
+fn handleResizeNotification() callconv(.c) void {
     resize_interlock.noteResizeSignal();
 }
 
-const handle_sigwinch: app_lifecycle.ResizeHandler = if (host_target.is_wasm)
-    handleSigWinchWeb
+const handle_sigwinch: app_lifecycle.ResizeHandler = if (host_target.is_wasm or builtin.os.tag == .windows)
+    handleResizeNotification
 else
     handleSigWinchNative;
 
@@ -4907,6 +4911,7 @@ test {
     _ = @import("core/terminal/host_policy.zig");
     _ = @import("core/terminal/shell_resolver.zig");
     _ = @import("core/terminal/native_session.zig");
+    _ = @import("core/terminal/conpty.zig");
     _ = @import("core/terminal/recovery.zig");
     _ = @import("core/terminal/store.zig");
     _ = @import("core/terminal/host.zig");
@@ -4918,6 +4923,7 @@ test {
     _ = @import("core/app/input_approval_runtime.zig");
     _ = @import("acp/sessions.zig");
     _ = @import("core/shared/text_utils.zig");
+    _ = @import("core/shared/console_prompt.zig");
     _ = @import("core/tooling/tool_projection.zig");
     _ = @import("core/tooling/tool_dispatch.zig");
     _ = @import("core/tooling/tool_set.zig");

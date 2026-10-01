@@ -33,6 +33,8 @@ const test_builtin_commands = if (builtin.is_test)
 else
     struct {};
 
+const app_lifecycle = @import("app_lifecycle.zig");
+
 const Allocator = std.mem.Allocator;
 
 const GracefulExitSigintGuard = if (host_target.is_wasm) struct {
@@ -41,6 +43,24 @@ const GracefulExitSigintGuard = if (host_target.is_wasm) struct {
     }
 
     fn deinit(_: *@This()) void {}
+} else if (builtin.os.tag == .windows) struct {
+    // A null handler makes the process ignore CTRL_C_EVENT until it is removed.
+    ignoring: bool = false,
+
+    fn install(enabled: bool) @This() {
+        // A console close is already ending the process, and its handler
+        // holds the lock that changing handlers needs.
+        if (!enabled or app_lifecycle.consoleCloseInProgress()) return .{};
+        const win32 = @import("../shared/win32.zig");
+        return .{ .ignoring = win32.SetConsoleCtrlHandler(null, .TRUE).toBool() };
+    }
+
+    fn deinit(self: *@This()) void {
+        if (!self.ignoring) return;
+        const win32 = @import("../shared/win32.zig");
+        _ = win32.SetConsoleCtrlHandler(null, .FALSE);
+        self.ignoring = false;
+    }
 } else struct {
     saved_action: ?std.posix.Sigaction = null,
 
@@ -172,7 +192,29 @@ fn requireWindowsHome(comptime os_tag: std.Target.Os.Tag, deps: RunDeps) ?Before
     return .{ .exit = 1 };
 }
 
+/// Ends a Windows process on Ctrl+C with 130 and on Ctrl+Break with 143, the
+/// codes a POSIX shell reports for SIGINT and SIGTERM, instead of the console
+/// default `STATUS_CONTROL_C_EXIT`. Headless runs and the interactive app
+/// install handlers that answer first.
+const windows_interrupt_exit = struct {
+    fn handle(ctrl_type: u32) callconv(.winapi) std.os.windows.BOOL {
+        const win32 = @import("../shared/win32.zig");
+        switch (ctrl_type) {
+            win32.CTRL_C_EVENT => std.process.exit(130),
+            win32.CTRL_BREAK_EVENT => std.process.exit(143),
+            else => return .FALSE,
+        }
+    }
+
+    fn install() void {
+        if (comptime builtin.os.tag != .windows) return;
+        const win32 = @import("../shared/win32.zig");
+        _ = win32.SetConsoleCtrlHandler(handle, .TRUE);
+    }
+};
+
 pub fn runBeforeInteractive(alloc: Allocator, args: []const [:0]const u8, cfg: Config) !BeforeInteractiveResult {
+    windows_interrupt_exit.install();
     if (requireWindowsHome(builtin.os.tag, .{})) |result| return result;
     const run_result = cli_surface.runIfRequested(alloc, args, cliSurfaceConfig(cfg)) catch |err| switch (err) {
         error.UnknownCliCommand => return .{ .exit = 1 },
@@ -303,6 +345,12 @@ fn runInteractiveWithDeps(comptime App: type, comptime cooperative: bool, app: *
                 return .{ .exit = 1 };
             },
             else => {
+                // Only the Windows console backend can fail to enable virtual
+                // terminal processing.
+                if (@as(anyerror, err) == error.VirtualTerminalUnavailable) {
+                    writeStderr(deps, "pf needs a console with virtual terminal support; run it in Windows Terminal or the VS Code terminal.\n");
+                    return .{ .exit = 1 };
+                }
                 reportUnexpectedInteractiveError(deps, err);
                 return err;
             },
@@ -1349,6 +1397,21 @@ test "app entry maps noninteractive terminal startup to exit one" {
 
     try std.testing.expectEqual(@as(u8, 1), outcome.exit);
     try std.testing.expectEqualStrings("pf requires an interactive terminal (TTY).\n", capture.stderr.written());
+    try expectEvents(&.{"init:none"});
+}
+
+test "app entry names supported Windows hosts when virtual terminal output is unavailable" {
+    const alloc = std.testing.allocator;
+    var capture = TestCapture.init(.{ .interactive = .{} });
+    defer capture.deinit();
+    capture.init_error = error.VirtualTerminalUnavailable;
+    const outcome = try runWithDeps(TestApp, alloc, &.{}, testConfig(), capture.deps());
+
+    try std.testing.expectEqual(@as(u8, 1), outcome.exit);
+    try std.testing.expectEqualStrings(
+        "pf needs a console with virtual terminal support; run it in Windows Terminal or the VS Code terminal.\n",
+        capture.stderr.written(),
+    );
     try expectEvents(&.{"init:none"});
 }
 

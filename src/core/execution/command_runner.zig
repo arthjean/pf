@@ -16,6 +16,7 @@ const shell_resolver = @import("../terminal/shell_resolver.zig");
 const darwin_process_spawn = @import("../shared/darwin_process_spawn.zig");
 
 const Allocator = std.mem.Allocator;
+const ProcessId = io_mod.ProcessId;
 pub const CommandOutputStream = command_contract.CommandOutputStream;
 pub const CommandOutputCallback = command_contract.CommandOutputCallback;
 pub const CommandExecutionResult = command_contract.RunCommandResult;
@@ -146,8 +147,9 @@ pub fn runForegroundSessionBootstrap(args: []const [:0]const u8) !void {
     else
         std.fmt.parseInt(i64, args[1], 10) catch
             return error.InvalidForegroundSessionInvocation;
-    const command_session = std.c.setsid();
-    if (command_session == -1) return error.ForegroundSessionSetupFailed;
+    const session_id = std.c.setsid();
+    if (session_id == -1) return error.ForegroundSessionSetupFailed;
+    const command_session: ProcessId = @intCast(session_id);
 
     const zio = io_mod.getIo();
     try std.Io.File.stderr().writeStreamingAll(
@@ -368,7 +370,7 @@ const ChildWaiter = struct {
         future.await(self.io);
     }
 
-    fn abort(self: *ChildWaiter, pid: std.posix.pid_t) void {
+    fn abort(self: *ChildWaiter, pid: ProcessId) void {
         if (self.isReady()) {
             self.awaitDiscard();
             return;
@@ -382,9 +384,9 @@ fn waitForForegroundTarget(
     target: *std.process.Child,
     process_witness: ?*const process_tree.DarwinProcessWitness,
     deadline_ms: ?i64,
-    command_session: std.posix.pid_t,
+    command_session: ProcessId,
 ) !std.process.Child.Term {
-    const target_pid = target.id orelse return error.ForegroundTargetMissing;
+    const target_pid = io_mod.childProcessId(target.id orelse return error.ForegroundTargetMissing);
     var descendants = try process_tree.Tracker.init(std.heap.page_allocator);
     defer descendants.deinit();
     if (process_witness) |witness| {
@@ -392,7 +394,7 @@ fn waitForForegroundTarget(
     }
     if (comptime builtin.os.tag == .macos) {
         try descendants.refresh(target_pid);
-        try std.posix.kill(target_pid, std.posix.SIG.CONT);
+        try std.posix.kill(io_mod.posixPid(target_pid), std.posix.SIG.CONT);
     }
     var waiter = ChildWaiter.init(target);
     try waiter.start();
@@ -492,8 +494,8 @@ const CompletedTargetCleanup = struct {
 /// still stop them.
 fn cleanupCompletedForegroundTarget(
     descendants: *process_tree.Tracker,
-    target_pid: std.posix.pid_t,
-    command_session: std.posix.pid_t,
+    target_pid: ProcessId,
+    command_session: ProcessId,
 ) !CompletedTargetCleanup {
     const started_ms = io_mod.milliTimestamp();
     var cleanup: CompletedTargetCleanup = .{};
@@ -518,11 +520,11 @@ fn cleanupCompletedForegroundTarget(
 
 fn refreshForegroundTargetTree(
     descendants: *process_tree.Tracker,
-    target_pid: std.posix.pid_t,
+    target_pid: ProcessId,
 ) !void {
     try descendants.refresh(target_pid);
     if (comptime builtin.os.tag == .linux) {
-        try descendants.refreshAdditionalRoot(std.c.getpid());
+        try descendants.refreshAdditionalRoot(io_mod.currentProcessId());
     }
     if (comptime builtin.os.tag == .macos) {
         if (foregroundSessionTerminationRequest() != .none) {
@@ -549,7 +551,7 @@ fn advanceForegroundTargetTermination(
             termination_started_ms.* = now_ms;
             const count = descendants.signalOutsideProcessGroup(
                 std.posix.SIG.TERM,
-                std.c.getpid(),
+                io_mod.currentProcessId(),
             );
             debug_trace.logf(
                 "core",
@@ -567,7 +569,7 @@ fn advanceForegroundTargetTermination(
 
 fn waitForForegroundTargetDescendants(
     descendants: *process_tree.Tracker,
-    target_pid: std.posix.pid_t,
+    target_pid: ProcessId,
     termination_started_ms: i64,
     forced: *bool,
 ) !void {
@@ -1129,7 +1131,7 @@ fn executeProcessWithInput(
 
     const process_group_id = if (isolate_process_group and
         builtin.os.tag != .windows and builtin.os.tag != .wasi)
-        child.id
+        io_mod.childProcessId(child.id.?)
     else
         null;
     child_needs_cleanup = false;
@@ -1255,7 +1257,7 @@ fn executeProcessWithDetachedSession(
     try script_write.writeStreamingAll(io_mod.getIo(), script);
 
     var launch_failure_probe = ForegroundLaunchFailureProbe.init(&failure_marker);
-    const process_group_id = child.id;
+    const process_group_id = io_mod.childProcessId(child.id.?);
     child_needs_cleanup = false;
     var collected = try collectSpawnedProcess(
         scratch,
@@ -1414,7 +1416,7 @@ fn executeProcessWithScriptUnisolated(
     script_write.close(io_mod.getIo());
     script_write_open = false;
 
-    const process_group_id = child.id;
+    const process_group_id = io_mod.childProcessId(child.id.?);
     child_needs_cleanup = false;
     const collected = try collectSpawnedProcess(
         scratch,
@@ -1592,14 +1594,9 @@ fn artifactPath(alloc: Allocator, dir: []const u8, stem: []const u8, suffix: []c
 
 fn fallbackCommandArtifactDir(alloc: Allocator) ![]u8 {
     const temp_root = io_mod.tempDir();
-    const pid_text = try std.fmt.allocPrint(alloc, "{d}", .{currentProcessId()});
+    const pid_text = try std.fmt.allocPrint(alloc, "{d}", .{io_mod.currentProcessId()});
     defer alloc.free(pid_text);
     return std.fs.path.join(alloc, &.{ temp_root, command_artifact_fallback_dir_name, pid_text });
-}
-
-fn currentProcessId() u64 {
-    if (comptime builtin.os.tag == .windows) return std.os.windows.GetCurrentProcessId();
-    return @intCast(std.c.getpid());
 }
 
 fn elapsedMs(started_ms: i64, finished_ms: i64) u64 {
@@ -2371,7 +2368,7 @@ const ProcessObserver = struct {
 
     fn signal(
         self: *ProcessObserver,
-        process_group_id: ?std.posix.pid_t,
+        process_group_id: ?ProcessId,
         protocol: TerminationProtocol,
         intent: TerminationIntent,
     ) !void {
@@ -2379,7 +2376,7 @@ const ProcessObserver = struct {
             self.waiter.child.kill(self.waiter.io);
             return;
         }
-        const target_pid = process_group_id orelse self.process_id;
+        const target_pid = process_group_id orelse io_mod.childProcessId(self.process_id);
         const plan = terminationSignalPlan(protocol, intent);
         return switch (plan.scope) {
             .process_group => signalProcessGroup(target_pid, plan.signal),
@@ -2387,7 +2384,7 @@ const ProcessObserver = struct {
         };
     }
 
-    fn abort(self: *ProcessObserver, process_group_id: ?std.posix.pid_t) void {
+    fn abort(self: *ProcessObserver, process_group_id: ?ProcessId) void {
         if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
             cleanupChild(self.waiter.child);
             return;
@@ -2396,7 +2393,7 @@ const ProcessObserver = struct {
             self.waiter.awaitDiscard();
             return;
         }
-        const pid = process_group_id orelse self.process_id;
+        const pid = process_group_id orelse io_mod.childProcessId(self.process_id);
         signalProcessGroup(pid, std.posix.SIG.KILL) catch |err| {
             debug_trace.logf(
                 "core",
@@ -2426,7 +2423,7 @@ fn collectOutput(
     cfg: Config,
     source: *TerminationSource,
     launch_failure_probe: ?*ForegroundLaunchFailureProbe,
-    process_group_id: ?std.posix.pid_t,
+    process_group_id: ?ProcessId,
     termination_protocol: TerminationProtocol,
     leader_status: *?command_contract.CommandStatus,
 ) !CollectedOutput {
@@ -2735,7 +2732,7 @@ fn collectOutputForProcess(
     output: *OutputCollector,
     cfg: Config,
     launch_failure_probe: ?*ForegroundLaunchFailureProbe,
-    process_group_id: ?std.posix.pid_t,
+    process_group_id: ?ProcessId,
     termination_protocol: TerminationProtocol,
     leader_status: *?command_contract.CommandStatus,
 ) !CollectedOutput {
@@ -2757,7 +2754,7 @@ fn collectOutputForProcess(
 fn waitForCollectedProcess(
     observer: *ProcessObserver,
     source: TerminationSource,
-    process_group_id: ?std.posix.pid_t,
+    process_group_id: ?ProcessId,
     leader_status: ?command_contract.CommandStatus,
 ) !command_contract.CommandStatus {
     if (leader_status) |status| {
@@ -2786,7 +2783,7 @@ fn collectSpawnedProcess(
     output: *OutputCollector,
     cfg: Config,
     launch_failure_probe: ?*ForegroundLaunchFailureProbe,
-    process_group_id: ?std.posix.pid_t,
+    process_group_id: ?ProcessId,
     termination_protocol: TerminationProtocol,
 ) !CollectedTermination {
     var observer = ProcessObserver.init(child) catch |err| {
@@ -2883,7 +2880,7 @@ fn mapTerminationError(
 
 fn updateTerminationSignal(
     observer: *ProcessObserver,
-    process_group_id: ?std.posix.pid_t,
+    process_group_id: ?ProcessId,
     termination_protocol: TerminationProtocol,
     cfg: Config,
     started_ms: i64,
@@ -2961,18 +2958,22 @@ fn emitOutputChunk(
     try callback(ctx, lifecycle_id, stream, chunk);
 }
 
-fn signalProcess(pid: std.posix.pid_t, signal: std.posix.SIG) !void {
-    std.posix.kill(pid, signal) catch |err| switch (err) {
+fn signalProcess(pid: ProcessId, signal: std.posix.SIG) !void {
+    return killIfPresent(io_mod.posixPid(pid), signal);
+}
+
+fn signalProcessGroup(pid: ProcessId, signal: std.posix.SIG) !void {
+    return killIfPresent(-io_mod.posixPid(pid), signal);
+}
+
+fn killIfPresent(target: std.c.pid_t, signal: std.posix.SIG) !void {
+    std.posix.kill(target, signal) catch |err| switch (err) {
         error.ProcessNotFound => {},
         else => return err,
     };
 }
 
-fn signalProcessGroup(pid: std.posix.pid_t, signal: std.posix.SIG) !void {
-    return signalProcess(-pid, signal);
-}
-
-fn terminateRemainingProcessGroup(pid: std.posix.pid_t) void {
+fn terminateRemainingProcessGroup(pid: ProcessId) void {
     // Windows has no process groups, and remainingProcessGroupAlive never
     // reports one there.
     if (comptime builtin.os.tag == .windows) return;
@@ -2985,10 +2986,10 @@ fn terminateRemainingProcessGroup(pid: std.posix.pid_t) void {
     };
 }
 
-fn remainingProcessGroupAlive(process_group_id: ?std.posix.pid_t) bool {
+fn remainingProcessGroupAlive(process_group_id: ?ProcessId) bool {
     if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) return false;
     const pid = process_group_id orelse return false;
-    std.posix.kill(-pid, @enumFromInt(0)) catch |err| return switch (err) {
+    std.posix.kill(-io_mod.posixPid(pid), @enumFromInt(0)) catch |err| return switch (err) {
         error.ProcessNotFound => false,
         else => true,
     };
@@ -3198,15 +3199,15 @@ fn spawnUnreadyForegroundSessionChildForTest(argv: []const []const u8) !std.proc
     });
 }
 
-fn expectReapedChildForTest(child: *std.process.Child, pid: std.posix.pid_t) !void {
+fn expectReapedChildForTest(child: *std.process.Child, pid: std.process.Child.Id) !void {
     try std.testing.expect(child.id == null);
     try std.testing.expectError(error.ProcessNotFound, std.posix.kill(pid, @enumFromInt(0)));
 }
 
-fn expectProcessGoneWithinForTest(pid: std.posix.pid_t, timeout_ms: i64) !void {
+fn expectProcessGoneWithinForTest(pid: ProcessId, timeout_ms: i64) !void {
     const deadline_ms = io_mod.milliTimestamp() + timeout_ms;
     while (io_mod.milliTimestamp() < deadline_ms) {
-        std.posix.kill(pid, @enumFromInt(0)) catch |err| switch (err) {
+        std.posix.kill(io_mod.posixPid(pid), @enumFromInt(0)) catch |err| switch (err) {
             error.ProcessNotFound => return,
             else => return err,
         };
@@ -3317,8 +3318,8 @@ test "foreground session owner loss kills the target and descendant before delay
     defer alloc.free(pids_text);
     try std.testing.expectEqual(true, pids_text.len > 0);
     var pids = std.mem.tokenizeAny(u8, pids_text, " \r\n\t");
-    const target_pid = try std.fmt.parseInt(std.posix.pid_t, pids.next() orelse return error.TestUnexpectedResult, 10);
-    const descendant_pid = try std.fmt.parseInt(std.posix.pid_t, pids.next() orelse return error.TestUnexpectedResult, 10);
+    const target_pid = try std.fmt.parseInt(ProcessId, pids.next() orelse return error.TestUnexpectedResult, 10);
+    const descendant_pid = try std.fmt.parseInt(ProcessId, pids.next() orelse return error.TestUnexpectedResult, 10);
     try std.testing.expect(pids.next() == null);
     defer signalProcess(target_pid, std.posix.SIG.KILL) catch {};
     defer signalProcess(descendant_pid, std.posix.SIG.KILL) catch {};
@@ -4429,7 +4430,7 @@ test "artifact write failure after cancellation remains a bare error" {
     const watcher = try std.Thread.spawn(.{}, Watcher.run, .{ ready_path, &cancel, &ready_seen });
     defer watcher.join();
 
-    const process_group_id = child.id;
+    const process_group_id = io_mod.childProcessId(child.id.?);
     var observer = try ProcessObserver.init(&child);
     defer observer.deinit();
     try observer.start();
@@ -4668,19 +4669,19 @@ test "timeout terminates foreground process group descendants" {
     const pid_text = try readAbsoluteFile(alloc, ready_path, 64);
     defer alloc.free(pid_text);
     const pid = try std.fmt.parseInt(
-        std.posix.pid_t,
+        ProcessId,
         std.mem.trim(u8, pid_text, " \t\r\n"),
         10,
     );
 
     const started_ms = io_mod.milliTimestamp();
     while (true) {
-        std.posix.kill(pid, @enumFromInt(0)) catch |err| switch (err) {
+        std.posix.kill(io_mod.posixPid(pid), @enumFromInt(0)) catch |err| switch (err) {
             error.ProcessNotFound => break,
             else => return err,
         };
         if (io_mod.milliTimestamp() - started_ms > 1000) {
-            std.posix.kill(pid, std.posix.SIG.KILL) catch {};
+            std.posix.kill(io_mod.posixPid(pid), std.posix.SIG.KILL) catch {};
             return error.TestUnexpectedResult;
         }
         io_mod.sleep(10 * std.time.ns_per_ms);
@@ -4721,7 +4722,7 @@ test "timeout terminates redirected descendant after setsid" {
     const pid_text = try readAbsoluteFile(alloc, pid_path, 64);
     defer alloc.free(pid_text);
     const pid = try std.fmt.parseInt(
-        std.posix.pid_t,
+        ProcessId,
         std.mem.trim(u8, pid_text, " \t\r\n"),
         10,
     );
@@ -4764,7 +4765,7 @@ test "timeout terminates double-forked descendant after setsid" {
     const pid_text = try readAbsoluteFile(alloc, pid_path, 64);
     defer alloc.free(pid_text);
     const pid = try std.fmt.parseInt(
-        std.posix.pid_t,
+        ProcessId,
         std.mem.trim(u8, pid_text, " \t\r\n"),
         10,
     );
@@ -4806,25 +4807,25 @@ test "timeout terminates environment-sanitized double-fork descendants" {
 
     const pid_text = try readAbsoluteFile(alloc, pid_path, 4096);
     defer alloc.free(pid_text);
-    var pids: std.ArrayList(std.posix.pid_t) = .empty;
+    var pids: std.ArrayList(ProcessId) = .empty;
     defer pids.deinit(alloc);
     var lines = std.mem.tokenizeAny(u8, pid_text, " \t\r\n");
     while (lines.next()) |line| {
-        try pids.append(alloc, try std.fmt.parseInt(std.posix.pid_t, line, 10));
+        try pids.append(alloc, try std.fmt.parseInt(ProcessId, line, 10));
     }
     defer for (pids.items) |pid| {
-        std.posix.kill(pid, std.posix.SIG.KILL) catch {};
+        std.posix.kill(io_mod.posixPid(pid), std.posix.SIG.KILL) catch {};
     };
     try std.testing.expectEqual(@as(usize, 16), pids.items.len);
     for (pids.items) |pid| try expectProcessGone(pid);
 }
 
-fn expectProcessGone(pid: std.posix.pid_t) !void {
+fn expectProcessGone(pid: ProcessId) !void {
     const started_ms = io_mod.milliTimestamp();
     while (true) {
         if (!try process_tree.processIsAlive(std.testing.allocator, pid)) return;
         if (io_mod.milliTimestamp() - started_ms > 1000) {
-            std.posix.kill(pid, std.posix.SIG.KILL) catch {};
+            std.posix.kill(io_mod.posixPid(pid), std.posix.SIG.KILL) catch {};
             return error.TestUnexpectedResult;
         }
         io_mod.sleep(10 * std.time.ns_per_ms);
@@ -4860,7 +4861,7 @@ test "natural command completion terminates background child inheriting pipes" {
     const pid_text = try readAbsoluteFile(alloc, pid_path, 64);
     defer alloc.free(pid_text);
     const pid = try std.fmt.parseInt(
-        std.posix.pid_t,
+        ProcessId,
         std.mem.trim(u8, pid_text, " \t\r\n"),
         10,
     );
@@ -4896,7 +4897,7 @@ test "natural command completion terminates background child with redirected str
     const pid_text = try readAbsoluteFile(alloc, pid_path, 64);
     defer alloc.free(pid_text);
     const pid = try std.fmt.parseInt(
-        std.posix.pid_t,
+        ProcessId,
         std.mem.trim(u8, pid_text, " \t\r\n"),
         10,
     );
@@ -5571,20 +5572,20 @@ test "natural completion marks output incomplete when the deadline cuts leftover
 }
 
 /// Reads whitespace-separated PIDs. The caller owns the returned slice.
-fn readPidsForTest(alloc: Allocator, path: []const u8) ![]std.posix.pid_t {
+fn readPidsForTest(alloc: Allocator, path: []const u8) ![]ProcessId {
     const text = try readAbsoluteFile(alloc, path, 256);
     defer alloc.free(text);
-    var pids: std.ArrayList(std.posix.pid_t) = .empty;
+    var pids: std.ArrayList(ProcessId) = .empty;
     errdefer pids.deinit(alloc);
     var tokens = std.mem.tokenizeAny(u8, text, " \t\r\n");
     while (tokens.next()) |token| {
-        try pids.append(alloc, try std.fmt.parseInt(std.posix.pid_t, token, 10));
+        try pids.append(alloc, try std.fmt.parseInt(ProcessId, token, 10));
     }
     return pids.toOwnedSlice(alloc);
 }
 
-fn stopProcessesForTest(pids: []const std.posix.pid_t) void {
-    for (pids) |pid| std.posix.kill(pid, std.posix.SIG.KILL) catch {};
+fn stopProcessesForTest(pids: []const ProcessId) void {
+    for (pids) |pid| std.posix.kill(io_mod.posixPid(pid), std.posix.SIG.KILL) catch {};
 }
 
 test "cancellation preserves grace and removes an escaped descendant" {
@@ -5643,7 +5644,7 @@ test "cancellation preserves grace and removes an escaped descendant" {
     const pid_text = try readAbsoluteFile(alloc, pid_path, 64);
     defer alloc.free(pid_text);
     const pid = try std.fmt.parseInt(
-        std.posix.pid_t,
+        ProcessId,
         std.mem.trim(u8, pid_text, " \t\r\n"),
         10,
     );

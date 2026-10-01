@@ -19,7 +19,7 @@ fn captureToken(
     alloc: Allocator,
     pid_text: []const u8,
 ) process_provider.ProviderError!process_identity.ProcessInstanceToken {
-    const pid = std.fmt.parseInt(std.posix.pid_t, pid_text, 10) catch
+    const pid = std.fmt.parseInt(io_mod.ProcessId, pid_text, 10) catch
         return error.InvalidPid;
     return switch (builtin.os.tag) {
         .linux => captureLinuxToken(alloc, pid) catch |err| switch (err) {
@@ -31,8 +31,26 @@ fn captureToken(
             error.ProcessNotFound => error.ProcessNotFound,
             else => error.ProcessIdentityUnavailable,
         },
+        .windows => if (windowsProcessExists(pid))
+            error.ProcessIdentityUnsupported
+        else
+            error.ProcessNotFound,
         else => error.ProcessIdentityUnsupported,
     };
+}
+
+/// Reports whether a Windows process id names a live process. Process
+/// identity tokens arrive with US-019; until then an exited process still
+/// reads as missing rather than unavailable.
+fn windowsProcessExists(pid: io_mod.ProcessId) bool {
+    const win32 = @import("../../core/shared/win32.zig");
+    const windows = std.os.windows;
+    const handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, .FALSE, pid) orelse
+        return windows.GetLastError() != .INVALID_PARAMETER;
+    defer windows.CloseHandle(handle);
+    var exit_code: windows.DWORD = 0;
+    if (!win32.GetExitCodeProcess(handle, &exit_code).toBool()) return true;
+    return exit_code == win32.STILL_ACTIVE;
 }
 
 fn matchToken(
@@ -66,7 +84,7 @@ fn readLinuxProcStat(file: std.Io.File, buffer: []u8) !usize {
 
 fn captureLinuxToken(
     alloc: Allocator,
-    pid: std.posix.pid_t,
+    pid: io_mod.ProcessId,
 ) !process_identity.ProcessInstanceToken {
     const zio = io_mod.getIo();
     var boot_id_file = std.Io.Dir.openFileAbsolute(
@@ -136,7 +154,7 @@ fn captureLinuxToken(
 }
 
 fn captureMacOSToken(
-    pid: std.posix.pid_t,
+    pid: io_mod.ProcessId,
 ) !process_identity.ProcessInstanceToken {
     if (builtin.os.tag != .macos) return error.ProcessIdentityUnsupported;
     const ProcBsdInfo = extern struct {
@@ -181,7 +199,7 @@ fn captureMacOSToken(
     };
 
     var info: ProcBsdInfo = undefined;
-    const read_len = Darwin.proc_pidinfo(pid, 3, 0, &info, @sizeOf(ProcBsdInfo));
+    const read_len = Darwin.proc_pidinfo(@intCast(pid), 3, 0, &info, @sizeOf(ProcBsdInfo));
     if (read_len == 0) return error.ProcessNotFound;
     if (read_len != @sizeOf(ProcBsdInfo)) return error.ProcessIdentityUnavailable;
 
@@ -228,8 +246,10 @@ fn signalProcess(
         .unavailable => return error.ProcessIdentityIndeterminate,
     }
     if (!host.current().process_control) return error.Unsupported;
-    const pid = std.fmt.parseInt(std.posix.pid_t, pid_text, 10) catch
+    const pid = std.fmt.parseInt(io_mod.ProcessId, pid_text, 10) catch
         return error.InvalidPid;
+    // Windows process control arrives with the Job Object backend (US-019).
+    if (comptime builtin.os.tag == .windows) return error.Unsupported;
     var tracker = try process_tree.Tracker.init(alloc);
     defer tracker.deinit();
     tracker.refresh(pid) catch |err| switch (err) {
@@ -245,6 +265,22 @@ fn signalProcess(
         io_mod.sleep(25 * std.time.ns_per_ms);
     }
     if (tracker.anyAlive()) _ = tracker.signalAll(std.posix.SIG.KILL);
+}
+
+test "native process provider reports a pid that no longer exists as missing" {
+    // A multiple of four above every Linux pid_max and every live Windows id.
+    const gone_pid = "2147483644";
+    try std.testing.expectError(
+        error.ProcessNotFound,
+        captureToken(null, std.testing.allocator, gone_pid),
+    );
+    const token = try process_identity.ProcessInstanceToken.parse(
+        "linux:00112233445566778899aabbccddeeff:1",
+    );
+    try std.testing.expectEqual(
+        process_identity.TokenMatch.missing,
+        matchToken(null, std.testing.allocator, gone_pid, token),
+    );
 }
 
 test "native process provider delegates tree signaling to the neutral tracker" {

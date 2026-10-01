@@ -1,10 +1,17 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const text_utils = @import("../shared/text_utils.zig");
 
-fn needs_quotes(path: []const u8) bool {
+/// How `\` reads inside an @ path. Windows paths use it as a separator, so it
+/// is literal there; elsewhere it escapes the next byte.
+const Style = enum { escaping, literal };
+const native_style: Style = if (builtin.os.tag == .windows) .literal else .escaping;
+
+fn needs_quotes(path: []const u8, style: Style) bool {
     if (std.mem.endsWith(u8, path, ".")) return true;
     for (path) |byte| {
         if (byte >= 0x80 or std.ascii.isAlphanumeric(byte)) continue;
+        if (style == .literal and byte == '\\') continue;
         if (byte != '_' and byte != '-' and byte != '.' and byte != '/' and byte != '~') return true;
     }
     return false;
@@ -34,11 +41,15 @@ fn is_sentence_punctuation(byte: u8) bool {
 
 /// Legacy image token boundaries only, not shell expansion or path decoding.
 pub fn token_end(text: []const u8, start: usize) usize {
+    return tokenEndStyle(text, start, native_style);
+}
+
+fn tokenEndStyle(text: []const u8, start: usize, style: Style) usize {
     var index = start;
     var quote: ?u8 = null;
     while (index < text.len) : (index += 1) {
         const byte = text[index];
-        if (byte == '\\' and index + 1 < text.len) {
+        if (style == .escaping and byte == '\\' and index + 1 < text.len) {
             index += 1;
             continue;
         }
@@ -67,6 +78,10 @@ pub const Token = struct {
 };
 
 pub fn parse_at(text: []const u8, start: usize) ?Token {
+    return parseAtStyle(text, start, native_style);
+}
+
+fn parseAtStyle(text: []const u8, start: usize, style: Style) ?Token {
     if (start >= text.len or text[start] != '@') return null;
     if (start > 0 and !is_start_boundary(text[start - 1])) return null;
     const quoted = start + 1 < text.len and text[start + 1] == '"';
@@ -74,12 +89,12 @@ pub fn parse_at(text: []const u8, start: usize) ?Token {
     if (!quoted) {
         var end = path_start;
         if (end < text.len and text[end] == '\'') {
-            end = token_end(text, path_start);
+            end = tokenEndStyle(text, path_start, style);
         } else {
             // A quote embedded in a bare filename is data, including a prose
             // quote that follows it. It must not swallow later @ occurrences.
             while (end < text.len and !is_separator(text[end])) : (end += 1) {
-                if (text[end] == '\\' and end + 1 < text.len) end += 1;
+                if (style == .escaping and text[end] == '\\' and end + 1 < text.len) end += 1;
             }
         }
         return .{ .start = start, .end = end, .path_start = path_start, .path_end = end, .quoted = false, .status = if (end == path_start) .incomplete else .complete };
@@ -90,7 +105,7 @@ pub fn parse_at(text: []const u8, start: usize) ?Token {
     while (index < text.len) : (index += 1) {
         const byte = text[index];
         if (byte == '\n' or byte == '\r' or byte == '\t') break;
-        if (byte == '\\') {
+        if (style == .escaping and byte == '\\') {
             if (index + 1 == text.len) {
                 index = text.len;
                 break;
@@ -101,7 +116,7 @@ pub fn parse_at(text: []const u8, start: usize) ?Token {
             index += 1;
         } else if (byte == '"') {
             const quote_end = index + 1;
-            const end = token_end(text, quote_end);
+            const end = tokenEndStyle(text, quote_end, style);
             var valid = index > path_start and text_utils.isTerminalSafe(text[path_start..index]);
             for (text[quote_end..end]) |suffix| valid = valid and is_sentence_punctuation(suffix);
             return .{
@@ -122,10 +137,11 @@ pub fn parse_at(text: []const u8, start: usize) ?Token {
 pub const Iterator = struct {
     text: []const u8,
     offset: usize = 0,
+    style: Style = native_style,
 
     pub fn next(self: *Iterator) ?Token {
         while (self.offset < self.text.len) {
-            if (parse_at(self.text, self.offset)) |token| {
+            if (parseAtStyle(self.text, self.offset, self.style)) |token| {
                 self.offset = @max(token.end, self.offset + 1);
                 return token;
             }
@@ -138,13 +154,18 @@ pub const Iterator = struct {
 const DecodeError = error{ InvalidPath, NoSpaceLeft };
 
 /// Decodes a quoted payload (without delimiters) into caller-owned storage.
-/// Legacy escape-next-byte spelling is retained; no JSON or variable expansion.
+/// Legacy escape-next-byte spelling is retained outside Windows; no JSON or
+/// variable expansion.
 pub fn decode_into(payload: []const u8, out: []u8) DecodeError![]const u8 {
+    return decodeIntoStyle(payload, out, native_style);
+}
+
+fn decodeIntoStyle(payload: []const u8, out: []u8, style: Style) DecodeError![]const u8 {
     if (!text_utils.isTerminalSafe(payload)) return error.InvalidPath;
     var index: usize = 0;
     var written: usize = 0;
     while (index < payload.len) : (index += 1) {
-        if (payload[index] == '\\') {
+        if (style == .escaping and payload[index] == '\\') {
             index += 1;
             if (index == payload.len) return error.InvalidPath;
         }
@@ -170,15 +191,20 @@ pub const Query = struct {
     token_start: usize,
     replace_end: usize,
     quoted: bool,
+    style: Style = native_style,
 
     pub fn decoded_query(self: Query, out: []u8) DecodeError![]const u8 {
-        return if (self.quoted) decode_into(self.query, out) else self.query;
+        return if (self.quoted) decodeIntoStyle(self.query, out, self.style) else self.query;
     }
 };
 
 pub fn query_at(text: []const u8, cursor: usize) ?Query {
+    return queryAtStyle(text, cursor, native_style);
+}
+
+fn queryAtStyle(text: []const u8, cursor: usize, style: Style) ?Query {
     if (cursor > text.len) return null;
-    var iterator: Iterator = .{ .text = text };
+    var iterator: Iterator = .{ .text = text, .style = style };
     while (iterator.next()) |token| {
         if (cursor < token.path_start) return null;
         if (cursor > token.path_end) continue;
@@ -195,6 +221,7 @@ pub fn query_at(text: []const u8, cursor: usize) ?Query {
             .token_start = token.path_start,
             .replace_end = token.quote_end orelse cursor,
             .quoted = token.quoted,
+            .style = style,
         };
     }
     return null;
@@ -215,15 +242,20 @@ const EncodeOptions = struct {
     quoted: bool = false,
     directory: bool = false,
     workspace_relative: bool = false,
+    style: Style = native_style,
 };
 
 /// Returns caller-owned @ text, without a trailing composer separator.
 pub fn encode(alloc: std.mem.Allocator, path: []const u8, options: EncodeOptions) ![]u8 {
     if (!isRepresentable(path)) return error.InvalidPath;
-    const quote = options.quoted or needs_quotes(path);
+    const escaping = options.style == .escaping;
+    // Without escapes a quote cannot appear in a quoted payload; Windows
+    // file names cannot contain one either.
+    if (!escaping and std.mem.findScalar(u8, path, '"') != null) return error.InvalidPath;
+    const quote = options.quoted or needs_quotes(path, options.style);
     const prefix_relative = options.workspace_relative and path[0] == '~';
     var length = try std.math.add(usize, 1 + @as(usize, @intFromBool(quote)) + @as(usize, @intFromBool(quote and !options.directory)) + @as(usize, @intFromBool(options.directory)) + @as(usize, if (prefix_relative) 2 else 0), path.len);
-    if (quote) for (path) |byte| {
+    if (quote and escaping) for (path) |byte| {
         if (byte == '\\' or byte == '"') length = try std.math.add(usize, length, 1);
     };
     var out: std.ArrayList(u8) = .empty;
@@ -233,7 +265,7 @@ pub fn encode(alloc: std.mem.Allocator, path: []const u8, options: EncodeOptions
     if (quote) out.appendAssumeCapacity('"');
     if (prefix_relative) out.appendSliceAssumeCapacity("./");
     for (path) |byte| {
-        if (quote and (byte == '\\' or byte == '"')) out.appendAssumeCapacity('\\');
+        if (quote and escaping and (byte == '\\' or byte == '"')) out.appendAssumeCapacity('\\');
         out.appendAssumeCapacity(byte);
     }
     if (options.directory) out.appendAssumeCapacity('/');
@@ -244,12 +276,13 @@ pub fn encode(alloc: std.mem.Allocator, path: []const u8, options: EncodeOptions
 test "at path codec round trips punctuation quotes backslashes and Unicode" {
     const alloc = std.testing.allocator;
     for ([_][]const u8{ "src/main.zig", "./photo.png,", "./$review.txt", "./a\\b.png", "./a\"b.png", "\"leading", " leading.png", "tail.png ", "café/文.txt" }) |path| {
-        const encoded = try encode(alloc, path, .{});
+        const encoded = try encode(alloc, path, .{ .style = .escaping });
         defer alloc.free(encoded);
-        const token = parse_at(encoded, 0).?;
+        const token = parseAtStyle(encoded, 0, .escaping).?;
         try std.testing.expectEqual(Status.complete, token.status);
-        const decoded = if (token.quoted) try decode_alloc(alloc, encoded[token.path_start..token.path_end]) else try alloc.dupe(u8, encoded[token.path_start..token.path_end]);
-        defer alloc.free(decoded);
+        var storage: [64]u8 = undefined;
+        const payload = encoded[token.path_start..token.path_end];
+        const decoded = if (token.quoted) try decodeIntoStyle(payload, &storage, .escaping) else payload;
         try std.testing.expectEqualStrings(path, decoded);
     }
     try std.testing.expect(!isRepresentable("bad\nname"));
@@ -260,14 +293,43 @@ test "at path codec round trips punctuation quotes backslashes and Unicode" {
 test "at path codec separates raw query range from decoded prefix" {
     const input = "read @\"./a\\\"b.png\" suffix";
     const cursor = "read @\"./a\\\"b".len;
-    const query = query_at(input, cursor).?;
+    const query = queryAtStyle(input, cursor, .escaping).?;
     var decoded: [64]u8 = undefined;
     try std.testing.expectEqualStrings("./a\"b", try query.decoded_query(&decoded));
     try std.testing.expectEqual("read @\"./a\\\"b.png\"".len, query.replace_end);
-    try std.testing.expect(query_at(input, query.replace_end) == null);
+    try std.testing.expect(queryAtStyle(input, query.replace_end, .escaping) == null);
     try std.testing.expectEqual(Status.invalid, parse_at("@\"photo.png\"other.png", 0).?.status);
     try std.testing.expectEqual(Status.incomplete, parse_at("@\"photo.png", 0).?.status);
-    try std.testing.expect(!parse_at("@\"a\\.png\"", 0).?.canonical_escapes);
+    try std.testing.expect(!parseAtStyle("@\"a\\.png\"", 0, .escaping).?.canonical_escapes);
+}
+
+test "at path codec keeps Windows backslashes literal" {
+    const alloc = std.testing.allocator;
+    for ([_][]const u8{ "@C:\\dev\\pf\\src\\main.zig", "@src\\main.zig", "@src/main.zig" }) |input| {
+        const token = parseAtStyle(input, 0, .literal).?;
+        try std.testing.expectEqual(Status.complete, token.status);
+        try std.testing.expectEqual(input.len, token.end);
+        const query = queryAtStyle(input, input.len, .literal).?;
+        try std.testing.expectEqualStrings(input[1..], query.query);
+    }
+
+    const quoted = "@\"C:\\my dir\\a.png\" next";
+    const token = parseAtStyle(quoted, 0, .literal).?;
+    try std.testing.expectEqual(Status.complete, token.status);
+    try std.testing.expect(token.canonical_escapes);
+    var storage: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("C:\\my dir\\a.png", try decodeIntoStyle(quoted[token.path_start..token.path_end], &storage, .literal));
+    // A trailing backslash names a directory, not an escaped quote.
+    try std.testing.expectEqual(Status.complete, parseAtStyle("@\"C:\\my dir\\\"", 0, .literal).?.status);
+    try std.testing.expectEqual(@as(usize, "@src\\".len), tokenEndStyle("@src\\ next", 0, .literal));
+
+    const bare = try encode(alloc, "src\\main.zig", .{ .style = .literal });
+    defer alloc.free(bare);
+    try std.testing.expectEqualStrings("@src\\main.zig", bare);
+    const spaced = try encode(alloc, "C:\\my dir\\a.png", .{ .style = .literal });
+    defer alloc.free(spaced);
+    try std.testing.expectEqualStrings("@\"C:\\my dir\\a.png\"", spaced);
+    try std.testing.expectError(error.InvalidPath, encode(alloc, "a\"b", .{ .style = .literal }));
 }
 
 test "at path codec follows later mentions after prose quotes" {
@@ -279,12 +341,12 @@ test "at path codec follows later mentions after prose quotes" {
 test "at path codec bounds decoding and cleans up failed allocations" {
     var small: [1]u8 = undefined;
     try std.testing.expectError(error.NoSpaceLeft, decode_into("ab", &small));
-    try std.testing.expectError(error.InvalidPath, decode_into("\\", &small));
-    try std.testing.expect(query_at("@\"a\\\"b\"tail", 5) == null);
+    try std.testing.expectError(error.InvalidPath, decodeIntoStyle("\\", &small, .escaping));
+    try std.testing.expect(queryAtStyle("@\"a\\\"b\"tail", 5, .escaping) == null);
     try std.testing.expect(contains_position("@\"a\\", 4));
     try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
         fn check(alloc: std.mem.Allocator) !void {
-            const path = "a\\b\"$c";
+            const path = if (native_style == .escaping) "a\\b\"$c" else "a\\b$c";
             const encoded = try encode(alloc, path, .{});
             defer alloc.free(encoded);
             const token = parse_at(encoded, 0).?;

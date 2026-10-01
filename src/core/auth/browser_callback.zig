@@ -1,11 +1,62 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const debug_trace = @import("../shared/debug_trace.zig");
 const io_mod = @import("../shared/io.zig");
 
 const Allocator = std.mem.Allocator;
 
-const poll_ms: i32 = 100;
-const socket_timeout_seconds: i64 = 30;
+const poll_ms: i64 = 100;
+
+/// Listens for an OAuth callback on 127.0.0.1:`port`; port 0 picks a free one.
+/// On Windows `std.Io.net` binds every listener with shared access, so another
+/// program could hold the same fixed port without an error. A fixed Windows
+/// port is therefore bound through Winsock with `SO_EXCLUSIVEADDRUSE`, and a
+/// port another program holds returns `error.AddressInUse`.
+pub fn listenLoopback(port: u16) !std.Io.net.Server {
+    const address: std.Io.net.IpAddress = .{ .ip4 = .loopback(port) };
+    if (comptime builtin.os.tag == .windows) {
+        if (port != 0) return listenExclusiveWindows(address);
+    }
+    return address.listen(io_mod.getIo(), .{ .reuse_address = true });
+}
+
+fn listenExclusiveWindows(address: std.Io.net.IpAddress) !std.Io.net.Server {
+    const win32 = @import("../shared/win32.zig");
+    const ws2_32 = std.os.windows.ws2_32;
+    var wsa_data: win32.WSADATA = undefined;
+    if (win32.WSAStartup(0x0202, &wsa_data) != 0) return error.OAuthCallbackListenerFailed;
+    const socket = win32.WSASocketW(
+        ws2_32.AF.INET,
+        ws2_32.SOCK.STREAM,
+        ws2_32.IPPROTO.TCP,
+        null,
+        0,
+        win32.WSA_FLAG_OVERLAPPED | win32.WSA_FLAG_NO_HANDLE_INHERIT,
+    );
+    if (socket == std.os.windows.INVALID_HANDLE_VALUE) return error.OAuthCallbackListenerFailed;
+    errdefer _ = win32.closesocket(socket);
+    const enable: i32 = 1;
+    if (win32.setsockopt(socket, ws2_32.SOL.SOCKET, win32.SO_EXCLUSIVEADDRUSE, std.mem.asBytes(&enable), @sizeOf(i32)) != 0) {
+        return error.OAuthCallbackListenerFailed;
+    }
+    const sockaddr: ws2_32.sockaddr.in = .{
+        .port = std.mem.nativeToBig(u16, address.ip4.port),
+        .addr = @bitCast(address.ip4.bytes),
+    };
+    if (win32.bind(socket, @ptrCast(&sockaddr), @sizeOf(ws2_32.sockaddr.in)) != 0) {
+        return switch (win32.WSAGetLastError()) {
+            // EACCES: the holder bound with SO_EXCLUSIVEADDRUSE.
+            win32.WSAEADDRINUSE, win32.WSAEACCES => error.AddressInUse,
+            else => error.OAuthCallbackListenerFailed,
+        };
+    }
+    if (win32.listen(socket, std.Io.net.default_kernel_backlog) != 0) return error.OAuthCallbackListenerFailed;
+    return .{
+        .socket = .{ .handle = socket, .address = address },
+        .options = .{ .mode = .stream, .protocol = .tcp },
+    };
+}
+
 const silence_ms: i64 = 250;
 const max_accepts_per_poll: usize = 16;
 
@@ -95,14 +146,9 @@ fn await_request(
 ) !?Accepted(Callback) {
     var accepts: usize = 0;
     while (accepts < max_accepts_per_poll) : (accepts += 1) {
-        if (!try listenerReady(listener, cancel_flag)) return null;
-        var stream = listener.accept(io_mod.getIo()) catch |err| switch (err) {
-            error.ConnectionAborted, error.WouldBlock => continue,
-            else => return err,
-        };
+        var stream = (try acceptWithin(listener, cancel_flag)) orelse return null;
         var handed_off = false;
         defer if (!handed_off) stream.close(io_mod.getIo());
-        setSocketTimeouts(stream.socket.handle);
 
         const maybe_request = readRequest(alloc, stream, cancel_flag, allowed_cors_origin, form_origin, listener.socket.address.getPort()) catch |err| switch (err) {
             error.Cancelled => return err,
@@ -166,47 +212,114 @@ const Request = struct {
     }
 };
 
-fn listenerReady(
+const AcceptEvent = union(enum) {
+    accept: std.Io.net.Server.AcceptError!std.Io.net.Stream,
+    tick: std.Io.Cancelable!void,
+};
+
+/// Waits one poll interval for a connection through `std.Io` accept, and
+/// returns null when none arrived or the peer aborted it.
+fn acceptWithin(
     listener: *std.Io.net.Server,
     cancel_flag: Cancellation,
-) !bool {
+) !?std.Io.net.Stream {
     if (cancel_flag.cancelled()) return error.Cancelled;
-    var fds = [_]std.posix.pollfd{.{
-        .fd = listener.socket.handle,
-        .events = std.posix.POLL.IN,
-        .revents = 0,
-    }};
-    const ready = try std.posix.poll(&fds, poll_ms);
-    if (cancel_flag.cancelled()) return error.Cancelled;
-    if (ready == 0) return false;
-    if ((fds[0].revents & std.posix.POLL.IN) == 0) {
-        return error.OAuthCallbackListenerFailed;
+    const zio = io_mod.getIo();
+    var buffer: [2]AcceptEvent = undefined;
+    var select: std.Io.Select(AcceptEvent) = .init(zio, &buffer);
+    try select.concurrent(.accept, acceptOne, .{listener});
+    select.concurrent(.tick, sleepMs, .{poll_ms}) catch |err| {
+        if (finishAccept(&select, null)) |stream| stream.close(zio);
+        return err;
+    };
+    var accepted: ?std.Io.net.Stream = null;
+    var accept_err: ?std.Io.net.Server.AcceptError = null;
+    switch (try select.await()) {
+        .accept => |result| {
+            if (result) |stream| accepted = stream else |err| accept_err = err;
+        },
+        .tick => {},
     }
-    return true;
+    // An accept that completes while the tick is canceled still counts.
+    accepted = finishAccept(&select, accepted);
+    if (cancel_flag.cancelled()) {
+        if (accepted) |stream| stream.close(zio);
+        return error.Cancelled;
+    }
+    if (accepted) |stream| return stream;
+    if (accept_err) |err| switch (err) {
+        error.ConnectionAborted, error.WouldBlock => return null,
+        else => return err,
+    };
+    return null;
 }
 
+fn acceptOne(listener: *std.Io.net.Server) std.Io.net.Server.AcceptError!std.Io.net.Stream {
+    return listener.accept(io_mod.getIo());
+}
+
+fn sleepMs(ms: i64) std.Io.Cancelable!void {
+    return io_mod.getIo().sleep(.fromMilliseconds(ms), .awake);
+}
+
+/// Cancels the remaining accept tasks. Keeps `accepted`, or the first stream
+/// a canceled accept still produced, and closes any other.
+fn finishAccept(select: *std.Io.Select(AcceptEvent), accepted: ?std.Io.net.Stream) ?std.Io.net.Stream {
+    var kept = accepted;
+    while (select.cancel()) |event| switch (event) {
+        .accept => |result| {
+            const stream = result catch continue;
+            if (kept == null) kept = stream else stream.close(io_mod.getIo());
+        },
+        .tick => {},
+    };
+    return kept;
+}
+
+const FillEvent = union(enum) {
+    fill: std.Io.Reader.Error!void,
+    tick: std.Io.Cancelable!void,
+};
+
+/// Waits until the reader has buffered bytes or reached end of stream, using a
+/// `std.Io` receive bounded by `deadline_ms`. Returns false when the deadline
+/// passes first.
 fn requestReadable(
-    socket: std.posix.socket_t,
+    reader: *std.Io.Reader,
     cancel_flag: Cancellation,
     deadline_ms: i64,
 ) !bool {
+    if (cancel_flag.cancelled()) return error.Cancelled;
+    const zio = io_mod.getIo();
+    var buffer: [2]FillEvent = undefined;
+    var select: std.Io.Select(FillEvent) = .init(zio, &buffer);
+    try select.concurrent(.fill, fillMore, .{reader});
     while (true) {
-        if (cancel_flag.cancelled()) return error.Cancelled;
         const remaining_ms = deadline_ms - io_mod.milliTimestamp();
-        const wait_ms: i32 = if (remaining_ms <= 0)
-            0
-        else
-            @intCast(@min(remaining_ms, poll_ms));
-        var fds = [_]std.posix.pollfd{.{
-            .fd = socket,
-            .events = std.posix.POLL.IN,
-            .revents = 0,
-        }};
-        const ready = try std.posix.poll(&fds, wait_ms);
-        if (cancel_flag.cancelled()) return error.Cancelled;
-        if (ready != 0) return true;
-        if (remaining_ms <= 0) return false;
+        if (remaining_ms <= 0) {
+            select.cancelDiscard();
+            return reader.bufferedLen() != 0;
+        }
+        select.concurrent(.tick, sleepMs, .{@min(remaining_ms, poll_ms)}) catch |err| {
+            select.cancelDiscard();
+            return err;
+        };
+        switch (try select.await()) {
+            // The caller's next take observes end of stream or the read error.
+            .fill => {
+                select.cancelDiscard();
+                return true;
+            },
+            .tick => if (cancel_flag.cancelled()) {
+                select.cancelDiscard();
+                return error.Cancelled;
+            },
+        }
     }
+}
+
+fn fillMore(reader: *std.Io.Reader) std.Io.Reader.Error!void {
+    return reader.fillMore();
 }
 
 /// Reads one bounded HTTP request, or returns null when the connection remains
@@ -227,7 +340,7 @@ fn readRequest(
     var found_terminator = false;
     while (request_len < request_bytes.len) {
         if (reader.interface.bufferedLen() == 0 and
-            !try requestReadable(stream.socket.handle, cancel_flag, deadline_ms))
+            !try requestReadable(&reader.interface, cancel_flag, deadline_ms))
         {
             return null;
         }
@@ -276,7 +389,7 @@ fn readRequest(
         const body = try alloc.alloc(u8, length);
         defer alloc.free(body);
         for (body) |*byte| {
-            if (reader.interface.bufferedLen() == 0 and !try requestReadable(stream.socket.handle, cancel_flag, deadline_ms)) return null;
+            if (reader.interface.bufferedLen() == 0 and !try requestReadable(&reader.interface, cancel_flag, deadline_ms)) return null;
             byte.* = reader.interface.takeByte() catch return error.InvalidOAuthCallbackRequest;
         }
         return .{ .kind = .callback, .target = try alloc.dupe(u8, body) };
@@ -403,35 +516,34 @@ fn writePreflightResponse(stream: std.Io.net.Stream, origin: []const u8) !void {
     try writer.interface.flush();
 }
 
-fn setSocketTimeouts(socket: std.posix.socket_t) void {
-    const timeout = std.posix.timeval{ .sec = socket_timeout_seconds, .usec = 0 };
-    const receive_rc = std.c.setsockopt(
-        socket,
-        std.c.SOL.SOCKET,
-        std.c.SO.RCVTIMEO,
-        &timeout,
-        @sizeOf(std.posix.timeval),
-    );
-    if (receive_rc != 0) {
-        const err = std.posix.errno(receive_rc);
-        debug_trace.logf("auth", "OAuth callback receive timeout setup failed errno={s}", .{@tagName(err)});
-    }
-    const send_rc = std.c.setsockopt(
-        socket,
-        std.c.SOL.SOCKET,
-        std.c.SO.SNDTIMEO,
-        &timeout,
-        @sizeOf(std.posix.timeval),
-    );
-    if (send_rc != 0) {
-        const err = std.posix.errno(send_rc);
-        debug_trace.logf("auth", "OAuth callback send timeout setup failed errno={s}", .{@tagName(err)});
-    }
+fn bindTestListener() !std.Io.net.Server {
+    return listenLoopback(0);
 }
 
-fn bindTestListener() !std.Io.net.Server {
-    var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
-    return address.listen(io_mod.getIo(), .{ .reuse_address = true });
+test "loopback callback listener reports a fixed port another program holds" {
+    const zio = io_mod.getIo();
+    var probe = try listenLoopback(0);
+    const port = probe.socket.address.getPort();
+    probe.deinit(zio);
+
+    var listener = try listenLoopback(port);
+    // The fixed port still accepts and reads like any listener.
+    const client = try listener.socket.address.connect(zio, .{ .mode = .stream });
+    defer client.close(zio);
+    var client_writer = client.writer(zio, &.{});
+    try client_writer.interface.writeAll("ping");
+    const accepted = try listener.accept(zio);
+    defer accepted.close(zio);
+    var buffer: [4]u8 = undefined;
+    var reader = accepted.reader(zio, &buffer);
+    try std.testing.expectEqualStrings("ping", try reader.interface.take(4));
+    listener.deinit(zio);
+
+    // Another program's listener, on a port no connection has used.
+    const holder_address: std.Io.net.IpAddress = .{ .ip4 = .loopback(0) };
+    var holder = try holder_address.listen(zio, .{});
+    defer holder.deinit(zio);
+    try std.testing.expectError(error.AddressInUse, listenLoopback(holder.socket.address.getPort()));
 }
 
 const TestCallback = struct {

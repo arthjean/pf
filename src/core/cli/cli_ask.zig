@@ -111,7 +111,7 @@ const ShellAction = enum {
 };
 
 const supports_headless_interrupt = switch (std_builtin.os.tag) {
-    .windows, .wasi, .freestanding => false,
+    .wasi, .freestanding => false,
     else => true,
 };
 
@@ -119,7 +119,91 @@ const HeadlessInterruptInstallError = error{HeadlessInterruptBusy};
 const headless_interrupt_exit_code: u8 = 130;
 const headless_termination_exit_code: u8 = 143;
 
-const headless_interrupt = if (supports_headless_interrupt) struct {
+const headless_interrupt = if (std_builtin.os.tag == .windows) struct {
+    // Console control events stand in for SIGINT and SIGTERM: Ctrl+C cancels
+    // the turn and exits 130, Ctrl+Break exits 143. A second Ctrl+C within
+    // `double_interrupt_window_ms` of the first exits 130 at once.
+    const double_interrupt_window_ms: i64 = 2_000;
+    const win32 = @import("../shared/win32.zig");
+
+    var coordinator_mutex: std.Io.Mutex = .init;
+    var coordinator_active = false;
+    var cancel_requested = std.atomic.Value(bool).init(false);
+    var requested_event = std.atomic.Value(u32).init(no_event);
+    var first_interrupt_ms = std.atomic.Value(i64).init(0);
+    const no_event = std.math.maxInt(u32);
+
+    fn handle(ctrl_type: u32) callconv(.winapi) std.os.windows.BOOL {
+        switch (ctrl_type) {
+            win32.CTRL_C_EVENT, win32.CTRL_BREAK_EVENT => {},
+            else => return .FALSE,
+        }
+        const now = io_mod.milliTimestamp();
+        if (requested_event.cmpxchgStrong(no_event, ctrl_type, .seq_cst, .seq_cst)) |first| {
+            if (first == win32.CTRL_C_EVENT and ctrl_type == win32.CTRL_C_EVENT and
+                now - first_interrupt_ms.load(.seq_cst) <= double_interrupt_window_ms)
+            {
+                debug_trace.logf("ask", "headless_interrupt repeated; exiting", .{});
+                std.process.exit(headless_interrupt_exit_code);
+            }
+        } else {
+            debug_trace.logf("ask", "headless_interrupt event={d}", .{ctrl_type});
+            first_interrupt_ms.store(now, .seq_cst);
+        }
+        cancel_requested.store(true, .seq_cst);
+        return .TRUE;
+    }
+
+    fn exitCode() u8 {
+        return if (requested_event.load(.seq_cst) == win32.CTRL_BREAK_EVENT)
+            headless_termination_exit_code
+        else
+            headless_interrupt_exit_code;
+    }
+
+    const Scope = struct {
+        installed: bool = false,
+
+        fn install(enabled: bool) HeadlessInterruptInstallError!Scope {
+            if (!enabled) return .{};
+            coordinator_mutex.lockUncancelable(io_mod.getIo());
+            defer coordinator_mutex.unlock(io_mod.getIo());
+            if (coordinator_active) return error.HeadlessInterruptBusy;
+            requested_event.store(no_event, .seq_cst);
+            cancel_requested.store(false, .seq_cst);
+            // Handlers run newest first, so this one answers before the
+            // process-wide exit handler.
+            if (!win32.SetConsoleCtrlHandler(handle, .TRUE).toBool()) return .{};
+            coordinator_active = true;
+            return .{ .installed = true };
+        }
+
+        /// Removes the handler. With `redeliver`, a requested interrupt ends
+        /// the process with its exit code, as a redelivered signal does on
+        /// POSIX.
+        fn restore(self: *Scope, redeliver: bool) void {
+            if (!self.installed) return;
+            coordinator_mutex.lockUncancelable(io_mod.getIo());
+            defer coordinator_mutex.unlock(io_mod.getIo());
+            _ = win32.SetConsoleCtrlHandler(handle, .FALSE);
+            coordinator_active = false;
+            self.installed = false;
+            if (redeliver and cancel_requested.load(.seq_cst)) std.process.exit(exitCode());
+        }
+
+        fn deinit(self: *Scope) void {
+            self.restore(false);
+        }
+
+        fn restoreAndRedeliver(self: *Scope) void {
+            self.restore(true);
+        }
+
+        fn requested(self: *const Scope) bool {
+            return self.installed and cancel_requested.load(.seq_cst);
+        }
+    };
+} else if (supports_headless_interrupt) struct {
     var coordinator_mutex: std.Io.Mutex = .init;
     var coordinator_active = false;
     var cancel_requested = std.atomic.Value(bool).init(false);

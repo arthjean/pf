@@ -299,7 +299,8 @@ pub const AutoUpgrade = struct {
         const archive_path = std.fmt.allocPrint(alloc, "{s}/pf.tar.gz", .{tmp_dir}) catch return error.AllocFailed;
         defer alloc.free(archive_path);
 
-        const archive_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz", .{ cdn_base, target.artifactRef(), helpers.platform }) catch return error.AllocFailed;
+        const artifact_platform = helpers.platform orelse return error.DownloadFailed;
+        const archive_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz", .{ cdn_base, target.artifactRef(), artifact_platform }) catch return error.AllocFailed;
         defer alloc.free(archive_url);
 
         helpers.downloadFileStreaming(&client, archive_url, archive_path, self.transferControl()) catch |err| return switch (err) {
@@ -309,7 +310,7 @@ pub const AutoUpgrade = struct {
 
         if (self.should_stop.load(.acquire)) return error.Cancelled;
 
-        const checksum_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz.sha256", .{ cdn_base, target.artifactRef(), helpers.platform }) catch return error.AllocFailed;
+        const checksum_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz.sha256", .{ cdn_base, target.artifactRef(), artifact_platform }) catch return error.AllocFailed;
         defer alloc.free(checksum_url);
 
         helpers.verifyChecksum(&client, archive_path, checksum_url, self.transferControl()) catch |err| return switch (err) {

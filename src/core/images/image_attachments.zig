@@ -1208,7 +1208,13 @@ fn stopImageNormalizer(
     const io = io_mod.getIo();
     const cancel_protection = io.swapCancelProtection(.blocked);
     defer _ = io.swapCancelProtection(cancel_protection);
-    std.posix.kill(pid, .KILL) catch |err| debug_trace.logf(
+    if (comptime builtin.os.tag == .windows) {
+        if (!@import("../shared/win32.zig").TerminateProcess(pid, 1).toBool()) debug_trace.logf(
+            "images",
+            "event=image_normalizer_kill_failed win32_error={d}",
+            .{@intFromEnum(std.os.windows.GetLastError())},
+        );
+    } else std.posix.kill(pid, .KILL) catch |err| debug_trace.logf(
         "images",
         "event=image_normalizer_kill_failed err={s}",
         .{@errorName(err)},
@@ -2271,6 +2277,8 @@ fn readImageHeaderFromFile(
 fn normalizePathInput(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
     const trimmed = std.mem.trim(u8, input, " \t\r\n");
     const slice = stripBalancedOuterQuotes(trimmed);
+    // Backslash separates Windows path components; it escapes nothing there.
+    if (comptime builtin.os.tag == .windows) return alloc.dupe(u8, slice);
 
     var out: std.Io.Writer.Allocating = .init(alloc);
     errdefer out.deinit();
@@ -2874,9 +2882,17 @@ test "extractInlineImageAttachments promotes workspace relative mentions" {
 }
 
 test "normalizePathInput unescapes finder style spaces" {
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const normalized = try normalizePathInput(std.testing.allocator, "/Users/me/CleanShot\\ 2026-04-08\\ at\\ 12.16.27.png");
     defer std.testing.allocator.free(normalized);
     try std.testing.expectEqualStrings("/Users/me/CleanShot 2026-04-08 at 12.16.27.png", normalized);
+}
+
+test "normalizePathInput keeps Windows backslashes" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    const normalized = try normalizePathInput(std.testing.allocator, "\"C:\\Users\\me\\shot.png\"");
+    defer std.testing.allocator.free(normalized);
+    try std.testing.expectEqualStrings("C:\\Users\\me\\shot.png", normalized);
 }
 
 test "extractInlineImageAttachments replaces supported paths with matching placeholders" {
@@ -3864,8 +3880,8 @@ test "capture stops a platform resizer that runs past its time limit" {
 
     const pid_text = try tmp.dir.readFileAlloc(std.testing.io, "resizer.pid", alloc, .limited(32));
     defer alloc.free(pid_text);
-    const pid = try std.fmt.parseInt(std.posix.pid_t, std.mem.trimEnd(u8, pid_text, "\n"), 10);
-    try std.testing.expectError(error.ProcessNotFound, std.posix.kill(pid, @enumFromInt(0)));
+    const pid = try std.fmt.parseInt(io_mod.ProcessId, std.mem.trimEnd(u8, pid_text, "\n"), 10);
+    try std.testing.expectError(error.ProcessNotFound, std.posix.kill(io_mod.posixPid(pid), @enumFromInt(0)));
     // Waiting for the resizer to finish on its own would leave the marker
     // before capture returns; a resizer left running would leave it later.
     try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(std.testing.io, "late.marker", .{}));

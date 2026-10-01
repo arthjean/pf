@@ -25,6 +25,11 @@ const e2e_issuer_url_env = "PF_E2E_CHATGPT_ISSUER_URL";
 const jwt_auth_claim = "https://api.openai.com/auth";
 const browser_scope = "openid profile email offline_access api.connectors.read api.connectors.invoke";
 const browser_callback_ports = [_]u16{ 1455, 1457 };
+/// Explains `error.ChatGptOAuthCallbackPortUnavailable`.
+pub const callback_ports_in_use_text = std.fmt.comptimePrint(
+    "ports {d} and {d} are in use; close the program using them and retry",
+    .{ browser_callback_ports[0], browser_callback_ports[1] },
+);
 const browser_login_timeout_seconds: i64 = 5 * 60;
 
 pub const RefreshMode = enum {
@@ -172,13 +177,9 @@ fn deinitBrowserLoginContext(raw: ?*anyopaque, alloc: Allocator) void {
 }
 
 fn bindBrowserCallback(e2e: bool) !std.Io.net.Server {
-    if (e2e) {
-        var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
-        return address.listen(io_mod.getIo(), .{ .reuse_address = true });
-    }
+    if (e2e) return browser_callback.listenLoopback(0);
     for (browser_callback_ports) |port| {
-        var address = try std.Io.net.IpAddress.parse("127.0.0.1", port);
-        return address.listen(io_mod.getIo(), .{ .reuse_address = true }) catch |err| switch (err) {
+        return browser_callback.listenLoopback(port) catch |err| switch (err) {
             error.AddressInUse => continue,
             else => return err,
         };

@@ -4,6 +4,7 @@ const darwin_process_spawn = @import("../shared/darwin_process_spawn.zig");
 const io_mod = @import("../shared/io.zig");
 
 const Allocator = std.mem.Allocator;
+const ProcessId = io_mod.ProcessId;
 
 const DarwinPipeIdentity = struct {
     handle: u64,
@@ -37,7 +38,7 @@ pub const DarwinProcessWitness = struct {
             .supervisor_fd = pipe[0],
             .child_fd = pipe[1],
             .descendant_fd = darwin_process_spawn.inherited_fd_target(pipe[1]),
-            .identity = try captureDarwinPipeIdentity(std.c.getpid(), pipe[1]),
+            .identity = try captureDarwinPipeIdentity(io_mod.currentProcessId(), pipe[1]),
         };
     }
 
@@ -77,13 +78,13 @@ const Identity = union(enum) {
 };
 
 const TrackedProcess = struct {
-    pid: std.posix.pid_t,
+    pid: ProcessId,
     identity: Identity,
 };
 
 const ProcessSnapshot = struct {
     identity: Identity,
-    parent_pid: std.posix.pid_t,
+    parent_pid: ProcessId,
     parent_unique_id: ?u64 = null,
     started_at_us: ?u64 = null,
     zombie: bool = false,
@@ -102,13 +103,13 @@ pub const CompletionDelivery = struct {
 };
 
 const ProcessGroupState = union(enum) {
-    found: std.posix.pid_t,
+    found: ProcessId,
     vanished,
     unavailable,
 };
 
 const SessionState = union(enum) {
-    found: std.posix.pid_t,
+    found: ProcessId,
     vanished,
     unavailable,
 };
@@ -127,7 +128,7 @@ const CompletionStanding = enum {
 /// A process whose session cannot be read stays attached, preserving
 /// containment when evidence is missing.
 fn completionStanding(
-    command_session: std.posix.pid_t,
+    command_session: ProcessId,
     session: SessionState,
 ) CompletionStanding {
     return switch (session) {
@@ -138,20 +139,20 @@ fn completionStanding(
 }
 
 const SystemSignalEffects = struct {
-    fn capture(alloc: Allocator, pid: std.posix.pid_t) !ProcessSnapshot {
+    fn capture(alloc: Allocator, pid: ProcessId) !ProcessSnapshot {
         return captureSnapshot(alloc, pid);
     }
 
-    fn processGroup(pid: std.posix.pid_t) ProcessGroupState {
+    fn processGroup(pid: ProcessId) ProcessGroupState {
         return inspectProcessGroup(pid);
     }
 
-    fn session(pid: std.posix.pid_t) SessionState {
+    fn session(pid: ProcessId) SessionState {
         return inspectSession(pid);
     }
 
-    fn send(pid: std.posix.pid_t, signal: std.posix.SIG) std.posix.KillError!void {
-        return std.posix.kill(pid, signal);
+    fn send(pid: ProcessId, signal: std.posix.SIG) std.posix.KillError!void {
+        return std.posix.kill(io_mod.posixPid(pid), signal);
     }
 };
 
@@ -162,8 +163,8 @@ pub const Tracker = struct {
     alloc: Allocator,
     root: ?TrackedProcess = null,
     processes: std.ArrayList(TrackedProcess) = .empty,
-    macos_child_buffer: []std.posix.pid_t = &.{},
-    macos_pid_buffer: []std.posix.pid_t = &.{},
+    macos_child_buffer: []c_int = &.{},
+    macos_pid_buffer: []c_int = &.{},
     darwin_process_witness: ?DarwinPipeIdentity = null,
     darwin_process_witness_fd: ?std.posix.fd_t = null,
     macos_root_started_at_us: ?u64 = null,
@@ -178,7 +179,7 @@ pub const Tracker = struct {
             else
                 1024;
             tracker.macos_child_buffer = try alloc.alloc(
-                std.posix.pid_t,
+                c_int,
                 capacity,
             );
             const process_count = Darwin.proc_listallpids(null, 0);
@@ -187,7 +188,7 @@ pub const Tracker = struct {
             else
                 1024;
             tracker.macos_pid_buffer = try alloc.alloc(
-                std.posix.pid_t,
+                c_int,
                 process_capacity,
             );
         }
@@ -214,7 +215,7 @@ pub const Tracker = struct {
         self.darwin_process_witness_fd = witness.descendant_fd;
     }
 
-    pub fn refresh(self: *Tracker, root_pid: std.posix.pid_t) !void {
+    pub fn refresh(self: *Tracker, root_pid: ProcessId) !void {
         const root_snapshot: ?ProcessSnapshot = captureSnapshot(self.alloc, root_pid) catch |err| switch (err) {
             error.ProcessNotFound => null,
             else => return err,
@@ -249,7 +250,7 @@ pub const Tracker = struct {
 
     pub fn refreshAdditionalRoot(
         self: *Tracker,
-        root_pid: std.posix.pid_t,
+        root_pid: ProcessId,
     ) !void {
         const snapshot = captureSnapshot(self.alloc, root_pid) catch |err| switch (err) {
             error.ProcessNotFound => return,
@@ -274,7 +275,7 @@ pub const Tracker = struct {
         }
         const count = Darwin.proc_listallpids(
             self.macos_pid_buffer.ptr,
-            @intCast(self.macos_pid_buffer.len * @sizeOf(std.posix.pid_t)),
+            @intCast(self.macos_pid_buffer.len * @sizeOf(c_int)),
         );
         if (count <= 0) return;
         const process_count = @min(
@@ -286,7 +287,7 @@ pub const Tracker = struct {
             changed = false;
             for (self.macos_pid_buffer[0..process_count]) |pid| {
                 if (pid <= 0 or pid == std.c.getpid()) continue;
-                if (try self.trackLineageProcess(pid)) changed = true;
+                if (try self.trackLineageProcess(@intCast(pid))) changed = true;
             }
         }
     }
@@ -298,7 +299,7 @@ pub const Tracker = struct {
     pub fn signalOutsideProcessGroup(
         self: *Tracker,
         signal: std.posix.SIG,
-        preserved_group: std.posix.pid_t,
+        preserved_group: ProcessId,
     ) usize {
         return self.signalProcessesChecked(signal, preserved_group).delivered;
     }
@@ -306,7 +307,7 @@ pub const Tracker = struct {
     pub fn signalOutsideProcessGroupChecked(
         self: *Tracker,
         signal: std.posix.SIG,
-        preserved_group: std.posix.pid_t,
+        preserved_group: ProcessId,
     ) DeliverySummary {
         return self.signalProcessesChecked(signal, preserved_group);
     }
@@ -314,7 +315,7 @@ pub const Tracker = struct {
     fn signalProcessesChecked(
         self: *Tracker,
         signal: std.posix.SIG,
-        preserved_group: ?std.posix.pid_t,
+        preserved_group: ?ProcessId,
     ) DeliverySummary {
         return self.signalProcessesWith(
             signal,
@@ -326,7 +327,7 @@ pub const Tracker = struct {
     fn signalProcessesWith(
         self: *Tracker,
         signal: std.posix.SIG,
-        preserved_group: ?std.posix.pid_t,
+        preserved_group: ?ProcessId,
         comptime Effects: type,
     ) DeliverySummary {
         var summary: DeliverySummary = .{};
@@ -357,7 +358,7 @@ pub const Tracker = struct {
         self: *Tracker,
         process: TrackedProcess,
         signal: std.posix.SIG,
-        preserved_group: ?std.posix.pid_t,
+        preserved_group: ?ProcessId,
         summary: *DeliverySummary,
         comptime Effects: type,
     ) void {
@@ -405,7 +406,7 @@ pub const Tracker = struct {
     pub fn signalAttached(
         self: *Tracker,
         signal: std.posix.SIG,
-        command_session: std.posix.pid_t,
+        command_session: ProcessId,
     ) CompletionDelivery {
         return self.signalAttachedWith(signal, command_session, SystemSignalEffects);
     }
@@ -413,7 +414,7 @@ pub const Tracker = struct {
     /// Reports whether any tracked process still in `command_session` is alive.
     pub fn anyAttachedAlive(
         self: *Tracker,
-        command_session: std.posix.pid_t,
+        command_session: ProcessId,
     ) bool {
         return self.anyAttachedAliveWith(command_session, SystemSignalEffects);
     }
@@ -421,7 +422,7 @@ pub const Tracker = struct {
     fn signalAttachedWith(
         self: *Tracker,
         signal: std.posix.SIG,
-        command_session: std.posix.pid_t,
+        command_session: ProcessId,
         comptime Effects: type,
     ) CompletionDelivery {
         var result: CompletionDelivery = .{};
@@ -446,7 +447,7 @@ pub const Tracker = struct {
         self: *Tracker,
         process: TrackedProcess,
         signal: std.posix.SIG,
-        command_session: std.posix.pid_t,
+        command_session: ProcessId,
         result: *CompletionDelivery,
         comptime Effects: type,
     ) void {
@@ -465,7 +466,7 @@ pub const Tracker = struct {
 
     fn anyAttachedAliveWith(
         self: *Tracker,
-        command_session: std.posix.pid_t,
+        command_session: ProcessId,
         comptime Effects: type,
     ) bool {
         if (self.root) |root| {
@@ -480,7 +481,7 @@ pub const Tracker = struct {
     fn completionStandingWith(
         self: *Tracker,
         process: TrackedProcess,
-        command_session: std.posix.pid_t,
+        command_session: ProcessId,
         comptime Effects: type,
     ) CompletionStanding {
         const actual = Effects.capture(self.alloc, process.pid) catch |err| switch (err) {
@@ -523,11 +524,11 @@ pub const Tracker = struct {
         var tasks = task_dir.iterate();
         while (try tasks.next(io_mod.getIo())) |entry| {
             const tid = std.fmt.parseInt(
-                std.posix.pid_t,
+                ProcessId,
                 entry.name,
                 10,
             ) catch continue;
-            if (tid <= 0) continue;
+            if (tid == 0) continue;
             try self.appendLinuxTaskChildren(parent, tid);
         }
     }
@@ -535,7 +536,7 @@ pub const Tracker = struct {
     fn appendLinuxTaskChildren(
         self: *Tracker,
         parent: TrackedProcess,
-        tid: std.posix.pid_t,
+        tid: ProcessId,
     ) !void {
         const path = try std.fmt.allocPrint(
             self.alloc,
@@ -553,7 +554,7 @@ pub const Tracker = struct {
         if (!try self.parentIdentityMatches(parent)) return;
         var children = std.mem.tokenizeAny(u8, buffer[0..read_len], " \t\r\n");
         while (children.next()) |pid_text| {
-            const pid = std.fmt.parseInt(std.posix.pid_t, pid_text, 10) catch continue;
+            const pid = std.fmt.parseInt(ProcessId, pid_text, 10) catch continue;
             try self.trackChild(pid, parent.pid);
         }
     }
@@ -565,9 +566,9 @@ pub const Tracker = struct {
         if (comptime builtin.os.tag != .macos) return error.ProcessTreeUnsupported;
         if (!try self.parentIdentityMatches(parent)) return;
         const count = Darwin.proc_listchildpids(
-            parent.pid,
+            @intCast(parent.pid),
             self.macos_child_buffer.ptr,
-            @intCast(self.macos_child_buffer.len * @sizeOf(std.posix.pid_t)),
+            @intCast(self.macos_child_buffer.len * @sizeOf(c_int)),
         );
         if (count <= 0) return;
         const child_count = @min(
@@ -576,7 +577,7 @@ pub const Tracker = struct {
         );
         if (!try self.parentIdentityMatches(parent)) return;
         for (self.macos_child_buffer[0..child_count]) |pid| {
-            if (pid > 0) try self.trackChild(pid, parent.pid);
+            if (pid > 0) try self.trackChild(@intCast(pid), parent.pid);
         }
     }
 
@@ -590,8 +591,8 @@ pub const Tracker = struct {
 
     fn trackChild(
         self: *Tracker,
-        pid: std.posix.pid_t,
-        expected_parent_pid: std.posix.pid_t,
+        pid: ProcessId,
+        expected_parent_pid: ProcessId,
     ) !void {
         const snapshot = captureSnapshot(self.alloc, pid) catch |err| switch (err) {
             error.ProcessNotFound => return,
@@ -612,7 +613,7 @@ pub const Tracker = struct {
         });
     }
 
-    fn trackLineageProcess(self: *Tracker, pid: std.posix.pid_t) !bool {
+    fn trackLineageProcess(self: *Tracker, pid: ProcessId) !bool {
         const snapshot = captureSnapshot(self.alloc, pid) catch return false;
         if (!couldBelongByStart(
             self.macos_root_started_at_us,
@@ -640,7 +641,7 @@ pub const Tracker = struct {
         return true;
     }
 
-    fn processHasBoundWitness(self: *Tracker, pid: std.posix.pid_t) !bool {
+    fn processHasBoundWitness(self: *Tracker, pid: ProcessId) !bool {
         if (comptime builtin.os.tag != .macos) return false;
         const expected = self.darwin_process_witness orelse return false;
         const fd = self.darwin_process_witness_fd orelse return false;
@@ -686,13 +687,13 @@ fn closeFd(fd: std.posix.fd_t) void {
 }
 
 fn captureDarwinPipeIdentity(
-    pid: std.posix.pid_t,
+    pid: ProcessId,
     fd: std.posix.fd_t,
 ) !DarwinPipeIdentity {
     if (comptime builtin.os.tag != .macos) return error.ProcessTreeUnsupported;
     var info: Darwin.PipeFdInfo = undefined;
     const read_len = Darwin.proc_pidfdinfo(
-        pid,
+        @intCast(pid),
         fd,
         Darwin.proc_pid_fd_pipe_info,
         &info,
@@ -727,47 +728,47 @@ fn shouldTraverseParent(expected: Identity, actual: Identity) bool {
 
 fn snapshotBelongsToParent(
     snapshot: ProcessSnapshot,
-    expected_parent_pid: std.posix.pid_t,
+    expected_parent_pid: ProcessId,
 ) bool {
     return snapshot.parent_pid == expected_parent_pid;
 }
 
 fn shouldSignalProcess(
-    process_group: ?std.posix.pid_t,
-    preserved_group: ?std.posix.pid_t,
+    process_group: ?ProcessId,
+    preserved_group: ?ProcessId,
 ) bool {
     const preserved = preserved_group orelse return true;
     const actual = process_group orelse return false;
     return actual != preserved;
 }
 
-fn inspectProcessGroup(pid: std.posix.pid_t) ProcessGroupState {
+fn inspectProcessGroup(pid: ProcessId) ProcessGroupState {
     if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) {
         return .unavailable;
     }
-    const process_group = getpgid(pid);
-    if (process_group >= 0) return .{ .found = process_group };
+    const process_group = getpgid(io_mod.posixPid(pid));
+    if (process_group >= 0) return .{ .found = @intCast(process_group) };
     return switch (std.c.errno(process_group)) {
         .SRCH => .vanished,
         else => .unavailable,
     };
 }
 
-extern "c" fn getpgid(pid: std.posix.pid_t) std.posix.pid_t;
+extern "c" fn getpgid(pid: std.c.pid_t) std.c.pid_t;
 
-fn inspectSession(pid: std.posix.pid_t) SessionState {
+fn inspectSession(pid: ProcessId) SessionState {
     if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) {
         return .unavailable;
     }
-    const session = getsid(pid);
-    if (session >= 0) return .{ .found = session };
+    const session = getsid(io_mod.posixPid(pid));
+    if (session >= 0) return .{ .found = @intCast(session) };
     return switch (std.c.errno(session)) {
         .SRCH => .vanished,
         else => .unavailable,
     };
 }
 
-extern "c" fn getsid(pid: std.posix.pid_t) std.posix.pid_t;
+extern "c" fn getsid(pid: std.c.pid_t) std.c.pid_t;
 
 fn readLinuxChildrenFile(file: std.Io.File, buffer: []u8) !usize {
     if (comptime builtin.os.tag != .linux) return error.ProcessTreeUnsupported;
@@ -873,7 +874,7 @@ test "macOS lineage identity matches only the same unique process" {
 
 test "checked signal delivery distinguishes vanished stale and failed targets" {
     const FakeEffects = struct {
-        fn capture(_: Allocator, pid: std.posix.pid_t) !ProcessSnapshot {
+        fn capture(_: Allocator, pid: ProcessId) !ProcessSnapshot {
             return switch (pid) {
                 11 => error.ProcessNotFound,
                 12 => error.ProcessIdentityUnavailable,
@@ -888,7 +889,7 @@ test "checked signal delivery distinguishes vanished stale and failed targets" {
             };
         }
 
-        fn processGroup(pid: std.posix.pid_t) ProcessGroupState {
+        fn processGroup(pid: ProcessId) ProcessGroupState {
             return switch (pid) {
                 14 => .vanished,
                 15 => .unavailable,
@@ -897,7 +898,7 @@ test "checked signal delivery distinguishes vanished stale and failed targets" {
             };
         }
 
-        fn send(pid: std.posix.pid_t, _: std.posix.SIG) std.posix.KillError!void {
+        fn send(pid: ProcessId, _: std.posix.SIG) std.posix.KillError!void {
             return switch (pid) {
                 17 => error.PermissionDenied,
                 18 => error.ProcessNotFound,
@@ -926,7 +927,7 @@ test "checked signal delivery distinguishes vanished stale and failed targets" {
 
 test "checked signal delivery keeps vanished stale and excluded targets complete" {
     const FakeEffects = struct {
-        fn capture(_: Allocator, pid: std.posix.pid_t) !ProcessSnapshot {
+        fn capture(_: Allocator, pid: ProcessId) !ProcessSnapshot {
             if (pid == 21) return error.ProcessNotFound;
             return .{
                 .identity = .{ .linux_start_ticks = if (pid == 22) 122 else @as(u64, @intCast(pid)) },
@@ -934,14 +935,14 @@ test "checked signal delivery keeps vanished stale and excluded targets complete
             };
         }
 
-        fn processGroup(pid: std.posix.pid_t) ProcessGroupState {
+        fn processGroup(pid: ProcessId) ProcessGroupState {
             return switch (pid) {
                 23 => .vanished,
                 else => .{ .found = 41 },
             };
         }
 
-        fn send(_: std.posix.pid_t, _: std.posix.SIG) std.posix.KillError!void {
+        fn send(_: ProcessId, _: std.posix.SIG) std.posix.KillError!void {
             return;
         }
     };
@@ -965,7 +966,7 @@ test "checked signal delivery keeps vanished stale and excluded targets complete
 }
 
 test "natural completion detaches only processes that left the command session" {
-    const command_session: std.posix.pid_t = 500;
+    const command_session: ProcessId = 500;
     try std.testing.expectEqual(
         CompletionStanding.attached,
         completionStanding(command_session, .{ .found = command_session }),
@@ -986,10 +987,10 @@ test "natural completion detaches only processes that left the command session" 
 
 test "natural completion stops attached processes and keeps detached daemons" {
     const FakeEffects = struct {
-        var sent: [16]std.posix.pid_t = undefined;
+        var sent: [16]ProcessId = undefined;
         var sent_count: usize = 0;
 
-        fn capture(_: Allocator, pid: std.posix.pid_t) !ProcessSnapshot {
+        fn capture(_: Allocator, pid: ProcessId) !ProcessSnapshot {
             return switch (pid) {
                 35 => .{ .identity = .{ .linux_start_ticks = 999 }, .parent_pid = 1 },
                 36 => .{
@@ -1004,11 +1005,11 @@ test "natural completion stops attached processes and keeps detached daemons" {
             };
         }
 
-        fn processGroup(pid: std.posix.pid_t) ProcessGroupState {
+        fn processGroup(pid: ProcessId) ProcessGroupState {
             return .{ .found = pid };
         }
 
-        fn session(pid: std.posix.pid_t) SessionState {
+        fn session(pid: ProcessId) SessionState {
             return switch (pid) {
                 30, 32 => .{ .found = 500 },
                 34 => .vanished,
@@ -1017,7 +1018,7 @@ test "natural completion stops attached processes and keeps detached daemons" {
             };
         }
 
-        fn send(pid: std.posix.pid_t, _: std.posix.SIG) std.posix.KillError!void {
+        fn send(pid: ProcessId, _: std.posix.SIG) std.posix.KillError!void {
             sent[sent_count] = pid;
             sent_count += 1;
         }
@@ -1035,7 +1036,7 @@ test "natural completion stops attached processes and keeps detached daemons" {
     FakeEffects.sent_count = 0;
     const completed = tracker.signalAttachedWith(std.posix.SIG.KILL, 500, FakeEffects);
     try std.testing.expectEqualSlices(
-        std.posix.pid_t,
+        ProcessId,
         &.{ 37, 32, 30 },
         FakeEffects.sent[0..FakeEffects.sent_count],
     );
@@ -1045,7 +1046,7 @@ test "natural completion stops attached processes and keeps detached daemons" {
 
     var daemons_only = Tracker{ .alloc = std.testing.allocator };
     defer daemons_only.deinit();
-    for ([_]std.posix.pid_t{ 31, 33 }) |pid| {
+    for ([_]ProcessId{ 31, 33 }) |pid| {
         try daemons_only.processes.append(std.testing.allocator, .{
             .pid = pid,
             .identity = .{ .linux_start_ticks = @intCast(pid) },
@@ -1060,20 +1061,20 @@ test "natural completion keeps an unreadable process attached and reports it" {
 
         fn capture(
             _: Allocator,
-            _: std.posix.pid_t,
+            _: ProcessId,
         ) error{ ProcessNotFound, ProcessIdentityUnavailable }!ProcessSnapshot {
             return error.ProcessIdentityUnavailable;
         }
 
-        fn processGroup(pid: std.posix.pid_t) ProcessGroupState {
+        fn processGroup(pid: ProcessId) ProcessGroupState {
             return .{ .found = pid };
         }
 
-        fn session(pid: std.posix.pid_t) SessionState {
+        fn session(pid: ProcessId) SessionState {
             return .{ .found = pid };
         }
 
-        fn send(_: std.posix.pid_t, _: std.posix.SIG) std.posix.KillError!void {
+        fn send(_: ProcessId, _: std.posix.SIG) std.posix.KillError!void {
             sent_count += 1;
         }
     };
@@ -1106,7 +1107,7 @@ test "session inspection separates the caller's session from a new one" {
     };
     try std.testing.expectEqual(
         SessionState{ .found = own_session },
-        inspectSession(std.c.getpid()),
+        inspectSession(io_mod.currentProcessId()),
     );
 
     var detached = try std.process.spawn(io, .{
@@ -1120,7 +1121,7 @@ test "session inspection separates the caller's session from a new one" {
     const ready_len = try detached.stdout.?.readStreaming(io, &.{&ready});
     try std.testing.expectEqual(@as(usize, 1), ready_len);
 
-    const pid = detached.id.?;
+    const pid = io_mod.childProcessId(detached.id.?);
     try std.testing.expectEqual(SessionState{ .found = pid }, inspectSession(pid));
     try std.testing.expectEqual(
         CompletionStanding.detached,
@@ -1128,15 +1129,21 @@ test "session inspection separates the caller's session from a new one" {
     );
 }
 
-fn captureSnapshot(alloc: Allocator, pid: std.posix.pid_t) !ProcessSnapshot {
+fn captureSnapshot(alloc: Allocator, pid: ProcessId) !ProcessSnapshot {
     return switch (builtin.os.tag) {
         .linux => try captureLinuxSnapshot(alloc, pid),
         .macos => try captureMacOSSnapshot(pid),
-        else => error.ProcessTreeUnsupported,
+        else => unsupportedSnapshot(),
     };
 }
 
-fn captureLinuxSnapshot(alloc: Allocator, pid: std.posix.pid_t) !ProcessSnapshot {
+/// Other platforms have no snapshot backend yet. The set keeps
+/// `ProcessNotFound` so every caller handles one error contract.
+fn unsupportedSnapshot() error{ ProcessNotFound, ProcessTreeUnsupported }!ProcessSnapshot {
+    return error.ProcessTreeUnsupported;
+}
+
+fn captureLinuxSnapshot(alloc: Allocator, pid: ProcessId) !ProcessSnapshot {
     if (comptime builtin.os.tag != .linux) return error.ProcessTreeUnsupported;
     const path = try std.fmt.allocPrint(alloc, "/proc/{d}/stat", .{pid});
     defer alloc.free(path);
@@ -1149,12 +1156,12 @@ fn captureLinuxSnapshot(alloc: Allocator, pid: std.posix.pid_t) !ProcessSnapshot
         return error.ProcessIdentityUnavailable;
     var fields = std.mem.tokenizeScalar(u8, stat[close_paren + 1 ..], ' ');
     var field_number: usize = 3;
-    var parent_pid: ?std.posix.pid_t = null;
+    var parent_pid: ?ProcessId = null;
     var zombie = false;
     while (fields.next()) |field| : (field_number += 1) {
         if (field_number == 3) zombie = field.len == 1 and field[0] == 'Z';
         if (field_number == 4) {
-            parent_pid = std.fmt.parseInt(std.posix.pid_t, field, 10) catch
+            parent_pid = std.fmt.parseInt(ProcessId, field, 10) catch
                 return error.ProcessIdentityUnavailable;
         }
         if (field_number == 22) {
@@ -1188,11 +1195,11 @@ fn readLinuxProcFile(file: std.Io.File, buffer: []u8) !usize {
     }
 }
 
-fn captureMacOSSnapshot(pid: std.posix.pid_t) !ProcessSnapshot {
+fn captureMacOSSnapshot(pid: ProcessId) !ProcessSnapshot {
     if (comptime builtin.os.tag != .macos) return error.ProcessTreeUnsupported;
     var unique: Darwin.ProcUniqueIdentifierInfo = undefined;
     const unique_len = Darwin.proc_pidinfo(
-        pid,
+        @intCast(pid),
         Darwin.proc_pid_unique_identifier_info,
         0,
         &unique,
@@ -1204,7 +1211,7 @@ fn captureMacOSSnapshot(pid: std.posix.pid_t) !ProcessSnapshot {
     }
     var info: Darwin.ProcBsdInfo = undefined;
     const read_len = Darwin.proc_pidinfo(
-        pid,
+        @intCast(pid),
         3,
         0,
         &info,
@@ -1226,7 +1233,7 @@ fn captureMacOSSnapshot(pid: std.posix.pid_t) !ProcessSnapshot {
     };
 }
 
-pub fn processIsAlive(alloc: Allocator, pid: std.posix.pid_t) !bool {
+pub fn processIsAlive(alloc: Allocator, pid: ProcessId) !bool {
     const snapshot = captureSnapshot(alloc, pid) catch |err| switch (err) {
         error.ProcessNotFound => return false,
         else => return err,

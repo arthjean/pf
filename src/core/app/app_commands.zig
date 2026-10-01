@@ -2360,8 +2360,9 @@ fn writeCurrentStateSummary(writer: *std.Io.Writer, app: anytype, alloc: std.mem
 }
 
 fn writeProcessSummary(writer: *std.Io.Writer, alloc: std.mem.Allocator) !void {
-    const pid = std.c.getpid();
+    const pid = io_mod.currentProcessId();
     try writer.print("process: pid={d}", .{pid});
+    if (comptime @import("builtin").os.tag == .windows) return writeWindowsProcessSummary(writer);
     if (countOpenFileDescriptors()) |fd_count| try writer.print(" open_fds={d}", .{fd_count});
     try writer.writeByte('\n');
 
@@ -2379,6 +2380,24 @@ fn writeProcessSummary(writer: *std.Io.Writer, alloc: std.mem.Allocator) !void {
             }
         }
     }
+}
+
+fn writeWindowsProcessSummary(writer: *std.Io.Writer) !void {
+    const win32 = @import("../shared/win32.zig");
+    const process = std.os.windows.GetCurrentProcess();
+    var handle_count: std.os.windows.DWORD = 0;
+    if (win32.GetProcessHandleCount(process, &handle_count).toBool()) {
+        try writer.print(" handles={d}", .{handle_count});
+    }
+    try writer.writeByte('\n');
+
+    var counters: win32.PROCESS_MEMORY_COUNTERS = undefined;
+    counters.cb = @sizeOf(win32.PROCESS_MEMORY_COUNTERS);
+    if (!win32.K32GetProcessMemoryInfo(process, &counters, counters.cb).toBool()) return;
+    try writer.print(
+        "process_memory:\n  working_set_kb={d} peak_working_set_kb={d} private_kb={d}\n",
+        .{ counters.WorkingSetSize / 1024, counters.PeakWorkingSetSize / 1024, counters.PagefileUsage / 1024 },
+    );
 }
 
 fn countOpenFileDescriptors() ?usize {
@@ -2400,7 +2419,7 @@ fn countOpenFileDescriptors() ?usize {
     return count;
 }
 
-fn processMemorySnapshot(alloc: std.mem.Allocator, pid: std.c.pid_t) ![]u8 {
+fn processMemorySnapshot(alloc: std.mem.Allocator, pid: io_mod.ProcessId) ![]u8 {
     const pid_text = try std.fmt.allocPrint(alloc, "{d}", .{pid});
     defer alloc.free(pid_text);
     const result = try std.process.run(alloc, io_mod.getIo(), .{

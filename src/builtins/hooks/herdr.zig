@@ -4,6 +4,7 @@
 //! ignored so the integration cannot block or terminate an pf session.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../../core/shared/io.zig");
 const debug_trace = @import("../../core/shared/debug_trace.zig");
 const host_target = @import("../../core/hosts/target.zig");
@@ -53,6 +54,11 @@ pub const Client = struct {
     }
 
     pub fn initFromEnv(self: *Client, alloc: std.mem.Allocator) void {
+        // herdr does not exist on Windows.
+        if (comptime builtin.os.tag == .windows) {
+            debug_trace.logf("herdr", "disabled reason=unsupported_platform os=windows", .{});
+            return;
+        }
         const socket_path = io_mod.getenv("HERDR_SOCKET_PATH");
         const pane_id = io_mod.getenv("HERDR_PANE_ID");
         if (!shouldEnable(io_mod.getenv("PF_HERDR"), socket_path, pane_id)) {
@@ -130,7 +136,7 @@ pub const Client = struct {
     }
 
     fn sendAll(self: *Client, requests: []const Request) void {
-        if (comptime host_target.is_wasm) return;
+        if (comptime host_target.is_wasm or builtin.os.tag == .windows) return;
         if (!self.enabled) return;
         const io = io_mod.getIo();
         self.mutex.lockUncancelable(io);

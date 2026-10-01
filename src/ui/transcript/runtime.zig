@@ -4254,8 +4254,16 @@ test "render diagnostic commit skips unchanged same-row paints" {
     try std.testing.expect(std.mem.find(u8, events[0].detail(), "repaint=true") != null);
 }
 
+/// Placeholder output until `TranscriptRuntime.init` binds standard output.
+/// Windows resolves the console handle only at run time, so the default holds
+/// an invalid handle that fails writes instead of reaching a stale one.
+const unbound_stdout: std.Io.File = if (@import("builtin").os.tag == .windows)
+    .{ .handle = std.os.windows.INVALID_HANDLE_VALUE, .flags = .{ .nonblocking = false } }
+else
+    std.Io.File.stdout();
+
 pub const TranscriptRuntime = struct {
-    stdout_file: std.Io.File = std.Io.File.stdout(),
+    stdout_file: std.Io.File = unbound_stdout,
     test_frame_sink: if (@import("builtin").is_test) ?render_engine.terminal_diff.FrameSink else void = if (@import("builtin").is_test) null else {},
     sync_updates_enabled: bool = true,
     history_reset_uses_ris: bool = false,
@@ -4443,6 +4451,7 @@ pub const TranscriptRuntime = struct {
 
     pub noinline fn init() TranscriptRuntime {
         var result: TranscriptRuntime = .{
+            .stdout_file = std.Io.File.stdout(),
             .compact_transcript_source_cache = undefined,
         };
         for (&result.compact_transcript_source_cache.entries) |*entry| {

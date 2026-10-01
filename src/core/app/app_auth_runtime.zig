@@ -2003,6 +2003,7 @@ pub fn Runtime(comptime App: type) type {
                 switch (err) {
                     error.ChatGptAuthorizationFailed => .{ .topic = "auth", .tone = .@"error", .body = "Codex sign-in was denied. The current credential is unchanged." },
                     error.ChatGptLoginTimedOut, error.LoginTimedOut => .{ .topic = "auth", .tone = .warning, .body = "Codex sign-in expired. The current credential is unchanged; run /login to try again." },
+                    error.ChatGptOAuthCallbackPortUnavailable => .{ .topic = "auth", .tone = .@"error", .body = "Codex sign-in failed: " ++ chatgpt_oauth.callback_ports_in_use_text ++ ". The current credential is unchanged." },
                     else => .{ .topic = "auth", .tone = .@"error", .body = "Codex sign-in failed. The current credential is unchanged." },
                 }
             else if (source == .grok_subscription)

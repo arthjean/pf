@@ -205,7 +205,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
 
     var children = try scratch.alloc(std.process.Child, plan.stages.len);
     var child_count: usize = 0;
-    var group_id: ?std.posix.pid_t = null;
+    var group_id: ?io_mod.ProcessId = null;
     var pre_worker_cleanup_pending = true;
     errdefer if (pre_worker_cleanup_pending) {
         cleanupChildren(children[0..child_count], group_id);
@@ -226,7 +226,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
             .stdout = .pipe,
             .stderr = .pipe,
             .pgid = if (builtin.os.tag != .windows and builtin.os.tag != .wasi)
-                (if (child_count == 0) 0 else group_id)
+                (if (child_count == 0) 0 else io_mod.posixPid(group_id.?))
             else
                 null,
         }) catch |err| {
@@ -237,7 +237,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
         };
         children[child_count] = child;
         if (child_count == 0 and builtin.os.tag != .windows and builtin.os.tag != .wasi) {
-            group_id = child.id;
+            group_id = io_mod.childProcessId(child.id.?);
         }
         if (test_controls.after_spawn) |after_spawn| {
             after_spawn(test_controls.context.?, child_count, &children[child_count]);
@@ -726,10 +726,10 @@ fn deadlineExpired(cfg: command_runner.Config) bool {
     return io_mod.milliTimestamp() - started_ms >= @as(i64, @intCast(timeout_ms));
 }
 
-fn signalGroup(group_id: ?std.posix.pid_t, force: bool) void {
+fn signalGroup(group_id: ?io_mod.ProcessId, force: bool) void {
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return;
     const pid = group_id orelse return;
-    std.posix.kill(-pid, if (force) std.posix.SIG.KILL else std.posix.SIG.TERM) catch |err| switch (err) {
+    std.posix.kill(-io_mod.posixPid(pid), if (force) std.posix.SIG.KILL else std.posix.SIG.TERM) catch |err| switch (err) {
         error.ProcessNotFound => {},
         else => debug_trace.logf("core", "direct command signal failed err={s}", .{@errorName(err)}),
     };
@@ -744,7 +744,7 @@ fn closeChildPipes(child: *std.process.Child) void {
     child.stderr = null;
 }
 
-fn cleanupChildren(children: []std.process.Child, group_id: ?std.posix.pid_t) void {
+fn cleanupChildren(children: []std.process.Child, group_id: ?io_mod.ProcessId) void {
     signalGroup(group_id, true);
     for (children) |*child| closeChildPipes(child);
     waitChildren(children);
@@ -1314,7 +1314,7 @@ test "direct executor reaps partial spawn and output-limit process groups" {
     if (builtin.os.tag != .macos and builtin.os.tag != .linux) return error.SkipZigTest;
 
     const PidCapture = struct {
-        pid: ?std.posix.pid_t = null,
+        pid: ?std.process.Child.Id = null,
 
         fn afterSpawn(raw: *anyopaque, stage_index: usize, child: *const std.process.Child) void {
             if (stage_index != 0) return;
@@ -1396,7 +1396,7 @@ test "direct executor cleans up cancellation after the first pipeline spawn" {
     var cancel = std.atomic.Value(bool).init(false);
     const CancelAfterSpawn = struct {
         cancel: *std.atomic.Value(bool),
-        pid: ?std.posix.pid_t = null,
+        pid: ?std.process.Child.Id = null,
 
         fn run(raw: *anyopaque, stage_index: usize, child: *const std.process.Child) void {
             if (stage_index != 0) return;

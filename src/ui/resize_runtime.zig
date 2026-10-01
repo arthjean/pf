@@ -40,6 +40,8 @@ pub const supports_resize_signal = switch (builtin.os.tag) {
     .dragonfly,
     .freebsd,
     .serenity,
+    // Windows reports resizes as console input records.
+    .windows,
     => true,
     else => false,
 };

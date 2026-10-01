@@ -645,6 +645,30 @@ pub fn nanoTimestamp() i128 {
     return @intCast(ts.nanoseconds);
 }
 
+/// Operating-system process id. POSIX process and group ids are positive
+/// `pid_t` values and Windows process ids are DWORDs, so both fit. Convert to
+/// `pid_t` only at a POSIX system call with `posixPid`.
+pub const ProcessId = u32;
+
+/// Returns the id of the calling process.
+pub fn currentProcessId() ProcessId {
+    if (comptime builtin.os.tag == .windows) return std.os.windows.GetCurrentProcessId();
+    return @intCast(std.c.getpid());
+}
+
+/// Returns the process id of a spawned child. On Windows the child id is a
+/// process handle, so the id comes from `GetProcessId`.
+pub fn childProcessId(id: std.process.Child.Id) ProcessId {
+    if (comptime builtin.os.tag == .windows) return @import("win32.zig").GetProcessId(id);
+    return @intCast(id);
+}
+
+/// Converts a process id for a POSIX system call. POSIX only.
+pub fn posixPid(id: ProcessId) std.posix.pid_t {
+    comptime std.debug.assert(builtin.os.tag != .windows);
+    return @intCast(id);
+}
+
 pub fn writeFileAtomic(alloc: std.mem.Allocator, path: []const u8, text: []const u8) !void {
     e2eFailIfDurableMutationAttempted();
     const maybe_existing_permissions = existingFilePermissions(path);
@@ -1331,16 +1355,18 @@ fn windowsFinalPathAlloc(alloc: std.mem.Allocator, handle: std.Io.File.Handle) !
 /// The caller owns the returned path.
 fn windowsFinalPathWideAlloc(alloc: std.mem.Allocator, handle: std.Io.File.Handle) ![]u16 {
     const win32 = @import("win32.zig");
-    const wide = try alloc.alloc(u16, std.os.windows.PATH_MAX_WIDE + 1);
+    const flags = win32.FILE_NAME_NORMALIZED | win32.VOLUME_NAME_DOS;
+    // Callers resolve into small fixed buffers, so only a path longer than the
+    // stack buffer allocates, and then at the size the API reports.
+    var stack_buf: [1024]u16 = undefined;
+    const len = win32.GetFinalPathNameByHandleW(handle, &stack_buf, stack_buf.len, flags);
+    if (len == 0) return error.HandlePathUnavailable;
+    if (len < stack_buf.len) return alloc.dupe(u16, stack_buf[0..len]);
+    const wide = try alloc.alloc(u16, len);
     defer alloc.free(wide);
-    const len = win32.GetFinalPathNameByHandleW(
-        handle,
-        wide.ptr,
-        @intCast(wide.len),
-        win32.FILE_NAME_NORMALIZED | win32.VOLUME_NAME_DOS,
-    );
-    if (len == 0 or len >= wide.len) return error.HandlePathUnavailable;
-    return alloc.dupe(u16, wide[0..len]);
+    const written = win32.GetFinalPathNameByHandleW(handle, wide.ptr, len, flags);
+    if (written == 0 or written >= len) return error.HandlePathUnavailable;
+    return alloc.dupe(u16, wide[0..written]);
 }
 
 /// Rewrites a `\\?\` path from `GetFinalPathNameByHandleW` into its DOS form.

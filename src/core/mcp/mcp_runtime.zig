@@ -3081,7 +3081,7 @@ test "runtime shutdown releases catalog locks before subscription cancellation w
         .stderr = .ignore,
         .pgid = 0,
     });
-    const child_pid = child.id orelse return error.McpProcessNotStarted;
+    const child_pid = io_mod.childProcessId(child.id orelse return error.McpProcessNotStarted);
     const dispatcher = try stdio_dispatcher.StdioDispatcher.create(
         alloc,
         std.heap.c_allocator,
@@ -5446,9 +5446,9 @@ fn expectResourceText(result: ResourceReadResult, expected: []const u8) !void {
     }
 }
 
-fn expectTestProcessExited(pid: std.posix.pid_t) !void {
+fn expectTestProcessExited(pid: io_mod.ProcessId) !void {
     for (0..200) |_| {
-        std.posix.kill(pid, @enumFromInt(0)) catch |err| switch (err) {
+        std.posix.kill(io_mod.posixPid(pid), @enumFromInt(0)) catch |err| switch (err) {
             error.ProcessNotFound => return,
             else => {},
         };
@@ -5458,7 +5458,7 @@ fn expectTestProcessExited(pid: std.posix.pid_t) !void {
     return error.TestProcessStillRunning;
 }
 
-fn testProcessIsZombie(pid: std.posix.pid_t) bool {
+fn testProcessIsZombie(pid: io_mod.ProcessId) bool {
     var path_buf: [64]u8 = undefined;
     const path = std.fmt.bufPrint(&path_buf, "/proc/{d}/status", .{pid}) catch return false;
     var file = std.Io.Dir.openFileAbsolute(io_mod.getIo(), path, .{}) catch return false;
@@ -5510,7 +5510,7 @@ test "server_transport.connectServer completes NDJSON handshake against a real s
     try std.testing.expectEqual(@as(usize, 1), server.tool_catalog.tools.items.len);
     try std.testing.expectEqualStrings("echo", server.tool_catalog.tools.items[0].original_name);
     try std.testing.expectEqualStrings("mcp_ndjson_echo", server.tool_catalog.tools.items[0].prefixed_name);
-    const grandchild_pid = try std.fmt.parseInt(std.posix.pid_t, server.instructions.?, 10);
+    const grandchild_pid = try std.fmt.parseInt(io_mod.ProcessId, server.instructions.?, 10);
 
     server.disconnect();
     try expectTestProcessExited(grandchild_pid);

@@ -35,7 +35,7 @@ extern "c" fn unlockpt(fd: c_int) c_int;
 extern "c" fn ptsname(fd: c_int) ?[*:0]u8;
 
 pub const supports_resize_signal = resize_runtime.supports_resize_signal;
-pub const ResizeHandler = if (builtin.os.tag == .wasi)
+pub const ResizeHandler = if (builtin.os.tag == .wasi or builtin.os.tag == .windows)
     *const fn () callconv(.c) void
 else
     std.posix.Sigaction.handler_fn;
@@ -61,15 +61,45 @@ pub const AlternateScreenOwner = enum {
     catalog_menu,
 };
 
+/// Placeholder handles until `TerminalState.init` binds the standard streams.
+/// Windows resolves console handles only at run time, so its defaults are an
+/// invalid handle that fails every call.
+const unbound_input: std.Io.File = if (builtin.os.tag == .windows) unbound_windows_file else std.Io.File.stdin();
+const unbound_output: std.Io.File = if (builtin.os.tag == .windows) unbound_windows_file else std.Io.File.stdout();
+const unbound_windows_file: std.Io.File = if (builtin.os.tag == .windows)
+    .{ .handle = std.os.windows.INVALID_HANDLE_VALUE, .flags = .{ .nonblocking = false } }
+else
+    undefined;
+
+/// Terminal mode state saved by each platform backend.
+const SavedModes = switch (builtin.os.tag) {
+    .wasi => struct {},
+    .windows => struct {
+        input_mode: u32 = 0,
+        output_mode: u32 = 0,
+        input_code_page: u32 = 0,
+        output_code_page: u32 = 0,
+    },
+    else => struct {
+        termios: std.posix.termios = undefined,
+        old_winch_action: ?std.posix.Sigaction = null,
+    },
+};
+
 pub const TerminalState = struct {
-    stdin_fd: std.posix.fd_t = std.posix.STDIN_FILENO,
-    original_termios: std.posix.termios = undefined,
+    input: std.Io.File = unbound_input,
+    output: std.Io.File = unbound_output,
+    saved: SavedModes = .{},
     raw_enabled: bool = false,
     alternate_screen_owner: AlternateScreenOwner = .none,
     alternate_frame_layout: frame_layout.CommittedLayoutSnapshot = .{},
     alternate_mouse_tracking_active: bool = false,
     signal_handler_installed: bool = false,
-    old_winch_action: ?std.posix.Sigaction = null,
+
+    /// Binds the process standard input and output.
+    pub fn init() TerminalState {
+        return .{ .input = std.Io.File.stdin(), .output = std.Io.File.stdout() };
+    }
 
     pub fn fileApprovalScreenActive(self: TerminalState) bool {
         return self.alternate_screen_owner == .file_approval;
@@ -83,24 +113,52 @@ pub const TerminalState = struct {
         return self.alternate_screen_owner == .catalog_menu;
     }
 
+    pub fn inputIsTerminal(self: TerminalState) bool {
+        return switch (builtin.os.tag) {
+            .wasi => true,
+            .windows => windowsConsoleMode(self.input) != null,
+            else => std.c.isatty(self.input.handle) != 0,
+        };
+    }
+
     pub fn ensureInteractive(self: TerminalState) !void {
         if (comptime builtin.os.tag == .wasi) return;
-        if (std.c.isatty(self.stdin_fd) == 0 or std.c.isatty(std.posix.STDOUT_FILENO) == 0) {
+        const output_is_terminal = if (comptime builtin.os.tag == .windows)
+            windowsConsoleMode(self.output) != null
+        else
+            std.c.isatty(self.output.handle) != 0;
+        if (!self.inputIsTerminal() or !output_is_terminal) {
             return error.NotATerminal;
         }
     }
 
     pub fn captureOriginalTermios(self: *TerminalState) !void {
-        if (comptime builtin.os.tag == .wasi) return;
-        self.original_termios = try std.posix.tcgetattr(self.stdin_fd);
+        switch (builtin.os.tag) {
+            .wasi => {},
+            .windows => {
+                const win32 = @import("../core/shared/win32.zig");
+                self.saved = .{
+                    .input_mode = windowsConsoleMode(self.input) orelse return error.NotATerminal,
+                    .output_mode = windowsConsoleMode(self.output) orelse return error.NotATerminal,
+                    .input_code_page = win32.GetConsoleCP(),
+                    .output_code_page = win32.GetConsoleOutputCP(),
+                };
+            },
+            else => self.saved.termios = try std.posix.tcgetattr(self.input.handle),
+        }
     }
 
     pub fn enableRawMode(self: *TerminalState) !void {
-        if (comptime builtin.os.tag == .wasi) {
-            self.raw_enabled = true;
-            return;
+        switch (builtin.os.tag) {
+            .wasi => {},
+            .windows => try self.enableWindowsRawMode(),
+            else => try self.enablePosixRawMode(),
         }
-        var raw = self.original_termios;
+        self.raw_enabled = true;
+    }
+
+    fn enablePosixRawMode(self: *TerminalState) !void {
+        var raw = self.saved.termios;
 
         raw.iflag.BRKINT = false;
         raw.iflag.IGNCR = false;
@@ -125,20 +183,58 @@ pub const TerminalState = struct {
             raw.cc[vtime_idx] = 0;
         }
 
-        try std.posix.tcsetattr(self.stdin_fd, .NOW, raw);
-        self.raw_enabled = true;
+        try std.posix.tcsetattr(self.input.handle, .NOW, raw);
+    }
+
+    /// Windows raw mode: virtual terminal input and window events in, no line
+    /// editing, echo, or Ctrl+C processing, so Ctrl+C arrives as byte 0x03;
+    /// virtual terminal processing and UTF-8 out.
+    fn enableWindowsRawMode(self: *TerminalState) !void {
+        const win32 = @import("../core/shared/win32.zig");
+        const input_mode = (self.saved.input_mode &
+            ~(win32.ENABLE_LINE_INPUT | win32.ENABLE_ECHO_INPUT | win32.ENABLE_PROCESSED_INPUT)) |
+            win32.ENABLE_VIRTUAL_TERMINAL_INPUT | win32.ENABLE_WINDOW_INPUT;
+        if (!win32.SetConsoleMode(self.input.handle, input_mode).toBool()) {
+            return error.VirtualTerminalUnavailable;
+        }
+        const output_mode = self.saved.output_mode |
+            win32.ENABLE_PROCESSED_OUTPUT | win32.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        if (!win32.SetConsoleMode(self.output.handle, output_mode).toBool()) {
+            _ = win32.SetConsoleMode(self.input.handle, self.saved.input_mode);
+            return error.VirtualTerminalUnavailable;
+        }
+        _ = win32.SetConsoleOutputCP(win32.CP_UTF8);
+        _ = win32.SetConsoleCP(win32.CP_UTF8);
     }
 
     pub fn disableRawMode(self: *TerminalState) void {
         if (!self.raw_enabled) return;
-        if (comptime builtin.os.tag != .wasi) {
-            std.posix.tcsetattr(self.stdin_fd, .FLUSH, self.original_termios) catch {};
+        switch (builtin.os.tag) {
+            .wasi => {},
+            .windows => self.restoreWindowsConsole(),
+            else => std.posix.tcsetattr(self.input.handle, .FLUSH, self.saved.termios) catch {},
         }
         self.raw_enabled = false;
     }
 
+    /// Restores the console modes and code pages saved at startup. Safe to
+    /// call from a console control handler thread.
+    pub fn restoreWindowsConsole(self: *const TerminalState) void {
+        const win32 = @import("../core/shared/win32.zig");
+        _ = win32.SetConsoleMode(self.input.handle, self.saved.input_mode);
+        _ = win32.SetConsoleMode(self.output.handle, self.saved.output_mode);
+        _ = win32.SetConsoleCP(self.saved.input_code_page);
+        _ = win32.SetConsoleOutputCP(self.saved.output_code_page);
+    }
+
     pub fn installResizeSignal(self: *TerminalState, handler: ResizeHandler) void {
         if (!supports_resize_signal) return;
+        if (comptime builtin.os.tag == .windows) {
+            // Resizes arrive as console input records; see `pollInput`.
+            windows_console.resize_handler = handler;
+            self.signal_handler_installed = true;
+            return;
+        }
 
         const act: std.posix.Sigaction = .{
             .handler = .{ .handler = handler },
@@ -148,23 +244,28 @@ pub const TerminalState = struct {
 
         var old: std.posix.Sigaction = undefined;
         std.posix.sigaction(std.posix.SIG.WINCH, &act, &old);
-        self.old_winch_action = old;
+        self.saved.old_winch_action = old;
         self.signal_handler_installed = true;
     }
 
     pub fn uninstallResizeSignal(self: *TerminalState) void {
         if (!supports_resize_signal or !self.signal_handler_installed) return;
-        if (self.old_winch_action) |old| {
+        if (comptime builtin.os.tag == .windows) {
+            windows_console.resize_handler = null;
+        } else if (self.saved.old_winch_action) |old| {
             std.posix.sigaction(std.posix.SIG.WINCH, &old, null);
         }
         self.signal_handler_installed = false;
     }
 
     pub fn queryLayout(self: TerminalState, footer_rows: u16) !Layout {
-        return if (comptime builtin.os.tag == .wasi)
-            wasm_terminal.queryLayout(footer_rows)
-        else
-            ui_terminal.queryLayout(self.stdin_fd, footer_rows);
+        return switch (builtin.os.tag) {
+            .wasi => wasm_terminal.queryLayout(footer_rows),
+            // The console window size belongs to the screen buffer, so it is
+            // read from the output handle.
+            .windows => ui_terminal.queryLayout(self.output, footer_rows),
+            else => ui_terminal.queryLayout(self.input, footer_rows),
+        };
     }
 
     pub fn queryCursorPosition(self: TerminalState) !CursorPosition {
@@ -173,8 +274,7 @@ pub const TerminalState = struct {
             // existing shell viewport, so there are no launch rows to preserve.
             return .{ .row = 1, .col = 1 };
         }
-        var stdout_file = std.Io.File.stdout();
-        try stdout_file.writeStreamingAll(io_mod.getIo(), "\x1b[6n");
+        try self.output.writeStreamingAll(io_mod.getIo(), "\x1b[6n");
 
         var buf: [64]u8 = undefined;
         var len: usize = 0;
@@ -197,13 +297,12 @@ pub const TerminalState = struct {
         return cursor_probe.parsePositionResponse(buf[0..len]);
     }
 
-    pub fn clearTmuxScreenAndHistory(_: *TerminalState, alloc: Allocator) void {
+    pub fn clearTmuxScreenAndHistory(self: *TerminalState, alloc: Allocator) void {
         if (comptime builtin.is_test) return;
         if (io_mod.getenv("TMUX") == null) return;
         const pane = io_mod.getenv("TMUX_PANE") orelse return;
 
-        var stdout_file = std.Io.File.stdout();
-        stdout_file.writeStreamingAll(io_mod.getIo(), "\x1b[0m\x1b[2J\x1b[3J\x1b[H") catch |err| {
+        self.output.writeStreamingAll(io_mod.getIo(), "\x1b[0m\x1b[2J\x1b[3J\x1b[H") catch |err| {
             debug_trace.logf("resize", "tmux_clear_screen_failed pane={s} err={s}", .{ pane, @errorName(err) });
             return;
         };
@@ -212,50 +311,48 @@ pub const TerminalState = struct {
     }
 
     pub fn requestResizeCursorPosition(
-        _: TerminalState,
+        self: TerminalState,
         protocol: cursor_probe.Protocol,
     ) !void {
-        var stdout_file = std.Io.File.stdout();
-        try stdout_file.writeStreamingAll(io_mod.getIo(), cursor_probe.queryBytes(protocol));
+        try self.output.writeStreamingAll(io_mod.getIo(), cursor_probe.queryBytes(protocol));
     }
 
-    pub fn enableThemeNotifications(_: TerminalState) !void {
-        var stdout_file = std.Io.File.stdout();
-        try stdout_file.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_notification_enable_sequence);
+    pub fn enableThemeNotifications(self: TerminalState) !void {
+        try self.output.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_notification_enable_sequence);
     }
 
-    pub fn requestThemeColorScheme(_: TerminalState) !void {
-        var stdout_file = std.Io.File.stdout();
-        try stdout_file.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_color_scheme_query);
+    pub fn requestThemeColorScheme(self: TerminalState) !void {
+        try self.output.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_color_scheme_query);
     }
 
-    pub fn requestThemeResponseFence(_: TerminalState) !void {
-        var stdout_file = std.Io.File.stdout();
-        try stdout_file.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_response_fence_query);
+    pub fn requestThemeResponseFence(self: TerminalState) !void {
+        try self.output.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_response_fence_query);
     }
 
-    pub fn requestThemeBackground(_: TerminalState) !void {
-        var stdout_file = std.Io.File.stdout();
-        try stdout_file.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_background_query_with_fence);
+    pub fn requestThemeBackground(self: TerminalState) !void {
+        try self.output.writeStreamingAll(io_mod.getIo(), ui_terminal.theme_background_query_with_fence);
     }
 
     pub fn read(self: TerminalState, out: []u8) !usize {
-        if (comptime builtin.os.tag == .wasi) {
-            return std.Io.File.stdin().readStreaming(io_mod.getIo(), &.{out});
-        }
-        return std.posix.read(self.stdin_fd, out);
+        return switch (builtin.os.tag) {
+            .wasi => std.Io.File.stdin().readStreaming(io_mod.getIo(), &.{out}),
+            .windows => windows_console.read(self.input, out),
+            else => std.posix.read(self.input.handle, out),
+        };
     }
 
     pub fn pollInput(self: TerminalState, timeout_ms: i32) !PollResult {
-        if (comptime builtin.os.tag == .wasi) {
-            return switch (wasm_terminal.pollInput(timeout_ms)) {
+        switch (builtin.os.tag) {
+            .wasi => return switch (wasm_terminal.pollInput(timeout_ms)) {
                 1 => .{ .readable = true },
                 -1 => .{ .hung_up = true },
                 else => .{},
-            };
+            },
+            .windows => return windows_console.poll(self.input, timeout_ms),
+            else => {},
         }
         var fds = [_]std.posix.pollfd{.{
-            .fd = self.stdin_fd,
+            .fd = self.input.handle,
             .events = std.posix.POLL.IN,
             .revents = 0,
         }};
@@ -267,6 +364,139 @@ pub const TerminalState = struct {
             .hung_up = (revents & std.posix.POLL.HUP) != 0,
             .has_error = (revents & std.posix.POLL.ERR) != 0,
         };
+    }
+};
+
+/// Returns the console mode of `file`, or null when it is not a console.
+fn windowsConsoleMode(file: std.Io.File) ?u32 {
+    const win32 = @import("../core/shared/win32.zig");
+    var mode: u32 = 0;
+    if (!win32.GetConsoleMode(file.handle, &mode).toBool()) return null;
+    return mode;
+}
+
+/// The console input buffer is process-wide, so its decoding state is too.
+var windows_console: WindowsConsoleInput = .{};
+
+/// Reads Windows console input as UTF-8. `ReadConsoleW` returns UTF-16 with
+/// virtual terminal sequences inline; a code point split across reads keeps
+/// its first surrogate here, and bytes that did not fit the caller's buffer
+/// wait in `pending`.
+const WindowsConsoleInput = struct {
+    pending: [128]u8 = undefined,
+    pending_start: usize = 0,
+    pending_end: usize = 0,
+    high_surrogate: ?u16 = null,
+    resize_handler: ?ResizeHandler = null,
+
+    fn poll(self: *WindowsConsoleInput, input: std.Io.File, timeout_ms: i32) !PollResult {
+        const win32 = @import("../core/shared/win32.zig");
+        if (self.pending_end > self.pending_start) return .{ .readable = true };
+        const deadline_ms: ?i64 = if (timeout_ms < 0) null else io_mod.milliTimestamp() + timeout_ms;
+        while (true) {
+            if (try self.skipNonText(input)) return .{ .readable = true };
+            // The handle can stay signaled with no record left, for example
+            // while the console closes, so the deadline ends the wait itself.
+            var wait_ms: u32 = win32.INFINITE;
+            if (deadline_ms) |deadline| {
+                const remaining = deadline - io_mod.milliTimestamp();
+                if (remaining <= 0) return .{};
+                wait_ms = @intCast(remaining);
+            }
+            switch (win32.WaitForSingleObject(input.handle, wait_ms)) {
+                win32.WAIT_OBJECT_0 => {},
+                win32.WAIT_TIMEOUT => return .{},
+                else => return .{ .has_error = true },
+            }
+        }
+    }
+
+    /// Removes leading input records that `ReadConsoleW` would skip without
+    /// returning, turning window size changes into resize notifications.
+    /// Returns whether a text record is next.
+    fn skipNonText(self: *WindowsConsoleInput, input: std.Io.File) !bool {
+        const win32 = @import("../core/shared/win32.zig");
+        var records: [16]win32.INPUT_RECORD = undefined;
+        while (true) {
+            var count: u32 = 0;
+            if (!win32.PeekConsoleInputW(input.handle, &records, records.len, &count).toBool()) {
+                return error.ConsoleInputUnavailable;
+            }
+            var skip: u32 = 0;
+            while (skip < count and !isTextRecord(records[skip])) skip += 1;
+            if (skip == 0) return count != 0;
+            var removed: u32 = 0;
+            if (!win32.ReadConsoleInputW(input.handle, &records, skip, &removed).toBool()) {
+                return error.ConsoleInputUnavailable;
+            }
+            for (records[0..removed]) |record| {
+                if (record.EventType == win32.WINDOW_BUFFER_SIZE_EVENT) {
+                    if (self.resize_handler) |handler| handler();
+                }
+            }
+            if (skip < count) return true;
+        }
+    }
+
+    fn isTextRecord(record: @import("../core/shared/win32.zig").INPUT_RECORD) bool {
+        const win32 = @import("../core/shared/win32.zig");
+        if (record.EventType != win32.KEY_EVENT) return false;
+        const key = record.Event.KeyEvent;
+        return key.bKeyDown.toBool() and key.UnicodeChar != 0;
+    }
+
+    fn read(self: *WindowsConsoleInput, input: std.Io.File, out: []u8) !usize {
+        const win32 = @import("../core/shared/win32.zig");
+        if (out.len == 0) return 0;
+        while (self.pending_end == self.pending_start) {
+            var wide: [32]u16 = undefined;
+            var count: u32 = 0;
+            if (!win32.ReadConsoleW(input.handle, &wide, wide.len, &count, null).toBool()) {
+                return error.ConsoleInputUnavailable;
+            }
+            if (count == 0) return 0;
+            self.decode(wide[0..count]);
+        }
+        const n = @min(out.len, self.pending_end - self.pending_start);
+        @memcpy(out[0..n], self.pending[self.pending_start..][0..n]);
+        self.pending_start += n;
+        if (self.pending_start == self.pending_end) {
+            self.pending_start = 0;
+            self.pending_end = 0;
+        }
+        return n;
+    }
+
+    /// Appends UTF-8 for `units` to `pending`. An unpaired surrogate becomes
+    /// U+FFFD; a trailing high surrogate waits for the next read.
+    fn decode(self: *WindowsConsoleInput, units: []const u16) void {
+        for (units) |unit| {
+            var code_point: u21 = unit;
+            if (self.high_surrogate) |high| {
+                self.high_surrogate = null;
+                if (std.unicode.utf16IsLowSurrogate(unit)) {
+                    code_point = 0x10000 + ((@as(u21, high) - 0xD800) << 10) + (unit - 0xDC00);
+                } else {
+                    self.append(std.unicode.replacement_character);
+                }
+            }
+            if (code_point == unit and std.unicode.utf16IsHighSurrogate(unit)) {
+                self.high_surrogate = unit;
+                continue;
+            }
+            if (code_point == unit and std.unicode.utf16IsLowSurrogate(unit)) {
+                code_point = std.unicode.replacement_character;
+            }
+            self.append(code_point);
+        }
+    }
+
+    fn append(self: *WindowsConsoleInput, code_point: u21) void {
+        var encoded: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(code_point, &encoded) catch
+            std.unicode.utf8Encode(std.unicode.replacement_character, &encoded) catch unreachable;
+        @memcpy(self.pending[self.pending_end..][0..len], encoded[0..len]);
+        self.pending_end += len;
     }
 };
 
@@ -655,7 +885,7 @@ test "enableRawMode preserves already queued input" {
     }
     try std.posix.tcsetattr(pty.slave, .NOW, original);
 
-    var terminal = TerminalState{ .stdin_fd = pty.slave };
+    var terminal = TerminalState{ .input = .{ .handle = pty.slave, .flags = .{ .nonblocking = false } } };
     try terminal.captureOriginalTermios();
 
     const queued = [_]u8{3};
@@ -692,7 +922,7 @@ test "enableRawMode preserves carriage return input" {
     original.iflag.INLCR = true;
     try std.posix.tcsetattr(pty.slave, .NOW, original);
 
-    var terminal = TerminalState{ .stdin_fd = pty.slave };
+    var terminal = TerminalState{ .input = .{ .handle = pty.slave, .flags = .{ .nonblocking = false } } };
     try terminal.captureOriginalTermios();
     try terminal.enableRawMode();
     defer terminal.disableRawMode();

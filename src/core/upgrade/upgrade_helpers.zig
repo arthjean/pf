@@ -5,18 +5,47 @@ const update_target = @import("update_target.zig");
 
 const Allocator = std.mem.Allocator;
 
-const recv_timeout_sec: i64 = 30;
+const recv_timeout_ms: i64 = 30 * std.time.ms_per_s;
 const latest_version_max_bytes: usize = 128;
 const checksum_max_bytes: usize = 4096;
 
 const Channel = update_target.Channel;
 const Target = update_target.Target;
 
-fn setRecvTimeout(conn: *std.http.Client.Connection) void {
-    const sock = conn.stream_writer.stream.socket.handle;
-    const timeout = std.posix.timeval{ .sec = recv_timeout_sec, .usec = 0 };
-    std.posix.setsockopt(sock, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch {};
-}
+/// Shuts a transfer's socket down after `recv_timeout_ms` without progress,
+/// with a `std.Io` timer task instead of a socket receive timeout option.
+const ReceiveWatchdog = struct {
+    slot: TransferInterrupt = .{},
+    last_progress_ms: std.atomic.Value(i64) = .init(0),
+    future: ?std.Io.Future(std.Io.Cancelable!void) = null,
+
+    fn start(self: *ReceiveWatchdog, conn: ?*std.http.Client.Connection) void {
+        const connection = conn orelse return;
+        self.slot.publish(connection.stream_writer.stream.socket.handle);
+        self.progress();
+        self.future = std.Io.concurrent(io_mod.getIo(), run, .{self}) catch null;
+    }
+
+    fn progress(self: *ReceiveWatchdog) void {
+        self.last_progress_ms.store(io_mod.milliTimestamp(), .release);
+    }
+
+    fn stop(self: *ReceiveWatchdog) void {
+        if (self.future) |*future| future.cancel(io_mod.getIo()) catch {};
+        self.slot.clear();
+    }
+
+    fn run(self: *ReceiveWatchdog) std.Io.Cancelable!void {
+        const zio = io_mod.getIo();
+        while (true) {
+            try zio.sleep(.fromMilliseconds(std.time.ms_per_s), .awake);
+            if (io_mod.milliTimestamp() - self.last_progress_ms.load(.acquire) >= recv_timeout_ms) {
+                self.slot.interrupt();
+                return;
+            }
+        }
+    }
+};
 
 /// pf has no release channel yet, so only the loopback E2E fixture serves
 /// upgrades. Set this once pf publishes its own releases.
@@ -48,8 +77,8 @@ fn isLoopbackE2eUpgradeBase(url: []const u8) bool {
     return std.mem.eql(u8, host, "127.0.0.1");
 }
 
-pub const platform = platformFromTarget() orelse
-    @compileError("unsupported platform for auto-upgrade (requires macOS or Linux, x86_64 or aarch64)");
+/// Release artifact platform, or null where pf publishes no artifact.
+pub const platform: ?[]const u8 = platformFromTarget();
 
 fn platformFromTarget() ?[]const u8 {
     const os: ?[]const u8 = switch (builtin.os.tag) {
@@ -233,13 +262,16 @@ fn fetchTextBounded(
     var req = client.request(.GET, uri, .{}) catch return error.FetchFailed;
     defer req.deinit();
 
-    if (req.connection) |conn| setRecvTimeout(conn);
+    var watchdog: ReceiveWatchdog = .{};
+    watchdog.start(req.connection);
+    defer watchdog.stop();
     publishConnection(control, &req);
     defer clearConnection(control);
     req.sendBodiless() catch return error.FetchFailed;
 
     var redirect_buf: [8192]u8 = undefined;
     var response = req.receiveHead(&redirect_buf) catch return error.FetchFailed;
+    watchdog.progress();
     if (response.head.status != .ok) return error.FetchFailed;
     if (response.head.content_length) |content_length| {
         if (content_length > max_bytes) return error.FetchFailed;
@@ -254,6 +286,7 @@ fn fetchTextBounded(
     while (true) {
         if (controlCancelled(control)) return error.Cancelled;
         const n = body_reader.readSliceShort(&chunk) catch return error.FetchFailed;
+        watchdog.progress();
         if (n == 0) break;
         if (n > max_bytes -| out.writer.buffered().len) return error.FetchFailed;
         out.writer.writeAll(chunk[0..n]) catch return error.FetchFailed;
@@ -283,13 +316,16 @@ pub fn downloadFileStreamingWithProgress(client: *std.http.Client, url: []const 
     var req = client.request(.GET, uri, .{}) catch return error.DownloadFailed;
     defer req.deinit();
 
-    if (req.connection) |conn| setRecvTimeout(conn);
+    var watchdog: ReceiveWatchdog = .{};
+    watchdog.start(req.connection);
+    defer watchdog.stop();
     publishConnection(control, &req);
     defer clearConnection(control);
     req.sendBodiless() catch return error.DownloadFailed;
 
     var redirect_buf: [8192]u8 = undefined;
     var response = req.receiveHead(&redirect_buf) catch return error.DownloadFailed;
+    watchdog.progress();
     if (response.head.status != .ok) return error.DownloadFailed;
 
     const total = response.head.content_length;
@@ -302,6 +338,7 @@ pub fn downloadFileStreamingWithProgress(client: *std.http.Client, url: []const 
     while (true) {
         if (controlCancelled(control)) return error.Cancelled;
         const n = body_reader.readSliceShort(&copy_buf) catch return error.DownloadFailed;
+        watchdog.progress();
         if (n == 0) break;
         file_writer.interface.writeAll(copy_buf[0..n]) catch return error.DownloadFailed;
         downloaded += n;
@@ -438,8 +475,10 @@ fn readAbsoluteFile(alloc: Allocator, path: []const u8) ![]u8 {
 }
 
 test "platform string is valid" {
-    try std.testing.expect(platform.len > 0);
-    try std.testing.expect(std.mem.find(u8, platform, "-") != null);
+    // Windows has no release artifact yet.
+    const value = platform orelse return error.SkipZigTest;
+    try std.testing.expect(value.len > 0);
+    try std.testing.expect(std.mem.find(u8, value, "-") != null);
 }
 
 test "E2E upgrade base accepts only explicit IPv4 loopback origins" {

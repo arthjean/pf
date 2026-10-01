@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const agent_steps = @import("../config/agent_steps.zig");
 const config_runtime = @import("../config/config_runtime.zig");
@@ -45,6 +46,10 @@ const tmux_normal_exit_restore = normal_exit_restore_prefix ++ "\x1b[>4;0m";
 const alternate_screen_enter = "\x1b[?1049h";
 const alternate_mouse_tracking_enter = "\x1b[?1000h\x1b[?1006h";
 
+/// Windows delivers resize through console input records and closes through
+/// console control events, so it has no POSIX termination or job-control signals.
+const supports_posix_signals = shell_runtime.supports_resize_signal and builtin.os.tag != .windows;
+
 /// Original handlers, written at bootstrap and restored at shutdown.
 /// Signal context never mutates them.
 var old_sigterm_action: ?std.posix.Sigaction = null;
@@ -81,7 +86,7 @@ fn tmuxAbnormalExitHandler(sig: std.posix.SIG) callconv(.c) void {
 /// pf restores terminal state before dying. SIGINT is not included
 /// because raw mode disables terminal-generated SIGINT.
 pub fn installAbnormalExitHandlers(tmux: ?[]const u8) void {
-    if (!shell_runtime.supports_resize_signal) return;
+    if (comptime !supports_posix_signals) return;
 
     const handler: std.posix.Sigaction.handler_fn = if (tmux == null)
         abnormalExitHandler
@@ -102,8 +107,71 @@ pub fn installAbnormalExitHandlers(tmux: ?[]const u8) void {
     old_sighup_action = old_hup;
 }
 
+/// Windows counterpart of the termination handlers. On close, logoff,
+/// shutdown, or Ctrl+Break the console host waits for this handler before it
+/// ends the process, so the handler asks the event loop to exit, which
+/// restores the console and persists the session through the normal shutdown
+/// and ends the process. If that has not finished within the budget, the
+/// handler restores the saved console modes itself and lets the default
+/// handler end the process. While it waits, the system holds the handler
+/// list lock, so shutdown must not call `SetConsoleCtrlHandler`; see
+/// `consoleCloseInProgress`.
+const console_close = struct {
+    const shutdown_budget_ms = 900;
+    var terminal: ?*const TerminalState = null;
+    var exit_request: ?*bool = null;
+    var in_progress = std.atomic.Value(bool).init(false);
+
+    fn handle(ctrl_type: u32) callconv(.winapi) std.os.windows.BOOL {
+        const win32 = @import("../shared/win32.zig");
+        switch (ctrl_type) {
+            win32.CTRL_CLOSE_EVENT, win32.CTRL_LOGOFF_EVENT, win32.CTRL_SHUTDOWN_EVENT, win32.CTRL_BREAK_EVENT => {},
+            else => return .FALSE,
+        }
+        const request = @atomicLoad(?*bool, &exit_request, .seq_cst) orelse return .FALSE;
+        in_progress.store(true, .seq_cst);
+        const started = io_mod.milliTimestamp();
+        debug_trace.logf("shutdown", "console_control_event type={d}", .{ctrl_type});
+        @atomicStore(bool, request, true, .seq_cst);
+        io_mod.sleep(shutdown_budget_ms * std.time.ns_per_ms);
+        if (@atomicLoad(?*const TerminalState, &terminal, .seq_cst)) |state| state.restoreWindowsConsole();
+        debug_trace.logf("shutdown", "console_control_event_timeout elapsed_ms={d}", .{io_mod.milliTimestamp() - started});
+        return .FALSE;
+    }
+};
+
+/// Installs the Windows console close handler for the interactive session.
+/// Until `bindConsoleCloseHandler` names the app's final state, a close
+/// keeps the default handling.
+pub fn installConsoleCloseHandler() void {
+    if (comptime builtin.os.tag != .windows) return;
+    const win32 = @import("../shared/win32.zig");
+    _ = win32.SetConsoleCtrlHandler(console_close.handle, .TRUE);
+}
+
+/// Points the console close handler at the app's terminal state and event
+/// loop exit flag, once the app has its final address.
+pub fn bindConsoleCloseHandler(terminal: *const TerminalState, exit_request: *bool) void {
+    if (comptime builtin.os.tag != .windows) return;
+    @atomicStore(?*const TerminalState, &console_close.terminal, terminal, .seq_cst);
+    @atomicStore(?*bool, &console_close.exit_request, exit_request, .seq_cst);
+}
+
+/// Whether a Windows console close handler is waiting for shutdown. Console
+/// control handlers cannot be added or removed until it returns.
+pub fn consoleCloseInProgress() bool {
+    if (comptime builtin.os.tag != .windows) return false;
+    return console_close.in_progress.load(.seq_cst);
+}
+
 pub fn uninstallAbnormalExitHandlers() void {
-    if (!shell_runtime.supports_resize_signal) return;
+    if (comptime builtin.os.tag == .windows) {
+        if (consoleCloseInProgress()) return;
+        const win32 = @import("../shared/win32.zig");
+        _ = win32.SetConsoleCtrlHandler(console_close.handle, .FALSE);
+        return;
+    }
+    if (comptime !supports_posix_signals) return;
 
     if (old_sigterm_action) |old| {
         std.posix.sigaction(std.posix.SIG.TERM, &old, null);
@@ -777,6 +845,7 @@ pub fn bootstrapInteractiveApp(cfg: BootstrapConfig) !StartupState {
     try cfg.terminal.enableRawMode();
     cfg.terminal.installResizeSignal(cfg.resize_handler);
     installAbnormalExitHandlers(io_mod.getenv("TMUX"));
+    installConsoleCloseHandler();
     cfg.shell.layout = try cfg.terminal.queryLayout(cfg.footer_rows);
 
     record_tape.configureFromEnv(
@@ -1063,14 +1132,14 @@ fn suspendTerminalForJobControl(
 
 /// Raise SIGTSTP after restoring cooked mode; on SIGCONT rebuild interactive
 /// terminal state and request a full repaint. Platforms without job-control
-/// signals (same set as `supports_resize_signal`) are a no-op.
+/// signals are a no-op.
 pub fn suspendToJobControl(
     terminal: *TerminalState,
     shell: *TranscriptRuntime,
     metrics: *Metrics,
     footer_rows: u16,
 ) !void {
-    if (!shell_runtime.supports_resize_signal) return;
+    if (comptime !supports_posix_signals) return;
 
     suspendTerminalForJobControl(terminal, shell, metrics);
     _ = std.c.raise(std.posix.SIG.TSTP);

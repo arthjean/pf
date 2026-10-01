@@ -37,11 +37,13 @@ zig build run
 
 ### Windows
 
-The Windows port is in progress and the native build does not succeed yet. To work on it:
+The Windows port is in progress. The native build succeeds, and the interactive terminal UI runs in a console with virtual terminal support, such as Windows Terminal or the VS Code terminal. Hosted terminal sessions (the `terminal` tool) are not supported on Windows yet. To work on it:
 
 * install Zig `0.16.0` for Windows x86_64 and put `zig.exe` on `PATH`
 
 * build natively from PowerShell or Git Bash with `zig build`; the target is `x86_64-windows-gnu`, and Linux and macOS still build from the same checkout with `zig build -Dtarget=x86_64-linux-gnu` and `zig build -Dtarget=aarch64-macos`
+
+* drive `./zig-out/bin/pf.exe` through a pseudo console with `zig build conpty-driver`, which installs `zig-out/bin/conpty-driver.exe`; its options and script commands are documented at the top of `tests/e2e/fixtures/windows-conpty-driver.zig`
 
 * run the Linux unit tests inside WSL on the same checkout with a Linux Zig `0.16.0`: `zig build test`
 

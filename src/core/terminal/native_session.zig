@@ -92,7 +92,7 @@ const LauncherConfig = struct {
 };
 
 const LauncherWatchdog = struct {
-    child_pid: std.posix.pid_t,
+    child_pid: std.process.Child.Id,
     done: std.atomic.Value(bool) = .init(false),
     command_released: std.atomic.Value(bool) = .init(false),
     host_closed: std.atomic.Value(bool) = .init(false),
@@ -140,7 +140,7 @@ const LauncherControl = struct {
     bootstrap_path: []const u8,
     nonce: []const u8,
     command_path: ?[]const u8,
-    child_pid: std.posix.pid_t,
+    child_pid: std.process.Child.Id,
     watchdog: *LauncherWatchdog,
     done: std.atomic.Value(bool) = .init(false),
     phase: ControlPhase = .awaiting_shell,
@@ -565,7 +565,7 @@ pub fn runLauncher(alloc: Allocator) !void {
     }
 }
 
-fn signalLauncherProcessGroup(pid: std.c.pid_t, signal: std.c.SIG) !void {
+fn signalLauncherProcessGroup(pid: std.process.Child.Id, signal: std.c.SIG) !void {
     while (true) switch (std.c.errno(std.c.kill(-pid, signal))) {
         .SUCCESS => return,
         .INTR => continue,
@@ -1552,7 +1552,7 @@ fn definitiveTmuxRecoveryLoss(err: anyerror) bool {
 }
 
 const SignalTarget = struct {
-    pid: std.posix.pid_t,
+    pid: io_mod.ProcessId,
     token: process_identity.ProcessInstanceToken,
 };
 
@@ -1584,7 +1584,7 @@ const Session = struct {
     write_mutex: std.Io.Mutex = .init,
     lifecycle: contracts.Lifecycle = .starting,
     last_output_ms: i64,
-    child_pid: ?std.posix.pid_t = null,
+    child_pid: ?io_mod.ProcessId = null,
     child_token: ?process_identity.ProcessInstanceToken = null,
     recovered_start_identity: bool = false,
     term: ?std.process.Child.Term = null,
@@ -1729,7 +1729,7 @@ const Session = struct {
             else => return err,
         };
         const child_pid = if (durable.record.pid) |value|
-            std.fmt.parseInt(std.posix.pid_t, value, 10) catch null
+            std.fmt.parseInt(io_mod.ProcessId, value, 10) catch null
         else
             null;
         const child_token = if (durable.record.process_token) |value|
@@ -2644,7 +2644,7 @@ const Session = struct {
             return if (processGroupMissing(target.pid)) .missing else .failed;
         }
         while (true) switch (std.c.errno(std.c.kill(
-            -target.pid,
+            -io_mod.posixPid(target.pid),
             signalValue(signal),
         ))) {
             .SUCCESS => return .delivered,
@@ -2670,7 +2670,7 @@ const Session = struct {
             pid_text,
             token.?,
         ) != .matched) return false;
-        return std.c.kill(-pid.?, signal) == 0;
+        return std.c.kill(-io_mod.posixPid(pid.?), signal) == 0;
     }
 
     fn appendOutput(self: *Session, bytes: []const u8) void {
@@ -2912,7 +2912,7 @@ const Session = struct {
     }
 
     fn publishStarted(self: *Session, raw_pid: u32) void {
-        const pid = std.math.cast(std.posix.pid_t, raw_pid) orelse {
+        const pid: io_mod.ProcessId = if (raw_pid <= std.math.maxInt(i32)) raw_pid else {
             self.failClosed(.session_lost);
             return;
         };
@@ -3911,9 +3911,9 @@ fn terminalSignalCompleted(
     return !descendants.incomplete and shell_group != .failed;
 }
 
-fn processGroupMissing(pid: std.posix.pid_t) bool {
+fn processGroupMissing(pid: io_mod.ProcessId) bool {
     while (true) switch (std.c.errno(std.c.kill(
-        -pid,
+        -io_mod.posixPid(pid),
         @enumFromInt(0),
     ))) {
         .SUCCESS, .PERM => return false,

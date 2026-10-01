@@ -200,7 +200,7 @@ pub const Paths = struct {
     endpoint_path: []u8,
 
     pub fn open(alloc: Allocator, home: []const u8) !Paths {
-        if (!isSupported()) return error.TerminalHostUnsupported;
+        if (comptime !isSupported()) return error.TerminalHostUnsupported;
         var selection = try resolveEndpointSelection(
             alloc,
             builtin.os.tag,
@@ -1396,7 +1396,7 @@ fn peerProcessOwner(
     process_provider: process_provider_mod.Provider,
     handle: std.Io.net.Socket.Handle,
 ) !contracts.ProcessOwner {
-    const pid: std.c.pid_t = if (comptime builtin.os.tag == .macos) blk: {
+    const pid: io_mod.ProcessId = if (comptime builtin.os.tag == .macos) blk: {
         const local_peer_pid = 0x002;
         var peer_pid: std.c.pid_t = undefined;
         var peer_pid_len: std.c.socklen_t = @sizeOf(std.c.pid_t);
@@ -1409,7 +1409,7 @@ fn peerProcessOwner(
         ) != 0 or peer_pid_len != @sizeOf(std.c.pid_t)) {
             return error.TerminalPeerIdentityUnavailable;
         }
-        break :blk peer_pid;
+        break :blk @intCast(peer_pid);
     } else if (comptime builtin.os.tag == .linux) blk: {
         const UCred = extern struct {
             pid: std.c.pid_t,
@@ -1427,7 +1427,7 @@ fn peerProcessOwner(
         ) != 0 or credentials_len != @sizeOf(UCred)) {
             return error.TerminalPeerIdentityUnavailable;
         }
-        break :blk credentials.pid;
+        break :blk @intCast(credentials.pid);
     } else return error.TerminalHostUnsupported;
 
     var pid_buffer: [32]u8 = undefined;

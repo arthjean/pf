@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const credentials = @import("credentials.zig");
 const browser_callback = @import("browser_callback.zig");
 const grok_session = @import("grok_session.zig");
@@ -6,6 +7,7 @@ const debug_trace = @import("../shared/debug_trace.zig");
 const host = @import("../hosts/host.zig");
 const host_target = @import("../hosts/target.zig");
 const io_mod = @import("../shared/io.zig");
+const console_prompt = @import("../shared/console_prompt.zig");
 const login_flow = @import("login_flow.zig");
 const oauth = @import("oauth.zig");
 const oauth_transport = @import("oauth_transport.zig");
@@ -210,8 +212,7 @@ fn deinitBrowserLoginContext(raw: ?*anyopaque, alloc: Allocator) void {
 }
 
 fn bindBrowserCallback() !std.Io.net.Server {
-    var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
-    return address.listen(io_mod.getIo(), .{ .reuse_address = true });
+    return browser_callback.listenLoopback(0);
 }
 
 fn pollBrowserToken(
@@ -362,10 +363,23 @@ pub fn runLogin(
         _ = url_opener.open(alloc, authorization_url) catch false;
     }
 
-    var stdin_code: StdinManualCodeReader = .{};
+    var stdin_code = console_prompt.LinePoller.init(.{
+        .echo = .visible,
+        .max_bytes = login_flow.max_manual_code_bytes,
+        .write = writeStdoutEcho,
+    });
     defer stdin_code.deinit();
     while (true) {
-        if (try stdin_code.poll()) |code| {
+        const pasted = stdin_code.poll() catch |err| switch (err) {
+            error.TooLong => return error.GrokAuthorizationCodeTooLong,
+            error.Interrupted => {
+                stdin_code.deinit();
+                console_prompt.exitInterrupted();
+            },
+            error.Cancelled => return error.Cancelled,
+            else => return err,
+        };
+        if (pasted) |code| {
             _ = try runtime.submitManualCode(alloc, code);
             stdin_code.clear();
         }
@@ -381,51 +395,6 @@ pub fn runLogin(
         }
     }
 }
-
-const StdinManualCodeReader = struct {
-    buffer: [login_flow.max_manual_code_bytes]u8 = undefined,
-    len: usize = 0,
-    closed: bool = false,
-
-    fn poll(self: *StdinManualCodeReader) !?[]const u8 {
-        if (self.closed) return null;
-        var fds = [_]std.posix.pollfd{.{
-            .fd = std.posix.STDIN_FILENO,
-            .events = std.posix.POLL.IN,
-            .revents = 0,
-        }};
-        const ready = try std.posix.poll(&fds, 0);
-        if (ready == 0 or
-            (fds[0].revents & (std.posix.POLL.IN | std.posix.POLL.HUP)) == 0) return null;
-
-        var chunk: [512]u8 = undefined;
-        defer @memset(&chunk, 0);
-        const read_len = try std.posix.read(std.posix.STDIN_FILENO, &chunk);
-        if (read_len == 0) {
-            self.closed = true;
-            return if (self.len == 0) null else self.buffer[0..self.len];
-        }
-        const line_end = std.mem.findScalar(u8, chunk[0..read_len], '\n') orelse read_len;
-        if (line_end > self.buffer.len - self.len) return error.GrokAuthorizationCodeTooLong;
-        @memcpy(self.buffer[self.len..][0..line_end], chunk[0..line_end]);
-        self.len += line_end;
-        if (line_end < read_len) {
-            self.closed = true;
-            return self.buffer[0..self.len];
-        }
-        return null;
-    }
-
-    fn clear(self: *StdinManualCodeReader) void {
-        @memset(self.buffer[0..self.len], 0);
-        self.len = 0;
-    }
-
-    fn deinit(self: *StdinManualCodeReader) void {
-        @memset(&self.buffer, 0);
-        self.* = undefined;
-    }
-};
 
 pub const LogoutResult = struct {
     deletion: grok_session.DeleteOutcome,
@@ -836,6 +805,10 @@ fn queryValueAlloc(alloc: Allocator, query: []const u8, key: []const u8) ![]u8 {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.InvalidGrokOAuthCallback,
     };
+}
+
+fn writeStdoutEcho(_: ?*anyopaque, bytes: []const u8) anyerror!void {
+    try writeStdout(bytes);
 }
 
 fn writeStdout(text: []const u8) !void {

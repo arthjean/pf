@@ -60,6 +60,12 @@ test "truecolorSupportedForValues degrades Apple Terminal without COLORTERM" {
     try std.testing.expect(!truecolorSupportedForValues(null, "Apple_Terminal"));
 }
 
+test "truecolorSupportedForValues keeps truecolor for Windows terminals" {
+    // Windows Terminal sets only WT_SESSION; the VS Code terminal sets TERM_PROGRAM.
+    try std.testing.expect(truecolorSupportedForValues(null, null));
+    try std.testing.expect(truecolorSupportedForValues(null, "vscode"));
+}
+
 test "truecolorSupportedForValues defaults to truecolor for unknown terminals" {
     try std.testing.expect(truecolorSupportedForValues(null, null));
     try std.testing.expect(truecolorSupportedForValues(null, "ghostty"));

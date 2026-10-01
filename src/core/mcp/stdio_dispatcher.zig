@@ -2181,7 +2181,7 @@ const ReadinessRequest = struct {
 
 fn createShellDispatcher(script: []const u8) !struct {
     dispatcher: *StdioDispatcher,
-    pid: std.posix.pid_t,
+    pid: io_mod.ProcessId,
 } {
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
         return error.SkipZigTest;
@@ -2193,7 +2193,7 @@ fn createShellDispatcher(script: []const u8) !struct {
         .stderr = .pipe,
         .pgid = 0,
     });
-    const pid = child.id.?;
+    const pid = io_mod.childProcessId(child.id.?);
     return .{
         .dispatcher = try StdioDispatcher.create(
             std.testing.allocator,
@@ -2206,9 +2206,9 @@ fn createShellDispatcher(script: []const u8) !struct {
     };
 }
 
-fn expectProcessReaped(pid: std.posix.pid_t) !void {
+fn expectProcessReaped(pid: io_mod.ProcessId) !void {
     for (0..100) |_| {
-        std.posix.kill(pid, @enumFromInt(0)) catch |err| switch (err) {
+        std.posix.kill(io_mod.posixPid(pid), @enumFromInt(0)) catch |err| switch (err) {
             error.ProcessNotFound => return,
             else => {},
         };
@@ -2834,15 +2834,15 @@ test "MCP stdio exit is not held by a detached descendant that keeps stderr open
     const fixture = try createShellDispatcher(script);
     var dispatcher_live = true;
     defer if (dispatcher_live) fixture.dispatcher.deinitAbandoned();
-    var descendant: ?std.posix.pid_t = null;
-    defer if (descendant) |pid| std.posix.kill(pid, .KILL) catch {};
+    var descendant: ?io_mod.ProcessId = null;
+    defer if (descendant) |pid| std.posix.kill(io_mod.posixPid(pid), .KILL) catch {};
     for (0..200) |_| {
         const text = std.Io.Dir.cwd().readFileAlloc(std.testing.io, pid_path, alloc, .limited(64)) catch {
             io_mod.sleep(5 * std.time.ns_per_ms);
             continue;
         };
         defer alloc.free(text);
-        descendant = std.fmt.parseInt(std.posix.pid_t, std.mem.trim(u8, text, " \n"), 10) catch null;
+        descendant = std.fmt.parseInt(io_mod.ProcessId, std.mem.trim(u8, text, " \n"), 10) catch null;
         if (descendant != null) break;
         io_mod.sleep(5 * std.time.ns_per_ms);
     } else return error.TestExpectedDescendant;
@@ -2854,7 +2854,7 @@ test "MCP stdio exit is not held by a detached descendant that keeps stderr open
     try expectProcessReaped(fixture.pid);
     try std.testing.expect(elapsed_ms < shutdown_grace_ms);
     // Still alive: it escaped the group kill and held stderr the whole time.
-    try std.posix.kill(descendant.?, @enumFromInt(0));
+    try std.posix.kill(io_mod.posixPid(descendant.?), @enumFromInt(0));
 }
 
 test "MCP immediate shutdown kills an uncooperative child without grace waits" {

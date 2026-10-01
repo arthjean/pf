@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const io_mod = @import("../../core/shared/io.zig");
+const debug_trace = @import("../../core/shared/debug_trace.zig");
 const shell_runtime = @import("../shell_runtime.zig");
 const terminal_sequences = @import("terminal.zig");
 const theme_protocol = @import("theme_protocol.zig");
@@ -45,13 +46,22 @@ pub fn detectTheme(_: std.mem.Allocator, terminal_state: *const shell_runtime.Te
     return .{ .light = false, .rgb = null };
 }
 
+/// How long the background query waits for the terminal's answer.
+const background_query_timeout_ms = 100;
+
+/// Set when a background query goes unanswered, so later probes in this
+/// process fall back at once instead of waiting again.
+var background_query_unanswered = std.atomic.Value(bool).init(false);
+
 fn queryTerminalBackground(terminal_state: *const shell_runtime.TerminalState) ?TerminalBackground {
+    if (background_query_unanswered.load(.monotonic)) return null;
     var stdout_file = std.Io.File.stdout();
     stdout_file.writeStreamingAll(io_mod.getIo(), terminal_sequences.theme_background_query) catch return null;
 
     var buf: [64]u8 = undefined;
     var len: usize = 0;
-    const deadline_ms = io_mod.milliTimestamp() + 200;
+    const started_ms = io_mod.milliTimestamp();
+    const deadline_ms = started_ms + background_query_timeout_ms;
 
     while (len < buf.len) {
         const now_ms = io_mod.milliTimestamp();
@@ -67,5 +77,10 @@ fn queryTerminalBackground(terminal_state: *const shell_runtime.TerminalState) ?
         if (buf[len - 1] == '\\' or buf[len - 1] == 0x07) break;
     }
 
-    return theme_protocol.parseOsc11Response(buf[0..len]);
+    const background = theme_protocol.parseOsc11Response(buf[0..len]);
+    if (background == null) {
+        background_query_unanswered.store(true, .monotonic);
+        debug_trace.logf("theme", "background_query_unanswered elapsed_ms={d}", .{io_mod.milliTimestamp() - started_ms});
+    }
+    return background;
 }

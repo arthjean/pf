@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const types = @import("../../core/shared/types.zig");
 
 pub const interactive_mode_enable_sequence = "\x1b[>4;2m\x1b[>1u\x1b[?2004h\x1b[?7l";
@@ -33,11 +34,24 @@ pub fn interactiveModeEnableSequence(tmux: ?[]const u8) []const u8 {
         tmux_interactive_mode_enable_sequence;
 }
 
-pub fn queryLayout(fd: std.posix.fd_t, footer_rows: u16) !types.Layout {
+/// Reads the terminal size from `file`: the window size of a POSIX terminal,
+/// or the visible window of a Windows console screen buffer.
+pub fn queryLayout(file: std.Io.File, footer_rows: u16) !types.Layout {
+    if (comptime builtin.os.tag == .windows) {
+        const win32 = @import("../../core/shared/win32.zig");
+        var info: win32.CONSOLE_SCREEN_BUFFER_INFO = undefined;
+        if (!win32.GetConsoleScreenBufferInfo(file.handle, &info).toBool()) {
+            return error.UnableToReadTerminalSize;
+        }
+        const rows = info.srWindow.Bottom - info.srWindow.Top + 1;
+        const cols = info.srWindow.Right - info.srWindow.Left + 1;
+        if (rows <= 0 or cols <= 0) return error.UnableToReadTerminalSize;
+        return layoutFromSize(@intCast(rows), @intCast(cols), footer_rows);
+    }
     var ws: std.posix.winsize = .{ .row = 0, .col = 0, .xpixel = 0, .ypixel = 0 };
 
     const req: c_int = @intCast(std.c.T.IOCGWINSZ);
-    const rc = std.c.ioctl(fd, req, &ws);
+    const rc = std.c.ioctl(file.handle, req, &ws);
     if (rc == -1 or ws.row == 0 or ws.col == 0) {
         return error.UnableToReadTerminalSize;
     }

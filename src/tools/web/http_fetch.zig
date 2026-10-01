@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const debug_trace = @import("../../core/shared/debug_trace.zig");
 const io_mod = @import("../../core/shared/io.zig");
 const url_policy = @import("url_policy.zig");
@@ -1221,136 +1222,78 @@ fn readChunkedTrailers(reader: *BodyReader, alloc: Allocator) !void {
     }
 }
 
+/// Opens a stream to one admitted address through `std.Io.net`. The connect
+/// runs as a concurrent task so the fetch deadline and cancel flag can stop it.
 fn connectPinned(address: IpAddress, options: FetchOptions) !posix.fd_t {
     try checkControl(options);
-    const family: posix.sa_family_t = switch (address) {
-        .ip4 => posix.AF.INET,
-        .ip6 => posix.AF.INET6,
-    };
-    const fd = try openSocket(family);
-    errdefer closeFd(fd);
+    const stream = try runControlled(std.Io.net.Stream, connectStream, .{address}, options);
+    return stream.socket.handle;
+}
 
-    var storage: PosixAddress = undefined;
-    const len = addressToPosix(address, &storage);
-    while (true) switch (posix.errno(posix.system.connect(fd, &storage.any, len))) {
-        .SUCCESS => return fd,
-        .INTR => {
-            try checkControl(options);
-            continue;
+fn connectStream(address: IpAddress) anyerror!std.Io.net.Stream {
+    return address.connect(io_mod.getIo(), .{ .mode = .stream });
+}
+
+/// How often a controlled socket operation rechecks the cancel flag.
+const control_poll_ms: i64 = 50;
+
+/// Runs one blocking socket operation as a concurrent task while this task
+/// enforces the fetch deadline and cancel flag. When control fails first, the
+/// operation is canceled, and a stream it opened anyway is closed.
+fn runControlled(comptime T: type, comptime operation: anytype, args: anytype, options: FetchOptions) anyerror!T {
+    const Event = union(enum) {
+        operation: anyerror!T,
+        control: anyerror!void,
+    };
+    const zio = io_mod.getIo();
+    var buffer: [2]Event = undefined;
+    var select: std.Io.Select(Event) = .init(zio, &buffer);
+    try select.concurrent(.operation, operation, args);
+    select.concurrent(.control, waitForControl, .{options}) catch |err| {
+        discardControlled(T, &select);
+        return err;
+    };
+    switch (try select.await()) {
+        .operation => |result| {
+            select.cancelDiscard();
+            return result;
         },
-        .INPROGRESS, .AGAIN, .ALREADY => {
-            try pollFd(fd, posix.POLL.OUT, options);
-            try checkSocketError(fd);
-            return fd;
+        .control => |result| {
+            discardControlled(T, &select);
+            try result;
+            unreachable;
         },
-        else => |err| return classifyConnectErrno(err),
+    }
+}
+
+fn discardControlled(comptime T: type, select: anytype) void {
+    while (select.cancel()) |event| switch (event) {
+        .operation => |result| if (comptime T == std.Io.net.Stream) {
+            const stream = result catch continue;
+            stream.close(io_mod.getIo());
+        },
+        .control => {},
     };
 }
 
-fn classifyConnectErrno(err: posix.E) anyerror {
-    return switch (err) {
-        .CONNREFUSED => error.ConnectionRefused,
-        .CONNRESET => error.ConnectionResetByPeer,
-        .TIMEDOUT => error.Timeout,
-        .NETUNREACH => error.NetworkUnreachable,
-        .HOSTUNREACH => error.HostUnreachable,
-        .NETDOWN => error.NetworkDown,
-        .NOBUFS, .NOMEM => error.SystemResources,
-        .BADF => error.InvalidDescriptor,
-        .CANCELED => error.Canceled,
-        .IO => error.InputOutput,
-        else => error.ConnectionFailed,
-    };
-}
-
-const PosixAddress = extern union {
-    any: posix.sockaddr,
-    in: posix.sockaddr.in,
-    in6: posix.sockaddr.in6,
-};
-
-fn addressToPosix(address: IpAddress, storage: *PosixAddress) posix.socklen_t {
-    return switch (address) {
-        .ip4 => |ip4| {
-            storage.in = .{
-                .port = std.mem.nativeToBig(u16, ip4.port),
-                .addr = @bitCast(ip4.bytes),
-            };
-            return @sizeOf(posix.sockaddr.in);
-        },
-        .ip6 => |ip6| {
-            storage.in6 = .{
-                .port = std.mem.nativeToBig(u16, ip6.port),
-                .flowinfo = ip6.flow,
-                .addr = ip6.bytes,
-                .scope_id = ip6.interface.index,
-            };
-            return @sizeOf(posix.sockaddr.in6);
-        },
-    };
-}
-
-fn openSocket(family: posix.sa_family_t) !posix.fd_t {
-    const fd = while (true) {
-        const rc = posix.system.socket(family, posix.SOCK.STREAM, 0);
-        switch (posix.errno(rc)) {
-            .SUCCESS => break @as(posix.fd_t, @intCast(rc)),
-            .INTR => continue,
-            .AFNOSUPPORT => return error.AddressFamilyUnsupported,
-            .MFILE => return error.ProcessFdQuotaExceeded,
-            .NFILE => return error.SystemFdQuotaExceeded,
-            .NOBUFS, .NOMEM => return error.SystemResources,
-            else => return error.SocketOpenFailed,
+/// Returns only an error: `Canceled` when the cancel flag is set, `Timeout`
+/// when the deadline passes.
+fn waitForControl(options: FetchOptions) anyerror!void {
+    const zio = io_mod.getIo();
+    while (true) {
+        try checkControl(options);
+        var wait_ms = control_poll_ms;
+        if (options.deadline) |deadline| {
+            wait_ms = std.math.clamp(deadline.deadline_ms - monotonicMillis(), 1, control_poll_ms);
         }
-    };
-    errdefer closeFd(fd);
-    try setCloexec(fd);
-    try setNonblocking(fd);
-    return fd;
+        try zio.sleep(.fromMilliseconds(wait_ms), .awake);
+    }
 }
 
-fn setCloexec(fd: posix.fd_t) !void {
-    while (true) switch (posix.errno(posix.system.fcntl(fd, posix.F.SETFD, @as(usize, posix.FD_CLOEXEC)))) {
-        .SUCCESS => return,
-        .INTR => continue,
-        else => return error.SocketOptionFailed,
-    };
-}
-
-fn setNonblocking(fd: posix.fd_t) !void {
-    const current = while (true) {
-        const rc = posix.system.fcntl(fd, posix.F.GETFL, @as(usize, 0));
-        switch (posix.errno(rc)) {
-            .SUCCESS => break rc,
-            .INTR => continue,
-            else => return error.SocketOptionFailed,
-        }
-    };
-    const current_flags: usize = @intCast(current);
-    const nonblock_flag: usize = @as(usize, 1) << @bitOffsetOf(posix.O, "NONBLOCK");
-    const next: usize = current_flags | nonblock_flag;
-    while (true) switch (posix.errno(posix.system.fcntl(fd, posix.F.SETFL, next))) {
-        .SUCCESS => return,
-        .INTR => continue,
-        else => return error.SocketOptionFailed,
-    };
-}
-
-fn checkSocketError(fd: posix.fd_t) !void {
-    var value: c_int = 0;
-    var len: std.c.socklen_t = @sizeOf(c_int);
-    if (std.c.getsockopt(fd, posix.SOL.SOCKET, posix.SO.ERROR, &value, &len) != 0) return error.ConnectionFailed;
-    if (value == 0) return;
-    const socket_error: posix.E = @enumFromInt(value);
-    return classifyConnectErrno(socket_error);
-}
-
+/// Closes a socket, or a pipe in tests, through `std.Io.net`.
 fn closeFd(fd: posix.fd_t) void {
-    while (true) switch (posix.errno(posix.system.close(fd))) {
-        .SUCCESS => return,
-        .INTR => continue,
-        else => return,
-    };
+    const socket: std.Io.net.Socket = .{ .handle = fd, .address = .{ .ip4 = .unspecified(0) } };
+    socket.close(io_mod.getIo());
 }
 
 fn traceFailure(stage: FailureStage, err: anyerror) void {
@@ -1576,7 +1519,29 @@ fn classifyWriteErrno(err: posix.E) SyscallErrorAction {
 }
 
 fn rawRead(fd: posix.fd_t, buf: []u8, options: FetchOptions) !usize {
+    if (comptime builtin.os.tag == .windows) {
+        try checkControl(options);
+        return runControlled(usize, streamRead, .{ fd, buf }, options);
+    }
     return rawReadWith(fd, buf, options, default_poller, default_read_syscall);
+}
+
+/// Reads once from a socket through `std.Io.net`. Returns 0 at end of stream.
+fn streamRead(fd: posix.fd_t, buf: []u8) anyerror!usize {
+    const stream: std.Io.net.Stream = .{ .socket = .{ .handle = fd, .address = .{ .ip4 = .unspecified(0) } } };
+    var reader = stream.reader(io_mod.getIo(), &.{});
+    var data: [1][]u8 = .{buf};
+    return reader.interface.vtable.readVec(&reader.interface, &data) catch |err| switch (err) {
+        error.EndOfStream => 0,
+        error.ReadFailed => reader.err.?,
+    };
+}
+
+/// Writes all bytes to a socket through `std.Io.net`.
+fn streamWriteAll(fd: posix.fd_t, bytes: []const u8) anyerror!void {
+    const stream: std.Io.net.Stream = .{ .socket = .{ .handle = fd, .address = .{ .ip4 = .unspecified(0) } } };
+    var writer = stream.writer(io_mod.getIo(), &.{});
+    writer.interface.writeAll(bytes) catch return writer.err.?;
 }
 
 fn rawReadWith(
@@ -1602,6 +1567,10 @@ fn rawReadWith(
 }
 
 fn rawWriteAll(fd: posix.fd_t, bytes: []const u8, options: FetchOptions) !void {
+    if (comptime builtin.os.tag == .windows) {
+        try checkControl(options);
+        return runControlled(void, streamWriteAll, .{ fd, bytes }, options);
+    }
     return rawWriteAllWith(fd, bytes, options, default_poller);
 }
 
@@ -1613,7 +1582,7 @@ fn rawWriteAllWith(fd: posix.fd_t, bytes: []const u8, options: FetchOptions, pol
             fd,
             bytes[written..].ptr,
             bytes.len - written,
-            @intCast(posix.MSG.NOSIGNAL),
+            @intCast(posix.MSG.NOSIGNAL | posix.MSG.DONTWAIT),
         );
         const errno = posix.errno(rc);
         if (errno != .SUCCESS) switch (classifyWriteErrno(errno)) {
@@ -3564,30 +3533,131 @@ test "web_fetch admitted dialing stops on control and local resource failures" {
     ));
 }
 
-test "web_fetch connect errno classification keeps terminal local failures out of fallback" {
+test "web_fetch connect failures keep terminal local failures out of fallback" {
     const cases = [_]struct {
-        errno: posix.E,
-        expected: anyerror,
+        err: anyerror,
         retryable: bool,
     }{
-        .{ .errno = .CONNREFUSED, .expected = error.ConnectionRefused, .retryable = true },
-        .{ .errno = .CONNRESET, .expected = error.ConnectionResetByPeer, .retryable = true },
-        .{ .errno = .TIMEDOUT, .expected = error.Timeout, .retryable = true },
-        .{ .errno = .NETUNREACH, .expected = error.NetworkUnreachable, .retryable = true },
-        .{ .errno = .HOSTUNREACH, .expected = error.HostUnreachable, .retryable = true },
-        .{ .errno = .NETDOWN, .expected = error.NetworkDown, .retryable = false },
-        .{ .errno = .NOBUFS, .expected = error.SystemResources, .retryable = false },
-        .{ .errno = .NOMEM, .expected = error.SystemResources, .retryable = false },
-        .{ .errno = .BADF, .expected = error.InvalidDescriptor, .retryable = false },
-        .{ .errno = .CANCELED, .expected = error.Canceled, .retryable = false },
-        .{ .errno = .IO, .expected = error.InputOutput, .retryable = false },
+        .{ .err = error.ConnectionRefused, .retryable = true },
+        .{ .err = error.ConnectionResetByPeer, .retryable = true },
+        .{ .err = error.Timeout, .retryable = true },
+        .{ .err = error.NetworkUnreachable, .retryable = true },
+        .{ .err = error.HostUnreachable, .retryable = true },
+        .{ .err = error.NetworkDown, .retryable = false },
+        .{ .err = error.SystemResources, .retryable = false },
+        .{ .err = error.AccessDenied, .retryable = false },
+        .{ .err = error.AddressFamilyUnsupported, .retryable = false },
+        .{ .err = error.Canceled, .retryable = false },
+        .{ .err = error.Unexpected, .retryable = false },
     };
 
     for (cases) |case| {
-        const root = classifyConnectErrno(case.errno);
-        try std.testing.expectEqual(case.expected, root);
-        try std.testing.expectEqual(case.retryable, isRetryableConnectError(root));
+        try std.testing.expectEqual(case.retryable, isRetryableConnectError(case.err));
     }
+}
+
+test "web_fetch connects to a loopback listener through std.Io.net" {
+    const zio = io_mod.getIo();
+    var address = try IpAddress.parse("127.0.0.1", 0);
+    var server = try address.listen(zio, .{});
+    defer server.deinit(zio);
+    const fd = try connectPinned(server.socket.address, .{
+        .deadline = .{ .deadline_ms = monotonicMillis() + 5000 },
+    });
+    defer closeFd(fd);
+    const accepted = try server.accept(zio);
+    accepted.close(zio);
+}
+
+test "web_fetch default connector returns an http loopback fixture body" {
+    const alloc = std.testing.allocator;
+    const zio = io_mod.getIo();
+    var address = try IpAddress.parse("127.0.0.1", 0);
+    var server = try address.listen(zio, .{});
+    defer server.deinit(zio);
+
+    const Fixture = struct {
+        fn serve(listener: *std.Io.net.Server) void {
+            const io = io_mod.getIo();
+            const stream = listener.accept(io) catch return;
+            defer stream.close(io);
+            // Read the whole request head so closing sends no reset.
+            var request_buffer: [4096]u8 = undefined;
+            var reader = stream.reader(io, &request_buffer);
+            while (true) {
+                const line = reader.interface.takeDelimiterInclusive('\n') catch return;
+                if (std.mem.eql(u8, line, "\r\n")) break;
+            }
+            var writer = stream.writer(io, &.{});
+            writer.interface.writeAll(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 12\r\nConnection: close\r\n\r\nfixture body",
+            ) catch {};
+        }
+    };
+    // URL policy refuses loopback names and upgrades to HTTPS, so a public
+    // name is pinned to the fixture's loopback address the way DNS admission
+    // pins a public one, and the plain HTTP connector serves it.
+    var target = try url_policy.normalize(alloc, "https://example.com/fixture");
+    defer target.deinit(alloc);
+    target.scheme = .http;
+    const host_header = try hostHeader(alloc, target);
+    defer alloc.free(host_header);
+
+    const thread = try std.Thread.spawn(.{}, Fixture.serve, .{&server});
+    defer thread.join();
+    var response = try connectDefault(@ptrCast(&default_connector_ctx), alloc, .{
+        .url = target,
+        .admitted_addresses = &.{server.socket.address},
+        .tls_server_name = "example.com",
+        .host_header = host_header,
+    }, .{ .deadline = .{ .deadline_ms = monotonicMillis() + 5000 } });
+    defer response.deinit(alloc);
+    try std.testing.expectEqual(std.http.Status.ok, response.status);
+    try std.testing.expectEqualStrings("fixture body", response.body);
+}
+
+test "web_fetch default connector stops a silent loopback peer at the deadline" {
+    const alloc = std.testing.allocator;
+    const zio = io_mod.getIo();
+    var address = try IpAddress.parse("127.0.0.1", 0);
+    var server = try address.listen(zio, .{});
+    defer server.deinit(zio);
+    var target = try url_policy.normalize(alloc, "https://example.com/silent");
+    defer target.deinit(alloc);
+    target.scheme = .http;
+    const host_header = try hostHeader(alloc, target);
+    defer alloc.free(host_header);
+
+    const started_ms = monotonicMillis();
+    // The listener's backlog completes the connection; nothing ever answers.
+    const result = connectDefault(@ptrCast(&default_connector_ctx), alloc, .{
+        .url = target,
+        .admitted_addresses = &.{server.socket.address},
+        .tls_server_name = "example.com",
+        .host_header = host_header,
+    }, .{ .deadline = .{ .deadline_ms = started_ms + 300 } });
+    if (result) |response| {
+        var owned = response;
+        owned.deinit(alloc);
+        return error.TestUnexpectedResult;
+    } else |err| try std.testing.expectEqual(error.Timeout, err);
+    try std.testing.expect(monotonicMillis() - started_ms < 2000);
+}
+
+test "web_fetch connect stops at the deadline without waiting for the peer" {
+    const started_ms = monotonicMillis();
+    // A documentation address keeps the connect pending where it routes at all.
+    const result = connectPinned(try ip("192.0.2.1", 9), .{
+        .deadline = .{ .deadline_ms = started_ms + 300 },
+    });
+    if (result) |fd| {
+        closeFd(fd);
+        return error.TestUnexpectedResult;
+    } else |err| switch (err) {
+        error.Timeout, error.NetworkUnreachable, error.HostUnreachable => {},
+        else => return err,
+    }
+    try std.testing.expect(monotonicMillis() - started_ms < 2000);
 }
 
 const ScriptedPoller = struct {

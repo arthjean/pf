@@ -285,7 +285,7 @@ const ShellIdentityWire = struct {
 };
 
 pub const ShellIdentity = struct {
-    pid: std.posix.pid_t,
+    pid: io_mod.ProcessId,
     process_token: process_identity.ProcessInstanceToken,
 };
 
@@ -1197,7 +1197,7 @@ const LauncherControl = struct {
     process_provider: process_provider_mod.Provider,
     server: *std.Io.net.Server,
     config: LauncherConfig,
-    child_pid: std.posix.pid_t,
+    child_pid: std.process.Child.Id,
     done: std.atomic.Value(bool) = .init(false),
     phase: ControlPhase = .awaiting_shell,
     failed: bool = false,
@@ -1951,7 +1951,7 @@ fn writeShellIdentity(
     alloc: Allocator,
     process_provider: process_provider_mod.Provider,
     path: []const u8,
-    pid: std.posix.pid_t,
+    pid: std.process.Child.Id,
 ) !void {
     var pid_buffer: [32]u8 = undefined;
     const pid_text = try std.fmt.bufPrint(&pid_buffer, "{d}", .{pid});
@@ -1980,9 +1980,8 @@ fn loadShellIdentity(alloc: Allocator, path: []const u8) !ShellIdentity {
         .{ .allocate = .alloc_always },
     );
     defer parsed.deinit();
-    const pid = std.math.cast(std.posix.pid_t, parsed.value.pid) orelse
-        return error.MalformedTmuxShellIdentity;
-    if (pid <= 0) return error.MalformedTmuxShellIdentity;
+    const pid: io_mod.ProcessId = parsed.value.pid;
+    if (pid == 0 or pid > std.math.maxInt(i32)) return error.MalformedTmuxShellIdentity;
     return .{
         .pid = pid,
         .process_token = process_identity.ProcessInstanceToken.parse(
@@ -2254,14 +2253,14 @@ fn receiveBeforeDeadline(
     }
 }
 
-fn assignForegroundProcessGroup(fd: c_int, pgrp: std.posix.pid_t) bool {
+fn assignForegroundProcessGroup(fd: c_int, pgrp: std.process.Child.Id) bool {
     if (io_mod.getenv("PF_TERMINAL_TEST_TMUX_TCSETPGRP_FAILURE") != null) {
         return false;
     }
     return tcsetpgrp(fd, pgrp) == 0;
 }
 
-fn signalLauncherProcessGroup(pid: std.c.pid_t, signal: std.c.SIG) !void {
+fn signalLauncherProcessGroup(pid: std.process.Child.Id, signal: std.c.SIG) !void {
     while (true) switch (std.c.errno(std.c.kill(-pid, signal))) {
         .SUCCESS => return,
         .INTR => continue,
@@ -2321,7 +2320,7 @@ fn waitLauncherChild(child: *std.process.Child) !std.process.Child.Term {
     }
 }
 
-fn requestChildTermination(child_pid: std.posix.pid_t) void {
+fn requestChildTermination(child_pid: std.process.Child.Id) void {
     const group_kill_succeeded =
         io_mod.getenv("PF_TERMINAL_TEST_TMUX_GROUP_KILL_FAILURE") == null and
         std.c.kill(-child_pid, std.c.SIG.KILL) == 0;
@@ -2354,7 +2353,7 @@ fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
     }
 }
 
-extern "c" fn tcsetpgrp(fd: c_int, pgrp: std.posix.pid_t) c_int;
+extern "c" fn tcsetpgrp(fd: c_int, pgrp: std.c.pid_t) c_int;
 
 test "tmux launcher wait status classifies terminal results before stops" {
     try std.testing.expectEqual(

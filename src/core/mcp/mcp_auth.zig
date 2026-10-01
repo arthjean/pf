@@ -2275,6 +2275,12 @@ fn validateJsonContentType(content_type: ?[]const u8) !void {
 
 fn setSocketTimeouts(socket: std.posix.socket_t, seconds: i64) void {
     if (comptime host_target.is_wasm) return;
+    // std.Io sockets on Windows accept no socket timeout option; interactive
+    // MCP authorization stays unavailable there.
+    if (comptime builtin.os.tag == .windows) {
+        debug_trace.logf("mcp", "OAuth socket timeouts unavailable on Windows seconds={d}", .{seconds});
+        return;
+    }
     const timeout = std.posix.timeval{ .sec = seconds, .usec = 0 };
     const receive_rc = std.c.setsockopt(
         socket,

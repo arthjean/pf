@@ -7,6 +7,7 @@ const debug_trace = @import("../shared/debug_trace.zig");
 const host = @import("../hosts/host.zig");
 const host_target = @import("../hosts/target.zig");
 const io_mod = @import("../shared/io.zig");
+const console_prompt = @import("../shared/console_prompt.zig");
 const js_host_auth = @import("js_host_auth.zig");
 const oauth = @import("oauth.zig");
 const oauth_session = @import("oauth_session.zig");
@@ -1146,25 +1147,7 @@ fn unavailableWaitForEnter(_: ?*anyopaque, _: u64) bool {
 }
 
 fn realWaitForEnter(_: ?*anyopaque, timeout_ms: u64) bool {
-    var fds = [_]std.posix.pollfd{.{
-        .fd = std.posix.STDIN_FILENO,
-        .events = std.posix.POLL.IN,
-        .revents = 0,
-    }};
-    const timeout: i32 = @intCast(@min(timeout_ms, @as(u64, @intCast(std.math.maxInt(i32)))));
-    const ready = std.posix.poll(&fds, timeout) catch return false;
-    if (ready == 0 or (fds[0].revents & std.posix.POLL.IN) == 0) return false;
-    discardStdinLine();
-    return true;
-}
-
-fn discardStdinLine() void {
-    var buf: [256]u8 = undefined;
-    while (true) {
-        const n = std.posix.read(std.posix.STDIN_FILENO, &buf) catch return;
-        if (n == 0) return;
-        if (std.mem.findScalar(u8, buf[0..n], '\n') != null) return;
-    }
+    return console_prompt.waitForEnter(timeout_ms);
 }
 
 fn fetchTeams(alloc: Allocator, access_token: []const u8, issuer_url: []const u8) !std.ArrayList(Team) {
@@ -1255,6 +1238,8 @@ fn selectTeam(alloc: Allocator, teams: []const Team, current: ?[]const u8) !?usi
     if (teams.len == 1) return 0;
 
     const default_index = defaultTeamIndex(teams, current);
+    // The arrow-key picker drives termios; Windows uses the numbered prompt.
+    if (comptime builtin.os.tag == .windows) return try selectTeamByLine(alloc, teams, default_index);
     const index = if (canUseInteractiveTeamPicker())
         selectTeamInteractive(alloc, teams, default_index) catch |err| switch (err) {
             error.NotATerminal => try selectTeamByLine(alloc, teams, default_index),

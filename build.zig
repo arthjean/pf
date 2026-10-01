@@ -127,6 +127,38 @@ pub fn build(b: *std.Build) void {
     );
     mcp_dispatcher_e2e_step.dependOn(&run_mcp_dispatcher_e2e.step);
 
+    // --- Windows ConPTY driver and VT input probe ---
+    const conpty_driver_step = b.step(
+        "conpty-driver",
+        "Build the Windows ConPTY driver and VT input probe",
+    );
+    if (target.result.os.tag == .windows) {
+        const windows_console_exports = b.createModule(.{
+            .root_source_file = b.path("src/windows_console_exports.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        for ([_][2][]const u8{
+            .{ "conpty-driver", "tests/e2e/fixtures/windows-conpty-driver.zig" },
+            .{ "vt-input-probe", "tests/e2e/fixtures/windows-vt-input-probe.zig" },
+        }) |tool| {
+            const tool_exe = b.addExecutable(.{
+                .name = tool[0],
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path(tool[1]),
+                    .target = target,
+                    .optimize = optimize,
+                    .link_libc = true,
+                }),
+            });
+            tool_exe.root_module.addImport("windows_console_exports", windows_console_exports);
+            conpty_driver_step.dependOn(&b.addInstallArtifact(tool_exe, .{}).step);
+        }
+    } else {
+        conpty_driver_step.dependOn(&b.addFail("conpty-driver requires a Windows target").step);
+    }
+
     // --- file_index search benchmark ---
     const benchmark_exports_mod = b.createModule(.{
         .root_source_file = b.path("src/benchmark_exports.zig"),

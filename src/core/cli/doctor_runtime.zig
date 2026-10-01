@@ -624,27 +624,33 @@ fn hasGitMetadata(alloc: Allocator, workspace_root: []const u8) !bool {
     return try fileExists(git_path);
 }
 
+/// Windows runs a bare command name through these extensions, the `PATHEXT`
+/// entries that need no file association.
+const windows_command_extensions = [_][]const u8{ ".exe", ".com", ".cmd", ".bat" };
+const command_extensions: []const []const u8 = if (@import("builtin").os.tag == .windows)
+    &windows_command_extensions
+else
+    &.{""};
+
 fn commandInPath(alloc: Allocator, command_name: []const u8) !bool {
     const path_env = io_mod.getenv("PATH") orelse return false;
 
-    return commandInPathValue(alloc, command_name, path_env);
+    return commandInPathValue(alloc, command_name, path_env, command_extensions);
 }
 
-fn commandInPathValue(alloc: Allocator, command_name: []const u8, path_env: []const u8) !bool {
+fn commandInPathValue(
+    alloc: Allocator,
+    command_name: []const u8,
+    path_env: []const u8,
+    extensions: []const []const u8,
+) !bool {
     var it = std.mem.splitScalar(u8, path_env, std.fs.path.delimiter);
     while (it.next()) |entry| {
         if (entry.len == 0) continue;
-
-        var candidate_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const candidate = std.fmt.bufPrint(&candidate_buf, "{s}" ++ std.fs.path.sep_str ++ "{s}", .{ entry, command_name }) catch {
-            const owned = try std.fs.path.join(alloc, &.{ entry, command_name });
-            defer alloc.free(owned);
-            if (pathExists(owned)) return true;
-            continue;
-        };
-
-        if (pathExists(candidate)) {
-            return true;
+        for (extensions) |extension| {
+            const candidate = try std.fmt.allocPrint(alloc, "{s}" ++ std.fs.path.sep_str ++ "{s}{s}", .{ entry, command_name, extension });
+            defer alloc.free(candidate);
+            if (pathExists(candidate)) return true;
         }
     }
 
@@ -940,6 +946,21 @@ test "command in path checks explicit path entries" {
     const path_env = try std.fmt.allocPrint(std.testing.allocator, "{s}", .{bin_root});
     defer std.testing.allocator.free(path_env);
 
-    try std.testing.expect(try commandInPathValue(std.testing.allocator, "gh", path_env));
-    try std.testing.expect(!(try commandInPathValue(std.testing.allocator, "missing-command", path_env)));
+    try std.testing.expect(try commandInPathValue(std.testing.allocator, "gh", path_env, &.{""}));
+    try std.testing.expect(!(try commandInPathValue(std.testing.allocator, "missing-command", path_env, &.{""})));
+}
+
+test "command in path finds Windows commands by extension" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.createDirPath(io_mod.getIo(), "bin");
+    var file = try tmp.dir.createFile(std.testing.io, "bin/gh.cmd", .{});
+    file.close(io_mod.getIo());
+
+    const path_env = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, "bin");
+    defer std.testing.allocator.free(path_env);
+
+    try std.testing.expect(try commandInPathValue(std.testing.allocator, "gh", path_env, &windows_command_extensions));
+    try std.testing.expect(!(try commandInPathValue(std.testing.allocator, "gh", path_env, &.{""})));
 }

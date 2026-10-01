@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
+const console_prompt = @import("../shared/console_prompt.zig");
 const app_lifecycle = @import("../app/app_lifecycle.zig");
 const auth_runtime = @import("../auth/auth_runtime.zig");
 const chatgpt_oauth = @import("../auth/chatgpt_oauth.zig");
@@ -817,6 +818,7 @@ fn writeProviderLoginFailure(alloc: Allocator, deps: RunDeps, provider: model_pr
         error.ClientIdMissing => "missing PF_OAUTH_CLIENT_ID; configure the pf Vercel App client id first",
         error.AccessDenied, error.ChatGptAuthorizationFailed, error.GrokAuthorizationFailed => "authorization denied",
         error.ExpiredToken, error.LoginTimedOut, error.ChatGptLoginTimedOut, error.GrokLoginTimedOut => "authorization expired; run pf login again",
+        error.ChatGptOAuthCallbackPortUnavailable => chatgpt_oauth.callback_ports_in_use_text,
         else => "failed to sign in",
     });
 }
@@ -2026,6 +2028,8 @@ fn writeStderr(deps: RunDeps, text: []const u8) !void {
     try deps.write_stderr(deps.stderr_ctx, text);
 }
 
+const no_setup_terminal_message = "pf setup: an interactive terminal is required to paste an API key, or pipe the key on standard input\n";
+
 fn runPasteSetup(
     alloc: Allocator,
     secret_store: host.SecretStore,
@@ -2035,28 +2039,34 @@ fn runPasteSetup(
         try writeStderr(deps, "pf setup: stored API keys are disabled by PF_DISABLE_KEYCHAIN\n");
         return false;
     }
-    if (!deps.setup_terminal_available(deps.setup_ctx)) {
-        try writeStderr(deps, "pf setup: an interactive terminal is required to paste an API key\n");
+    // A key piped on standard input is read as one line; a terminal on
+    // standard input needs one on standard error for the prompt.
+    const interactive = deps.setup_terminal_available(deps.setup_ctx);
+    if (!interactive and console_prompt.stdinIsTerminal()) {
+        try writeStderr(deps, no_setup_terminal_message);
         return false;
     }
 
-    try writeStderr(deps, "Paste AI Gateway API key (input hidden): ");
-    const stored_interactively = secret_store.storeInteractive() catch {
+    if (interactive) try writeStderr(deps, "Paste AI Gateway API key (input hidden): ");
+    const stored_interactively = if (interactive) secret_store.storeInteractive() catch {
         try writeStderr(deps, "\npf setup: API key was not saved\n");
         return false;
-    };
+    } else false;
     if (!stored_interactively) {
         const key = deps.read_masked_key(
             deps.setup_ctx,
             alloc,
             deps.write_stderr,
             deps.stderr_ctx,
-        ) catch {
-            try writeStderr(deps, "\npf setup: API key was not saved\n");
+        ) catch |err| {
+            try writeStderr(deps, if (err == error.EndOfInput)
+                no_setup_terminal_message
+            else
+                "\npf setup: API key was not saved\n");
             return false;
         };
         defer secret.zeroAndFree(alloc, key);
-        try writeStderr(deps, "\n");
+        if (interactive) try writeStderr(deps, "\n");
         secret_store.store(alloc, key) catch {
             try writeStderr(deps, "pf setup: API key was not saved\n");
             return false;
@@ -2085,93 +2095,16 @@ fn readMaskedKeyDefault(
     write_mask: WriteFn,
     write_ctx: ?*anyopaque,
 ) ![]u8 {
-    // Masked console key entry needs the Windows console prompt backend.
-    if (comptime builtin.os.tag == .windows) return error.MaskedKeyEntryUnavailableOnWindows;
-    var raw = try MaskedKeyRawMode.enable();
-    defer raw.disable();
-
-    var input: std.ArrayList(u8) = .empty;
-    errdefer {
-        if (input.capacity > 0) secret.zeroAndFree(alloc, input.allocatedSlice());
-    }
-
-    while (input.items.len < 8 * 1024) {
-        var byte: [1]u8 = undefined;
-        if (try std.posix.read(std.posix.STDIN_FILENO, &byte) == 0) return error.SetupCancelled;
-        switch (byte[0]) {
-            '\r', '\n' => {
-                if (input.items.len == 0) continue;
-                // toOwnedSlice shrinks through realloc, which may move the buffer
-                // and free the original without zeroing it. Copy out and wipe the
-                // source so no unzeroed key is left behind in freed memory.
-                const owned = try alloc.dupe(u8, input.items);
-                secret.zeroAndFree(alloc, input.allocatedSlice());
-                input = .empty;
-                return owned;
-            },
-            3, 4, 0x1b => return error.SetupCancelled,
-            8, 127 => if (input.items.len > 0) {
-                _ = input.pop();
-                try write_mask(write_ctx, "\x08 \x08");
-            },
-            0x20...0x7e => {
-                try input.append(alloc, byte[0]);
-                try write_mask(write_ctx, "•");
-            },
-            else => {},
-        }
-    }
-    return error.SetupKeyTooLong;
+    return console_prompt.readLine(alloc, .{
+        .echo = .masked,
+        .write = write_mask,
+        .write_ctx = write_ctx,
+    }) catch |err| switch (err) {
+        error.Interrupted, error.Cancelled => error.SetupCancelled,
+        error.TooLong => error.SetupKeyTooLong,
+        else => err,
+    };
 }
-
-const MaskedKeyRawMode = struct {
-    original: std.posix.termios = undefined,
-    active: bool = false,
-
-    fn enable() !MaskedKeyRawMode {
-        if (std.c.isatty(std.posix.STDIN_FILENO) == 0 or
-            std.c.isatty(std.posix.STDERR_FILENO) == 0)
-        {
-            return error.NotATerminal;
-        }
-
-        var self: MaskedKeyRawMode = .{};
-        self.original = try std.posix.tcgetattr(std.posix.STDIN_FILENO);
-        var raw = self.original;
-        raw.iflag.BRKINT = false;
-        raw.iflag.ICRNL = false;
-        raw.iflag.INPCK = false;
-        raw.iflag.ISTRIP = false;
-        raw.iflag.IXON = false;
-        raw.iflag.IXOFF = false;
-        raw.cflag.CSIZE = .CS8;
-        raw.lflag.ECHO = false;
-        raw.lflag.ICANON = false;
-        raw.lflag.IEXTEN = false;
-        raw.lflag.ISIG = false;
-        const vmin_idx = switch (builtin.os.tag) {
-            .linux => 6,
-            else => 16,
-        };
-        const vtime_idx = switch (builtin.os.tag) {
-            .linux => 5,
-            else => 17,
-        };
-        if (vmin_idx < raw.cc.len and vtime_idx < raw.cc.len) {
-            raw.cc[vmin_idx] = 1;
-            raw.cc[vtime_idx] = 0;
-        }
-        try std.posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, raw);
-        self.active = true;
-        return self;
-    }
-
-    fn disable(self: *MaskedKeyRawMode) void {
-        if (!self.active) return;
-        std.posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, self.original) catch {};
-        self.active = false;
-    }
-};
 
 fn writeConfigDiagnostics(
     alloc: Allocator,
