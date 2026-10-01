@@ -25,10 +25,10 @@
     {
       "id": "EP-003",
       "title": "Safe command execution on Windows",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 6,
-      "stories_done": 0
+      "stories_done": 6
     },
     {
       "id": "EP-004",
@@ -246,87 +246,87 @@
       "id": "US-014",
       "title": "Resolve executables without searching the working directory",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-008"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-015",
       "title": "Select the Windows execution shell and tell the model its dialect",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-014"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-016",
       "title": "Match permission analysis to the execution dialect",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-015"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-017",
       "title": "Contain command process trees with Job Objects",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-006",
         "US-008"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-018",
       "title": "Run MCP stdio servers safely on Windows",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-014",
         "US-017"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-019",
       "title": "Control background processes on Windows",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-017"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-01",
+      "completed_at": "2026-10-01",
+      "reviewed_at": "2026-10-01"
     },
     {
       "id": "US-020",
