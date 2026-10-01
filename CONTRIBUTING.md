@@ -35,6 +35,26 @@ zig build test
 zig build run
 ```
 
+### Windows
+
+The Windows port is in progress and the native build does not succeed yet. To work on it:
+
+* install Zig `0.16.0` for Windows x86_64 and put `zig.exe` on `PATH`
+
+* build natively from PowerShell or Git Bash with `zig build`; the target is `x86_64-windows-gnu`, and Linux and macOS still build from the same checkout with `zig build -Dtarget=x86_64-linux-gnu` and `zig build -Dtarget=aarch64-macos`
+
+* run the Linux unit tests inside WSL on the same checkout with a Linux Zig `0.16.0`: `zig build test`
+
+* run `bash ./scripts/check-public-surface.sh` through Git Bash
+
+The repository's `.gitattributes` checks out text files with LF on every platform, so `zig fmt --check src/` passes on Windows even with `core.autocrlf=true`. A clone created before `.gitattributes` existed keeps its CRLF files, and `zig fmt --check src/` fails on them. Commit or stash your changes, then renormalize and check out again:
+
+```bash
+git add --renormalize .
+git rm -r --cached -q .
+git reset --hard
+```
+
 ## Verification Workflow
 
 Keep the local development loop focused: run the narrowest test that covers the changed path, build pf, and exercise the change using `./zig-out/bin/pf`. The installed `pf` on `PATH` is not valid development evidence.

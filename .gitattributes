@@ -1,0 +1,17 @@
+# Check out text with LF on every platform so `zig fmt --check` and
+# byte-compared fixtures behave the same on Windows as on Linux and macOS.
+* text=auto eol=lf
+
+# Byte-exact fixtures and assets.
+*.pftape binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.m4a binary
+*.caf binary
+*.gz binary
+*.tar binary
+*.zip binary
