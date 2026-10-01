@@ -480,6 +480,8 @@ pub const StatusSnapshot = struct {
     mcp_config_warning: ?mcp_contract.ProfileConfigWarning = null,
     permission_mode: types.PermissionMode,
     workspace_root: []const u8,
+    /// Profile settings file that startup reads, when a profile home exists.
+    settings_path: ?[]const u8 = null,
     history_turns: usize,
     session_permission_grants: usize,
     agent_step_limit: usize,
@@ -539,6 +541,7 @@ pub const StatusSnapshot = struct {
         }
         try out.writer.print("[status] permission_mode={s}\n", .{permissions.permissionModeDisplayLabel(self.permission_mode)});
         try out.writer.print("[status] workspace={s}\n", .{self.workspace_root});
+        if (self.settings_path) |path| try out.writer.print("[status] settings={s}\n", .{path});
         try out.writer.print("[status] history_turns={d}\n", .{self.history_turns});
         try out.writer.print("[status] session_permission_grants={d}\n", .{self.session_permission_grants});
         try out.writer.print("[status] agent_step_limit={d}\n", .{self.agent_step_limit});
@@ -673,6 +676,10 @@ pub const StatusSnapshot = struct {
         try std.json.Stringify.value(permissionModeLabel(self.permission_mode), .{}, writer);
         try writer.writeAll(",\"workspace\":");
         try std.json.Stringify.value(self.workspace_root, .{}, writer);
+        if (self.settings_path) |path| {
+            try writer.writeAll(",\"settings_path\":");
+            try std.json.Stringify.value(path, .{}, writer);
+        }
         try writer.print(",\"history_turns\":{d}", .{self.history_turns});
         try writer.print(",\"session_permission_grants\":{d}", .{self.session_permission_grants});
         try writer.print(",\"agent_step_limit\":{d}", .{self.agent_step_limit});
@@ -2026,6 +2033,26 @@ test "status reports where the model came from alongside the model" {
     const json = try snapshot.renderJson(std.testing.allocator);
     defer std.testing.allocator.free(json);
     try std.testing.expect(std.mem.startsWith(u8, json, "{\"kind\":\"status\",\"model\":\"gpt-5.4\",\"model_origin\":\"PF_MODEL\","));
+}
+
+test "status reports the profile settings path in text and JSON" {
+    const snapshot = StatusSnapshot{
+        .model = "alpha",
+        .permission_mode = .ask,
+        .workspace_root = "C:\\dev\\pf",
+        .settings_path = "C:\\Users\\a\\.pf\\settings.json",
+        .history_turns = 0,
+        .session_permission_grants = 0,
+        .agent_step_limit = 24,
+    };
+
+    const text = try snapshot.renderText(std.testing.allocator);
+    defer std.testing.allocator.free(text);
+    try std.testing.expect(std.mem.find(u8, text, "[status] settings=C:\\Users\\a\\.pf\\settings.json\n") != null);
+
+    const json = try snapshot.renderJson(std.testing.allocator);
+    defer std.testing.allocator.free(json);
+    try std.testing.expect(std.mem.find(u8, json, "\"settings_path\":\"C:\\\\Users\\\\a\\\\.pf\\\\settings.json\"") != null);
 }
 
 test "MCP config diagnostic renders in status text and JSON but not interactive body" {

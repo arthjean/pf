@@ -22,8 +22,8 @@ const session_permission_state = @import("../permissions/session_permission_stat
 
 const Allocator = std.mem.Allocator;
 const Identifier = session_event.Identifier;
-const private_dir_permissions = std.Io.File.Permissions.fromMode(0o700);
-const private_file_permissions = std.Io.File.Permissions.fromMode(0o600);
+const private_dir_permissions = io_mod.private_dir_permissions;
+const private_file_permissions = io_mod.private_file_permissions;
 const lock_deadline_ms: u64 = 2000;
 /// Real first events stay under 2 KiB; this leaves room for two maximum-length
 /// workspace paths while keeping listing reads independent of log size.
@@ -3155,8 +3155,12 @@ pub const WritableSessionDir = struct {
             debug_trace.logf("session", "owner liveness probe failed id={s} err={s}", .{ self.session_id, @errorName(err) });
             break :blk false;
         };
+        const pid: u32 = if (comptime @import("builtin").os.tag == .windows)
+            std.os.windows.GetCurrentProcessId()
+        else
+            @intCast(std.c.getpid());
         const body = std.fmt.allocPrint(alloc, "{{\"pid\":{d},\"opened_at_ms\":{d}}}\n", .{
-            std.c.getpid(),
+            pid,
             io_mod.milliTimestamp(),
         }) catch |err| {
             debug_trace.logf("session", "owner liveness mark allocation failed id={s} err={s}", .{ self.session_id, @errorName(err) });
@@ -4007,7 +4011,7 @@ pub const Root = struct {
         };
         defer durable_home.close(zio);
         if (mode == .writable) {
-            durable_home.setPermissions(zio, private_dir_permissions) catch
+            io_mod.applyPrivatePermissions(durable_home, private_dir_permissions) catch
                 return error.PrivateStatePermissionsUnsupported;
         }
         try verifyPrivateDir(durable_home, mode);
@@ -4039,7 +4043,7 @@ pub const Root = struct {
         };
         errdefer sessions_dir.close(zio);
         if (mode == .writable) {
-            sessions_dir.setPermissions(zio, private_dir_permissions) catch
+            io_mod.applyPrivatePermissions(sessions_dir, private_dir_permissions) catch
                 return error.PrivateStatePermissionsUnsupported;
         }
         try verifyPrivateDir(sessions_dir, mode);
@@ -4120,9 +4124,32 @@ pub const Root = struct {
             options,
         );
         writable_owned = false;
-        errdefer loaded.deinit(alloc);
+        var loaded_owned = true;
+        errdefer if (loaded_owned) loaded.deinit(alloc);
         try loaded.conversation_writer.file.sync(io_mod.getIo());
         try io_mod.syncVerifiedDir(loaded.log.dir.dir);
+        if (comptime builtin.os.tag == .windows) {
+            // Windows refuses to rename a directory while handles below it
+            // are open, so close the new session, publish it, and reopen it.
+            const freshly_started = loaded.freshly_started;
+            loaded_owned = false;
+            loaded.deinit(alloc);
+            publishSessionDirectory(sessions.dir, staging_name, initial_state.id) catch |err| {
+                if (err == error.PathAlreadyExists) return error.SessionAlreadyExists;
+                debug_trace.logf("session", "session creation publication failed id={s} err={s}", .{ initial_state.id, @errorName(err) });
+                return err;
+            };
+            unpublished = false;
+            var reopened = self.resumeForWrite(alloc, initial_state.id, options) catch |err| {
+                // Withdraw the session this call just published.
+                sessions.dir.deleteTree(io_mod.getIo(), initial_state.id) catch |cleanup_err| {
+                    debug_trace.logf("session", "session creation cleanup retained id={s} err={s}", .{ initial_state.id, @errorName(cleanup_err) });
+                };
+                return err;
+            };
+            reopened.freshly_started = freshly_started;
+            return reopened;
+        }
         publishSessionDirectory(sessions.dir, staging_name, initial_state.id) catch |err| {
             if (err == error.PathAlreadyExists) return error.SessionAlreadyExists;
             debug_trace.logf("session", "session creation publication failed id={s} err={s}", .{ initial_state.id, @errorName(err) });
@@ -4310,7 +4337,7 @@ fn validateLeaf(name: []const u8) !void {
 fn verifyPrivateDir(dir: std.Io.Dir, mode: OpenMode) !void {
     const stat = try dir.stat(io_mod.getIo());
     if (stat.kind != .directory) return error.SessionPathUnsafe;
-    if (mode == .writable and stat.permissions.toMode() & 0o777 != 0o700) {
+    if (mode == .writable and !io_mod.isPrivateDirMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
 }
@@ -4318,7 +4345,7 @@ fn verifyPrivateDir(dir: std.Io.Dir, mode: OpenMode) !void {
 fn verifyManagedFile(file: std.Io.File, mode: OpenMode) !void {
     const stat = try file.stat(io_mod.getIo());
     if (stat.kind != .file or stat.nlink != 1) return error.SessionPathUnsafe;
-    if (mode == .writable and stat.permissions.toMode() & 0o777 != 0o600) {
+    if (mode == .writable and !io_mod.isPrivateFileMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
 }
@@ -4338,7 +4365,7 @@ fn openSessionDir(
     };
     errdefer dir.close(io_mod.getIo());
     if (mode == .writable) {
-        dir.setPermissions(io_mod.getIo(), private_dir_permissions) catch
+        io_mod.applyPrivatePermissions(dir, private_dir_permissions) catch
             return error.PrivateStatePermissionsUnsupported;
     }
     try verifyPrivateDir(dir, mode);
@@ -4367,18 +4394,17 @@ fn createManagedFile(
     name: []const u8,
 ) !std.Io.File {
     try validateLeaf(name);
-    var file = dir.dir.createFile(io_mod.getIo(), name, .{
+    var file = io_mod.createPrivateFile(dir.dir, name, .{
         .read = true,
         .truncate = false,
         .exclusive = true,
-        .permissions = private_file_permissions,
         .resolve_beneath = true,
     }) catch |err| switch (err) {
         error.IsDir, error.NotDir, error.SymLinkLoop => return error.SessionPathUnsafe,
         else => return err,
     };
     errdefer file.close(io_mod.getIo());
-    file.setPermissions(io_mod.getIo(), private_file_permissions) catch
+    io_mod.applyPrivatePermissions(file, private_file_permissions) catch
         return error.PrivateStatePermissionsUnsupported;
     try verifyManagedFile(file, .writable);
     return file;
@@ -4574,7 +4600,7 @@ const TempRoot = struct {
     fn init(alloc: Allocator) !TempRoot {
         var tmp = std.testing.tmpDir(.{});
         errdefer tmp.cleanup();
-        try tmp.dir.createDir(io_mod.getIo(), "home", std.Io.File.Permissions.fromMode(0o700));
+        try tmp.dir.createDir(io_mod.getIo(), "home", io_mod.private_dir_permissions);
         const home = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home");
         errdefer alloc.free(home);
         var root = try Root.initFromHome(alloc, home, .writable);
@@ -5764,6 +5790,22 @@ test "root starts a cache-free conversation session" {
     try std.testing.expect(saw_owner_live);
 }
 
+test "root session creation publishes the session and leaves no staging directory" {
+    const alloc = std.testing.allocator;
+    var temp = try TempRoot.init(alloc);
+    defer temp.deinit(alloc);
+    var initial = try testState(alloc, "published-session", 10);
+    defer initial.deinit(alloc);
+    var loaded = try temp.root.startConversationSession(alloc, initial, .{});
+    defer loaded.deinit(alloc);
+    try std.testing.expect(loaded.freshly_started);
+
+    var entries = temp.root.sessions.?.dir.iterate();
+    const only = (try entries.next(std.testing.io)) orelse return error.TestExpectedSession;
+    try std.testing.expectEqualStrings(initial.id, only.name);
+    try std.testing.expect((try entries.next(std.testing.io)) == null);
+}
+
 test "root session creation stays outside discovery while preparing" {
     const alloc = std.testing.allocator;
     var temp = try TempRoot.init(alloc);
@@ -5778,6 +5820,9 @@ test "root session creation stays outside discovery while preparing" {
 
         fn lock(context: ?*anyopaque, _: LockKind) void {
             const self: *@This() = @ptrCast(@alignCast(context.?));
+            // Windows reopens the session after publishing it; only the
+            // preparing lock matters here.
+            if (self.observed) return;
             self.observed = true;
             self.visible = entryExists(&self.root.sessions.?, "unpublished-session") catch |err| {
                 self.failure = err;

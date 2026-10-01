@@ -13,8 +13,8 @@ const max_record_bytes: usize = 256 * 1024;
 const compaction_threshold_bytes: u64 = 1024 * 1024;
 const compaction_record_limit: usize = 1000;
 const compaction_byte_limit: usize = 1024 * 1024;
-const private_dir_permissions = std.Io.File.Permissions.fromMode(0o700);
-const private_file_permissions = std.Io.File.Permissions.fromMode(0o600);
+const private_dir_permissions = io_mod.private_dir_permissions;
+const private_file_permissions = io_mod.private_file_permissions;
 
 pub const LoadedPromptHistoryEntry = struct {
     text: []u8,
@@ -231,13 +231,13 @@ pub const Store = struct {
             };
         }
 
-        self.durable_home.?.dir.setPermissions(
-            io_mod.getIo(),
+        io_mod.applyPrivatePermissions(
+            self.durable_home.?.dir,
             private_dir_permissions,
         ) catch return error.PrivateStatePermissionsUnsupported;
         const stat = try self.durable_home.?.dir.stat(io_mod.getIo());
         if (stat.kind != .directory) return error.DurablePathUnsafe;
-        if (stat.permissions.toMode() & 0o777 != 0o700) {
+        if (!io_mod.isPrivateDirMode(stat.permissions)) {
             return error.PrivateStatePermissionsUnsupported;
         }
     }
@@ -267,11 +267,10 @@ pub const Store = struct {
         }) catch |err| switch (err) {
             error.FileNotFound => create: {
                 if (!create) return null;
-                const new_file = self.durable_home.?.dir.createFile(zio, history_file, .{
+                const new_file = io_mod.createPrivateFile(self.durable_home.?.dir, history_file, .{
                     .read = true,
                     .truncate = false,
                     .exclusive = true,
-                    .permissions = private_file_permissions,
                     .resolve_beneath = true,
                 }) catch |create_err| switch (create_err) {
                     error.PathAlreadyExists => return self.openHistory(writable, false),
@@ -288,12 +287,12 @@ pub const Store = struct {
         const initial = try file.stat(zio);
         if (initial.kind != .file or initial.nlink != 1) return error.DurablePathUnsafe;
         if (writable) {
-            file.setPermissions(zio, private_file_permissions) catch {
+            io_mod.applyPrivatePermissions(file, private_file_permissions) catch {
                 return error.PrivateStatePermissionsUnsupported;
             };
         }
         const verified = if (writable) try file.stat(zio) else initial;
-        if (verified.permissions.toMode() & 0o777 != 0o600) {
+        if (!io_mod.isPrivateFileMode(verified.permissions)) {
             return error.PrivateStatePermissionsUnsupported;
         }
         if (created) {
@@ -669,7 +668,7 @@ fn processCompleteLine(
         );
         return;
     };
-    if (!std.mem.eql(u8, record.workspace_root, workspace_root)) {
+    if (!io_mod.pathsEqual(record.workspace_root, workspace_root)) {
         record.deinit(alloc);
         return;
     }
@@ -850,7 +849,7 @@ fn filterOtherWorkspaceRecords(
             line.bytes[0 .. line.bytes.len - 1],
         ) catch continue;
         defer record.deinit(alloc);
-        if (std.mem.eql(u8, record.workspace_root, workspace_root)) continue;
+        if (io_mod.pathsEqual(record.workspace_root, workspace_root)) continue;
         const canonical = try serializeRecord(
             alloc,
             record.timestamp_ms,
@@ -873,7 +872,7 @@ fn ensureFixtureHome(home: []const u8) !void {
     std.Io.Dir.createDirAbsolute(
         std.testing.io,
         pf_dir,
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     ) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
@@ -886,7 +885,7 @@ fn writeFixture(home: []const u8, bytes: []const u8) !void {
     defer std.testing.allocator.free(path);
     var file = try std.Io.Dir.createFileAbsolute(std.testing.io, path, .{
         .truncate = true,
-        .permissions = std.Io.File.Permissions.fromMode(0o600),
+        .permissions = io_mod.private_file_permissions,
     });
     defer file.close(std.testing.io);
     try file.writeStreamingAll(std.testing.io, bytes);

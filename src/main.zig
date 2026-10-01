@@ -3562,10 +3562,14 @@ fn rawArgs(c_argc: c_int, c_argv: [*][*:0]c_char) []const [*:0]const u8 {
 }
 
 fn argsFromRaw(raw_args: []const [*:0]const u8) std.process.Args {
+    // The C runtime's argv uses the ANSI code page on Windows; read the
+    // WTF-16 command line instead so arguments arrive exactly as typed.
+    if (comptime builtin.os.tag == .windows) return .{ .vector = io_mod.windowsCommandLine() };
     return .{ .vector = raw_args };
 }
 
 fn environBlockFromRaw(raw_env: RawEnviron) std.process.Environ.Block {
+    if (comptime builtin.os.tag == .windows) return .global;
     var count: usize = 0;
     while (raw_env[count] != null) : (count += 1) {}
     return .{ .slice = raw_env[0..count :null] };

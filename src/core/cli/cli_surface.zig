@@ -342,14 +342,12 @@ const LoadStartupStatusFn = *const fn (Allocator, host.SecretStore, []const u8, 
 const LoadStartupStateWithAuthModeFn = *const fn (Allocator, oauth_transport.Provider, host.SecretStore, []const u8, usize, credentials.AuthMode) anyerror!app_lifecycle.StartupState;
 const LoadCatalogStartupStateWithAuthModeFn = *const fn (Allocator, host.SecretStore, []const u8, usize, credentials.AuthMode, ?model_provider.ProviderId, ?[]const u8) anyerror!app_lifecycle.StartupState;
 const LoadStartupStatusWithAuthModeFn = *const fn (Allocator, host.SecretStore, []const u8, usize, credentials.AuthMode) anyerror!app_lifecycle.StartupStatus;
-const GetenvFn = *const fn (?*anyopaque, []const u8) ?[]const u8;
 const EnvironMapFn = *const fn (?*anyopaque) ?*const std.process.Environ.Map;
 const ReadMaskedKeyFn = *const fn (?*anyopaque, Allocator, WriteFn, ?*anyopaque) anyerror![]u8;
 const SetupTerminalAvailableFn = *const fn (?*anyopaque) bool;
 const RunDeps = struct {
     stdout_ctx: ?*anyopaque = null,
     stderr_ctx: ?*anyopaque = null,
-    env_ctx: ?*anyopaque = null,
     setup_ctx: ?*anyopaque = null,
     write_stdout: WriteFn = writeRealStdout,
     write_stderr: WriteFn = writeRealStderr,
@@ -359,7 +357,6 @@ const RunDeps = struct {
     load_startup_state_with_auth_mode: LoadStartupStateWithAuthModeFn = app_lifecycle.loadStartupStateWithAuthMode,
     load_catalog_startup_state_with_auth_mode: LoadCatalogStartupStateWithAuthModeFn = app_lifecycle.loadCatalogStartupStateWithAuthMode,
     load_startup_status_with_auth_mode: LoadStartupStatusWithAuthModeFn = app_lifecycle.loadStartupStatusWithAuthMode,
-    getenv: GetenvFn = getenvDefault,
     environ_map: EnvironMapFn = environMapDefault,
     read_masked_key: ReadMaskedKeyFn = readMaskedKeyDefault,
     setup_terminal_available: SetupTerminalAvailableFn = setupTerminalAvailableDefault,
@@ -1836,7 +1833,7 @@ fn runNonInteractiveWithDeps(
                 try writeUsageOrJsonError(alloc, cfg.command_catalog, deps, .usage, "usage", err, rest);
                 return .handled_failure;
             };
-            const home = deps.getenv(deps.env_ctx, "HOME") orelse {
+            const home = io_mod.homeDir() orelse {
                 try writeUsageCommandFailure(
                     alloc,
                     deps,
@@ -2077,8 +2074,9 @@ fn runPasteSetup(
 }
 
 fn setupTerminalAvailableDefault(_: ?*anyopaque) bool {
-    return std.c.isatty(std.posix.STDIN_FILENO) != 0 and
-        std.c.isatty(std.posix.STDERR_FILENO) != 0;
+    const zio = io_mod.getIo();
+    return (std.Io.File.stdin().isTty(zio) catch false) and
+        (std.Io.File.stderr().isTty(zio) catch false);
 }
 
 fn readMaskedKeyDefault(
@@ -2087,6 +2085,8 @@ fn readMaskedKeyDefault(
     write_mask: WriteFn,
     write_ctx: ?*anyopaque,
 ) ![]u8 {
+    // Masked console key entry needs the Windows console prompt backend.
+    if (comptime builtin.os.tag == .windows) return error.MaskedKeyEntryUnavailableOnWindows;
     var raw = try MaskedKeyRawMode.enable();
     defer raw.disable();
 
@@ -2265,6 +2265,7 @@ fn statusSnapshotFromStartupWithBuild(
         .auth_help = startup.auth.missingHelp(.cli),
         .permission_mode = permissionModeForSnapshot(startup.permission_mode),
         .workspace_root = startup.workspace_root,
+        .settings_path = startup.settings_path,
         .history_turns = 0,
         .session_permission_grants = 0,
         .agent_step_limit = startup.agent_step_limit,
@@ -2321,10 +2322,6 @@ fn writeFdAll(fd: std.posix.fd_t, text: []const u8) !void {
         if (written <= 0) return error.WriteFailed;
         remaining = remaining[@intCast(written)..];
     }
-}
-
-fn getenvDefault(_: ?*anyopaque, key: []const u8) ?[]const u8 {
-    return io_mod.getenv(key);
 }
 
 fn environMapDefault(_: ?*anyopaque) ?*const std.process.Environ.Map {
@@ -2457,7 +2454,7 @@ fn runTopLevelMcp(
             try writeTopLevelUsage(cfg.command_catalog, deps, .mcp);
             return .handled_failure;
         }
-        const home = deps.getenv(deps.env_ctx, "HOME") orelse {
+        const home = io_mod.homeDir() orelse {
             try writeMcpOperationFailure(alloc, deps, "path", error.HomeNotSet);
             return .handled_failure;
         };
@@ -4831,6 +4828,27 @@ test "top-level MCP trust persists project approval without interactive startup"
     defer choices.deinit(alloc);
     try std.testing.expectEqual(@as(usize, 1), choices.choices.approved.len);
     try std.testing.expectEqualStrings("fixture", choices.choices.approved[0]);
+}
+
+test "mcp path reads the profile home from the home resolver" {
+    const alloc = std.testing.allocator;
+    var environ = std.process.Environ.Map.init(alloc);
+    defer environ.deinit();
+    try environ.put("HOME", "/git-bash/home");
+    try environ.put("USERPROFILE", "C:\\Users\\a");
+    const stable_environ = try stableCliTestEnviron();
+    io_mod.setEnvironMap(&environ);
+    defer io_mod.setEnvironMap(stable_environ);
+
+    var capture = CaptureOutput.init(alloc);
+    defer capture.deinit();
+    const result = try runIfRequestedWithDeps(alloc, &.{ @constCast("mcp"), @constCast("path") }, testConfig(), capture.deps());
+    try std.testing.expectEqual(RunResult.handled_success, result);
+    const expected = try profile_paths.mcpConfigPath(alloc, io_mod.homeDir().?);
+    defer alloc.free(expected);
+    try std.testing.expect(std.mem.startsWith(u8, capture.stdout.written(), expected));
+    const expected_home = if (builtin.os.tag == .windows) "C:\\Users\\a" else "/git-bash/home";
+    try std.testing.expect(std.mem.startsWith(u8, capture.stdout.written(), expected_home));
 }
 
 test "workspace launch modifiers preserve supported command help" {

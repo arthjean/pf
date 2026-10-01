@@ -31,7 +31,7 @@ const listener_poll_ms = 50;
 const transport_hash_bytes: usize = 16;
 const transport_hash_context = "pf.terminal.transport.v3\x00";
 const socket_permissions: std.Io.File.Permissions = switch (builtin.os.tag) {
-    .macos, .linux => .fromMode(0o600),
+    .macos, .linux => io_mod.private_file_permissions,
     else => .default_file,
 };
 
@@ -292,7 +292,7 @@ fn openVerifiedPrivateRuntimeDir(
             parent.createDir(
                 zio,
                 name,
-                std.Io.File.Permissions.fromMode(0o700),
+                io_mod.private_dir_permissions,
             ) catch |create_err| switch (create_err) {
                 error.PathAlreadyExists => {},
                 else => return create_err,
@@ -364,7 +364,7 @@ fn validatePrivateRuntimeDir(
 ) !void {
     if (stat.kind != .directory) return error.RuntimeDirectoryUnsafe;
     if (owner_uid != uid) return error.RuntimeDirectoryOwnerMismatch;
-    if (stat.permissions.toMode() & 0o777 != 0o700) {
+    if (!io_mod.isPrivateDirMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
 }
@@ -426,7 +426,7 @@ fn ensureFileDescriptorBudget() void {
 }
 
 fn runSupported(alloc: Allocator, config: Config) !void {
-    const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+    const home = io_mod.homeDir() orelse return error.HomeNotSet;
     var paths = try Paths.open(alloc, home);
     defer paths.deinit(alloc);
 
@@ -1550,7 +1550,7 @@ fn verifyEndpointPermissions(host_dir: *io_mod.VerifiedDir) !void {
         .{ .follow_symlinks = false },
     );
     if (stat.kind != .unix_domain_socket or
-        stat.permissions.toMode() & 0o777 != 0o600)
+        !io_mod.isPrivateFileMode(stat.permissions))
     {
         return error.PrivateEndpointPermissionsUnsupported;
     }

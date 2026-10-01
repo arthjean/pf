@@ -176,14 +176,14 @@ fn configureAutomatic(
     pf_version: []const u8,
     show_inline_notice: bool,
 ) !void {
-    const home = if (io_mod.getenv("HOME")) |value| blk: {
+    const home = if (io_mod.homeDir()) |value| blk: {
         const trimmed = std.mem.trim(u8, value, " \t\r\n");
         break :blk if (trimmed.len > 0) trimmed else null;
     } else null;
     const root = if (home) |value|
         try profile_paths.recordingsDir(alloc, value)
     else
-        try std.fs.path.join(alloc, &.{ io_mod.getenv("TMPDIR") orelse "/tmp", "pf-recordings" });
+        try std.fs.path.join(alloc, &.{ io_mod.tempDir(), "pf-recordings" });
     defer alloc.free(root);
     try io_mod.makeDirRecursive(root);
 
@@ -252,7 +252,7 @@ fn openTape(path: []const u8, exclusive: bool, private: bool) !std.Io.File {
             return std.Io.Dir.createFileAbsolute(zio, path, .{
                 .truncate = !exclusive,
                 .exclusive = exclusive,
-                .permissions = .fromMode(0o600),
+                .permissions = io_mod.private_file_permissions,
             });
         }
         return std.Io.Dir.createFileAbsolute(zio, path, .{ .truncate = !exclusive, .exclusive = exclusive });
@@ -261,7 +261,7 @@ fn openTape(path: []const u8, exclusive: bool, private: bool) !std.Io.File {
         return std.Io.Dir.cwd().createFile(zio, path, .{
             .truncate = !exclusive,
             .exclusive = exclusive,
-            .permissions = .fromMode(0o600),
+            .permissions = io_mod.private_file_permissions,
         });
     }
     return std.Io.Dir.cwd().createFile(zio, path, .{ .truncate = !exclusive, .exclusive = exclusive });

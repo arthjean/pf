@@ -65,7 +65,7 @@ const copy_buffer_bytes: usize = 64 * 1024;
 /// watermark deliberately accepts.
 const tail_pin_bytes: u64 = 64 * 1024;
 
-const private_file_permissions = std.Io.File.Permissions.fromMode(0o600);
+const private_file_permissions = io_mod.private_file_permissions;
 
 pub const Outcome = enum {
     compacted,
@@ -533,18 +533,17 @@ fn openRegularFile(
 
 fn createPrivateTempFile(dir: *io_mod.VerifiedDir) !std.Io.File {
     const zio = io_mod.getIo();
-    var file = dir.dir.createFile(zio, tmp_file, .{
+    var file = io_mod.createPrivateFile(dir.dir, tmp_file, .{
         .read = true,
         .truncate = false,
         .exclusive = true,
-        .permissions = private_file_permissions,
         .resolve_beneath = true,
     }) catch |err| switch (err) {
         error.IsDir, error.NotDir, error.SymLinkLoop, error.PathAlreadyExists => return error.DurablePathUnsafe,
         else => return err,
     };
     errdefer file.close(zio);
-    file.setPermissions(zio, private_file_permissions) catch
+    io_mod.applyPrivatePermissions(file, private_file_permissions) catch
         return error.PrivateStatePermissionsUnsupported;
     try io_mod.verifyOpenedRegularFile(try file.stat(zio), .read_write);
     return file;

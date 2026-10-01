@@ -71,7 +71,7 @@ fn presenceCallback(_: ?*anyopaque) host.SecretStorePresence {
 }
 
 fn presenceInProfile() host.SecretStorePresence {
-    const home = io_mod.getenv("HOME") orelse return .unavailable;
+    const home = io_mod.homeDir() orelse return .unavailable;
     var home_dir = std.Io.Dir.openDirAbsolute(io_mod.getIo(), home, .{}) catch
         return .unavailable;
     defer home_dir.close(io_mod.getIo());
@@ -82,7 +82,7 @@ fn presenceInProfile() host.SecretStorePresence {
     const stat = pf_dir.statFile(io_mod.getIo(), profile_paths.api_key_file_name, .{
         .follow_symlinks = false,
     }) catch |err| return if (err == error.FileNotFound) .missing else .unavailable;
-    if (stat.kind != .file or stat.permissions.toMode() & 0o077 != 0) return .unavailable;
+    if (stat.kind != .file or !io_mod.isOwnerOnlyMode(stat.permissions)) return .unavailable;
     return if (stat.size == 0) .missing else .present;
 }
 
@@ -111,7 +111,7 @@ fn loadFromKeychain(alloc: Allocator) LoadError!?[]u8 {
 }
 
 fn loadFromProfile(alloc: Allocator) LoadError!?[]u8 {
-    const home = io_mod.getenv("HOME") orelse {
+    const home = io_mod.homeDir() orelse {
         debug_trace.logf("stored_key", "load failed step=home err=HomeNotSet", .{});
         return error.StoredKeyUnreadable;
     };
@@ -155,7 +155,7 @@ fn loadFromDir(alloc: Allocator, pf_dir: *std.Io.Dir) LoadError!?[]u8 {
         debug_trace.logf("stored_key", "load failed step=stat err={s}", .{@errorName(err)});
         return error.StoredKeyUnreadable;
     };
-    if (stat.kind != .file or stat.permissions.toMode() & 0o077 != 0) {
+    if (stat.kind != .file or !io_mod.isOwnerOnlyMode(stat.permissions)) {
         debug_trace.logf("stored_key", "load failed step=permissions err=StoredKeyInsecure", .{});
         return error.StoredKeyInsecure;
     }
@@ -180,7 +180,7 @@ fn loadFromDir(alloc: Allocator, pf_dir: *std.Io.Dir) LoadError!?[]u8 {
 }
 
 fn storeInProfile(alloc: Allocator, value: []const u8) StoreError!void {
-    const home = io_mod.getenv("HOME") orelse return writeFailed("home", error.HomeNotSet);
+    const home = io_mod.homeDir() orelse return writeFailed("home", error.HomeNotSet);
     var home_dir = io_mod.VerifiedDir{
         .dir = std.Io.Dir.openDirAbsolute(io_mod.getIo(), home, .{ .iterate = true }) catch |err| {
             return writeFailed("open_home", err);

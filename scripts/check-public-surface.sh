@@ -33,6 +33,22 @@ if [[ -n "$personal_project_slugs" ]]; then
   exit 1
 fi
 
+# Private state goes through the io.zig API, which owns every mode conversion.
+# Top-level test blocks may still assert POSIX modes directly.
+mode_conversions="$({
+  git ls-files -z -- 'src/*.zig' ':(exclude)src/core/shared/io.zig' |
+    xargs -0 awk '
+      FNR == 1 { in_test = 0 }
+      /^test / { in_test = 1 }
+      in_test && /^}/ { in_test = 0; next }
+      !in_test && /(fromMode|toMode)\(/ { print FILENAME ":" FNR ": " $0 }
+    '
+} || true)"
+if [[ -n "$mode_conversions" ]]; then
+  printf 'Permission mode conversions outside src/core/shared/io.zig:\n%s\n' "$mode_conversions" >&2
+  exit 1
+fi
+
 capture='tests/e2e/fixtures/pf-render-bug-20260510-075848.tar.gz'
 archive_listing="$(tar -tzvf "$capture")"
 unexpected_owners="$(grep -Ev '[[:space:]]root([/]|[[:space:]]+)root[[:space:]]' <<<"$archive_listing" || true)"
@@ -51,7 +67,7 @@ tar -xzf "$capture" -C "$extract_dir"
 
 archive_matches="$({
   grep -R -a -n -E '/Users/[^/[:space:]]+/|team_[A-Za-z0-9]{24}' "$extract_dir" || true
-} | grep -Ev '/Users/(guest|example|tester|private|me)/|team_000000000000000000000000' || true)"
+} | grep -a -Ev '/Users/(guest|example|tester|private|me)/|team_000000000000000000000000' || true)"
 if [[ -n "$archive_matches" ]]; then
   printf 'Render fixture contains personal or internal data:\n%s\n' "$archive_matches" >&2
   exit 1

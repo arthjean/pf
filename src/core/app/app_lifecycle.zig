@@ -331,9 +331,12 @@ pub const StartupStatus = struct {
     agent_step_limit: usize,
     update_channel: update_target.Channel = .stable,
     config_diagnostics: []config_runtime.ConfigDiagnostic = &.{},
+    /// Profile settings file, owned, when a profile home exists.
+    settings_path: ?[]u8 = null,
 
     pub fn deinit(self: *StartupStatus, alloc: Allocator) void {
         alloc.free(self.workspace_root);
+        if (self.settings_path) |path| alloc.free(path);
         if (self.provider_endpoint) |endpoint| alloc.free(endpoint);
         if (self.owned_selected_model) |model| alloc.free(model);
         self.auth.deinit(alloc);
@@ -530,6 +533,9 @@ pub fn loadStartupStatusWithAuthMode(
         );
     errdefer auth_status.deinit(alloc);
 
+    const settings_path = if (io_mod.homeDir()) |home| try profile_paths.settingsPath(alloc, home) else null;
+    errdefer if (settings_path) |path| alloc.free(path);
+
     const definitions: @import("../config/configured_provider.zig").Registry = settings.providers orelse .{};
     const result = StartupStatus{
         .workspace_root = workspace_root,
@@ -543,6 +549,7 @@ pub fn loadStartupStatusWithAuthMode(
         .agent_step_limit = loadAgentStepLimit(default_agent_step_limit, settings.max_agent_steps),
         .update_channel = settings.update_channel orelse .stable,
         .config_diagnostics = detailed.diagnostics,
+        .settings_path = settings_path,
     };
     auth_status.owned_team = null;
     detailed.diagnostics = &.{};
@@ -980,7 +987,7 @@ pub fn writeLastShutdownReport(alloc: Allocator, trace: *const ShutdownStageTrac
 }
 
 fn writeLastShutdownReportInner(alloc: Allocator, trace: *const ShutdownStageTrace) !void {
-    const home = io_mod.getenv("HOME") orelse return;
+    const home = io_mod.homeDir() orelse return;
 
     var out: std.Io.Writer.Allocating = .init(alloc);
     defer out.deinit();
@@ -1017,7 +1024,7 @@ fn writeLastShutdownReportInner(alloc: Allocator, trace: *const ShutdownStageTra
 /// Reads the persisted shutdown breakdown for the /trace report. Returns the
 /// owned file contents; caller frees. Missing or unreadable file is null.
 pub fn readLastShutdownReport(alloc: Allocator) ?[]u8 {
-    const home = io_mod.getenv("HOME") orelse return null;
+    const home = io_mod.homeDir() orelse return null;
     const path = profile_paths.lastShutdownReportPath(alloc, home) catch return null;
     defer alloc.free(path);
     var file = std.Io.Dir.openFileAbsolute(io_mod.getIo(), path, .{}) catch return null;

@@ -192,7 +192,7 @@ fn runCapabilityStartFixture(
     alloc: Allocator,
     process_provider: process_provider_mod.Provider,
 ) !void {
-    const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+    const home = io_mod.homeDir() orelse return error.HomeNotSet;
     var runtime = client.Runtime.init(process_provider);
     defer runtime.deinit();
     const correlation_id = contracts.CorrelationId{ .value = 1 };
@@ -206,7 +206,7 @@ fn runCapabilityForceCloseFixture(
     alloc: Allocator,
     process_provider: process_provider_mod.Provider,
 ) !void {
-    const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+    const home = io_mod.homeDir() orelse return error.HomeNotSet;
     const terminal_session_id = io_mod.getenv(
         "PF_TERMINAL_AUTHORITY_SESSION_ID",
     ) orelse return error.TerminalAuthorityFixtureSessionMissing;
@@ -274,7 +274,7 @@ fn runAuthorityStartFixture(
     alloc: Allocator,
     process_provider: process_provider_mod.Provider,
 ) !void {
-    const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+    const home = io_mod.homeDir() orelse return error.HomeNotSet;
     const preparation = fixturePreparation(home);
     var prepared = try operation.prepareStartPersistence(alloc, preparation);
     defer prepared.deinit();
@@ -309,7 +309,7 @@ fn runAuthorityReloadFixture(
     alloc: Allocator,
     process_provider: process_provider_mod.Provider,
 ) !void {
-    const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+    const home = io_mod.homeDir() orelse return error.HomeNotSet;
     const terminal_session_id = io_mod.getenv(
         "PF_TERMINAL_AUTHORITY_SESSION_ID",
     ) orelse return error.TerminalAuthorityFixtureSessionMissing;

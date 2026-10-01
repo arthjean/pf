@@ -402,12 +402,15 @@ fn writeLine(line: []const u8) void {
 
 fn appendLineToFile(zio: std.Io, path: []const u8, line: []const u8) void {
     var file = std.Io.Dir.createFileAbsolute(zio, path, .{
+        // Windows needs read access on the handle to query its length.
+        .read = true,
         .truncate = false,
         .lock = .exclusive,
     }) catch return;
     defer file.close(zio);
-    _ = std.c.lseek(file.handle, 0, std.posix.SEEK.END);
-    file.writeStreamingAll(zio, line) catch {};
+    // The exclusive lock serializes writers, so the length is the append offset.
+    const end = file.length(zio) catch return;
+    file.writePositionalAll(zio, line, end) catch {};
 }
 
 fn loadOptionsFromEnv(alloc: Allocator, workspace_root: []const u8) !Options {
@@ -469,7 +472,7 @@ fn resolveLogPath(alloc: Allocator, workspace_root: []const u8, raw_path: []cons
 }
 
 fn defaultLogPath(alloc: Allocator) ![]u8 {
-    if (io_mod.getenv("HOME")) |home| {
+    if (io_mod.homeDir()) |home| {
         return defaultLogPathForHome(alloc, home);
     }
     return fallbackLogPathForMillis(alloc, io_mod.milliTimestamp());
@@ -560,6 +563,30 @@ test "trace logger writes configured file" {
     const trace = try readFileForTest(alloc, path);
     defer alloc.free(trace);
     try std.testing.expect(std.mem.find(u8, trace, "[test] hello 42") != null);
+}
+
+test "trace logger appends after existing file content" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmpRoot(alloc, tmp);
+    defer alloc.free(root);
+    const path = try tmpPath(alloc, root, "trace.log");
+    defer alloc.free(path);
+    try tmp.dir.writeFile(io_mod.getIo(), .{ .sub_path = "trace.log", .data = "existing line\n" });
+
+    resetForTest();
+    defer resetForTest();
+    try configureForTest(alloc, path);
+    logf("test", "first", .{});
+    logf("test", "second", .{});
+
+    const trace = try readFileForTest(alloc, path);
+    defer alloc.free(trace);
+    try std.testing.expect(std.mem.startsWith(u8, trace, "existing line\n"));
+    const first = std.mem.find(u8, trace, "[test] first") orelse return error.TestExpectedLine;
+    const second = std.mem.find(u8, trace, "[test] second") orelse return error.TestExpectedLine;
+    try std.testing.expect(first < second);
 }
 
 test "trace logger filters scopes and writes structured events" {

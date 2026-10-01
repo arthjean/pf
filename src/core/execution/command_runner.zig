@@ -1591,13 +1591,14 @@ fn artifactPath(alloc: Allocator, dir: []const u8, stem: []const u8, suffix: []c
 }
 
 fn fallbackCommandArtifactDir(alloc: Allocator) ![]u8 {
-    const temp_root = io_mod.getenv("TMPDIR") orelse "/tmp";
+    const temp_root = io_mod.tempDir();
     const pid_text = try std.fmt.allocPrint(alloc, "{d}", .{currentProcessId()});
     defer alloc.free(pid_text);
     return std.fs.path.join(alloc, &.{ temp_root, command_artifact_fallback_dir_name, pid_text });
 }
 
 fn currentProcessId() u64 {
+    if (comptime builtin.os.tag == .windows) return std.os.windows.GetCurrentProcessId();
     return @intCast(std.c.getpid());
 }
 
@@ -2972,6 +2973,9 @@ fn signalProcessGroup(pid: std.posix.pid_t, signal: std.posix.SIG) !void {
 }
 
 fn terminateRemainingProcessGroup(pid: std.posix.pid_t) void {
+    // Windows has no process groups, and remainingProcessGroupAlive never
+    // reports one there.
+    if (comptime builtin.os.tag == .windows) return;
     signalProcessGroup(pid, std.posix.SIG.KILL) catch |err| {
         debug_trace.logf(
             "core",

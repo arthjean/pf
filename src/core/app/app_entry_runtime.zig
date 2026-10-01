@@ -159,7 +159,21 @@ fn runWithDeps(comptime App: type, alloc: Allocator, args: []const [:0]const u8,
     return runInteractiveWithDeps(App, false, &app, alloc, &launch, cfg.auth_mode, deps);
 }
 
+/// Printed when Windows offers no profile home, before pf writes any file.
+const windows_missing_home_message = "pf cannot find your profile directory: set USERPROFILE.\n";
+
+/// Reports a missing profile home on Windows and returns exit code 1, so
+/// startup stops before CLI dispatch can write a file. Null elsewhere or when
+/// a home exists. Tests pass the OS to exercise the Windows branch anywhere.
+fn requireWindowsHome(comptime os_tag: std.Target.Os.Tag, deps: RunDeps) ?BeforeInteractiveResult {
+    if (comptime os_tag != .windows) return null;
+    if (io_mod.homeDir() != null) return null;
+    writeStderr(deps, windows_missing_home_message);
+    return .{ .exit = 1 };
+}
+
 pub fn runBeforeInteractive(alloc: Allocator, args: []const [:0]const u8, cfg: Config) !BeforeInteractiveResult {
+    if (requireWindowsHome(builtin.os.tag, .{})) |result| return result;
     const run_result = cli_surface.runIfRequested(alloc, args, cliSurfaceConfig(cfg)) catch |err| switch (err) {
         error.UnknownCliCommand => return .{ .exit = 1 },
         else => {
@@ -538,6 +552,13 @@ fn writeStderr(deps: RunDeps, text: []const u8) void {
 }
 
 fn tryWriteErrorMessage(deps: RunDeps, err: anyerror) void {
+    if (err == error.DurableReplaceTargetBusy) {
+        var buf: [std.fs.max_path_bytes + 128]u8 = undefined;
+        writeStderr(deps, "pf: ");
+        writeStderr(deps, io_mod.replaceBusyMessage(&buf));
+        writeStderr(deps, "\n");
+        return;
+    }
     writeStderr(deps, "pf: ");
     writeStderr(deps, config_runtime.modelNotSelectedMessage(err) orelse @errorName(err));
     writeStderr(deps, "\n");
@@ -897,6 +918,26 @@ test "app entry returns after handled CLI success without initializing app" {
     try std.testing.expect(capture.seen_config.?.inspect_mcp_profile_config == noMcpConfigInspectionForTest);
     try std.testing.expect(capture.seen_config.?.load_mcp_runtime == noMcpRuntimeForTest);
     try std.testing.expectEqual(@as(usize, 0), test_event_count);
+}
+
+test "missing Windows profile home exits before CLI dispatch" {
+    const previous = io_mod.environMap();
+    defer if (previous) |map| io_mod.setEnvironMap(map) else io_mod.setEnvironBlock(.empty);
+    var environ = std.process.Environ.Map.init(std.testing.allocator);
+    defer environ.deinit();
+    io_mod.setEnvironMap(&environ);
+
+    var capture = TestCapture.init(.handled_success);
+    defer capture.deinit();
+    try std.testing.expect(requireWindowsHome(.linux, capture.deps()) == null);
+    try std.testing.expectEqualStrings("", capture.stderr.written());
+
+    const result = requireWindowsHome(.windows, capture.deps()) orelse return error.TestExpectedExit;
+    try std.testing.expectEqual(@as(u8, 1), result.exit);
+    try std.testing.expectEqualStrings(windows_missing_home_message, capture.stderr.written());
+
+    try environ.put("HOME", "/git-bash/home");
+    try std.testing.expect(requireWindowsHome(.windows, capture.deps()) == null);
 }
 
 test "app entry exits after handled CLI failure" {

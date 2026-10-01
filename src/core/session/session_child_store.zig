@@ -3,8 +3,8 @@ const config_runtime = @import("../config/config_runtime.zig");
 const io_mod = @import("../shared/io.zig");
 
 const Allocator = std.mem.Allocator;
-const private_dir_permissions = std.Io.File.Permissions.fromMode(0o700);
-const private_file_permissions = std.Io.File.Permissions.fromMode(0o600);
+const private_dir_permissions = io_mod.private_dir_permissions;
+const private_file_permissions = io_mod.private_file_permissions;
 
 pub const subagent_relationship_index_file = "relationship-index.bin";
 
@@ -379,7 +379,7 @@ const CapabilityImpl = struct {
         errdefer dir.close(io_mod.getIo());
 
         if (self.mode == .writable) {
-            dir.setPermissions(io_mod.getIo(), private_dir_permissions) catch
+            io_mod.applyPrivatePermissions(dir, private_dir_permissions) catch
                 return error.PrivateStatePermissionsUnsupported;
         }
         try verifyPrivateDirectory(dir);
@@ -548,7 +548,7 @@ pub const SessionChildCapability = struct {
         };
         errdefer route.close(io_mod.getIo());
         if (mode == .writable) {
-            route.setPermissions(io_mod.getIo(), private_dir_permissions) catch
+            io_mod.applyPrivatePermissions(route, private_dir_permissions) catch
                 return error.PrivateStatePermissionsUnsupported;
         }
         return initOpenedLegacyRoute(alloc, route, route_path, kind, mode);
@@ -636,10 +636,7 @@ pub const SessionChildCapability = struct {
         };
         errdefer records.close(io_mod.getIo());
         if (mode == .writable) {
-            records.setPermissions(
-                io_mod.getIo(),
-                private_dir_permissions,
-            ) catch return error.PrivateStatePermissionsUnsupported;
+            io_mod.applyPrivatePermissions(records, private_dir_permissions) catch return error.PrivateStatePermissionsUnsupported;
         }
         try verifyPrivateDirectory(records);
 
@@ -670,10 +667,7 @@ pub const SessionChildCapability = struct {
         errdefer if (logs) |route| route.close(io_mod.getIo());
         if (logs) |route| {
             if (mode == .writable) {
-                route.setPermissions(
-                    io_mod.getIo(),
-                    private_dir_permissions,
-                ) catch return error.PrivateStatePermissionsUnsupported;
+                io_mod.applyPrivatePermissions(route, private_dir_permissions) catch return error.PrivateStatePermissionsUnsupported;
             }
             try verifyPrivateDirectory(route);
         }
@@ -862,11 +856,10 @@ pub const SessionChildCapability = struct {
         if (self.impl.mode != .writable) return error.SessionChildReadOnly;
         try self.impl.resolveIndeterminate(kind);
         const route_dir = (try self.impl.route(kind, true)).?;
-        var file = route_dir.dir.createFile(io_mod.getIo(), name, .{
+        var file = io_mod.createPrivateFile(route_dir.dir, name, .{
             .read = true,
             .truncate = false,
             .exclusive = true,
-            .permissions = private_file_permissions,
             .resolve_beneath = true,
         }) catch |err| switch (err) {
             error.IsDir, error.NotDir, error.SymLinkLoop => {
@@ -890,7 +883,7 @@ pub const SessionChildCapability = struct {
         };
         var file_open = true;
         errdefer if (file_open) file.close(io_mod.getIo());
-        file.setPermissions(io_mod.getIo(), private_file_permissions) catch
+        io_mod.applyPrivatePermissions(file, private_file_permissions) catch
             return error.PrivateStatePermissionsUnsupported;
         try verifyPrivateRegularFile(file);
         io_mod.syncVerifiedDir(route_dir.dir) catch {
@@ -1228,7 +1221,7 @@ fn validateName(name: []const u8) !void {
 fn verifyPrivateDirectory(dir: std.Io.Dir) !void {
     const stat = try dir.stat(io_mod.getIo());
     if (stat.kind != .directory) return error.SessionPathUnsafe;
-    if (stat.permissions.toMode() & 0o777 != 0o700) {
+    if (!io_mod.isPrivateDirMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
 }
@@ -1243,7 +1236,7 @@ fn verifyPrivateOpenedStat(
 ) !void {
     io_mod.verifyOpenedRegularFile(stat, mode) catch
         return error.SessionPathUnsafe;
-    if (stat.permissions.toMode() & 0o777 != 0o600) {
+    if (!io_mod.isPrivateFileMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
 }
@@ -1252,7 +1245,7 @@ fn verifyPrivateStat(stat: std.Io.File.Stat) !void {
     if (stat.kind != .file or stat.nlink != 1) {
         return error.SessionPathUnsafe;
     }
-    if (stat.permissions.toMode() & 0o777 != 0o600) {
+    if (!io_mod.isPrivateFileMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
 }
@@ -1273,7 +1266,7 @@ fn openPrivateFile(
     };
     errdefer file.close(io_mod.getIo());
     if (capability_mode == .writable and mode != .read_only) {
-        file.setPermissions(io_mod.getIo(), private_file_permissions) catch
+        io_mod.applyPrivatePermissions(file, private_file_permissions) catch
             return error.PrivateStatePermissionsUnsupported;
     }
     try verifyPrivateOpenedStat(try file.stat(io_mod.getIo()), mode);
@@ -1329,7 +1322,7 @@ fn openTestSession(
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     const display_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "session");
     errdefer alloc.free(display_path);

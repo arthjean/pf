@@ -170,7 +170,7 @@ fn signalE2ELockContention(pf_dir: std.Io.Dir) void {
     if (!std.mem.eql(u8, enabled, "1")) return;
     var file = pf_dir.createFile(io_mod.getIo(), e2e_lock_contention_file_name, .{
         .truncate = true,
-        .permissions = std.Io.File.Permissions.fromMode(0o600),
+        .permissions = io_mod.private_file_permissions,
     }) catch return;
     defer file.close(io_mod.getIo());
     file.writeStreamingAll(io_mod.getIo(), "contended\n") catch {};
@@ -311,7 +311,7 @@ fn observeAuthFile(alloc: Allocator, pf_dir: *std.Io.Dir) !FileObservation {
         debug_trace.logf("auth", "session load failed source=file step=stat err={s}", .{@errorName(err)});
         return .unusable;
     };
-    if (stat.kind != .file or stat.nlink != 1 or stat.permissions.toMode() & 0o077 != 0) {
+    if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
         debug_trace.logf("auth", "session load failed source=file step=permissions err=InsecureAuthFile", .{});
         return .unusable;
     }
@@ -627,7 +627,7 @@ fn isLoopbackHttpUrl(url: []const u8, require_origin: bool) bool {
 
 pub fn load(alloc: Allocator) !?Session {
     if (comptime host_target.is_wasm) return loadFromHost(alloc, js_host_auth.oauth_session_store);
-    const home = io_mod.getenv("HOME") orelse {
+    const home = io_mod.homeDir() orelse {
         debug_trace.logf("auth", "session load skipped step=home err=HomeNotSet", .{});
         return null;
     };
@@ -681,7 +681,7 @@ fn loadFromDir(alloc: Allocator, pf_dir: *std.Io.Dir) !?Session {
     defer file.close(io_mod.getIo());
 
     const stat = file.stat(io_mod.getIo()) catch |err| return session_presence.storageError(auth_file_name, err);
-    if (stat.kind != .file or stat.nlink != 1 or stat.permissions.toMode() & 0o077 != 0) {
+    if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
         debug_trace.logf("auth", "session load failed step=permissions err=InsecureAuthFile", .{});
         return error.InsecureAuthFile;
     }
@@ -724,7 +724,7 @@ pub fn beginExistingMutation() !?Mutation {
 }
 
 fn beginExistingNativeMutation() !?Mutation {
-    const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+    const home = io_mod.homeDir() orelse return error.HomeNotSet;
     var home_dir = io_mod.VerifiedDir{
         .dir = std.Io.Dir.openDirAbsolute(io_mod.getIo(), home, .{ .iterate = true }) catch |err| return session_presence.storageError(auth_file_name, err),
     };
@@ -756,7 +756,7 @@ fn loadKeychainWithoutProfile(alloc: Allocator) !?Session {
 }
 
 fn beginMutation() !Mutation {
-    const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+    const home = io_mod.homeDir() orelse return error.HomeNotSet;
     var home_dir = io_mod.VerifiedDir{
         .dir = try std.Io.Dir.openDirAbsolute(io_mod.getIo(), home, .{ .iterate = true }),
     };
@@ -823,15 +823,15 @@ fn openExistingPrivatePfDir(home_dir: *io_mod.VerifiedDir) !io_mod.VerifiedDir {
 
     const initial_stat = try dir.stat(io_mod.getIo());
     if (initial_stat.kind != .directory) return error.DurablePathUnsafe;
-    if (initial_stat.permissions.toMode() & 0o200 == 0) {
+    if (!io_mod.isWritable(initial_stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
-    dir.setPermissions(io_mod.getIo(), std.Io.File.Permissions.fromMode(0o700)) catch {
+    io_mod.applyPrivatePermissions(dir, io_mod.private_dir_permissions) catch {
         return error.PrivateStatePermissionsUnsupported;
     };
     const stat = try dir.stat(io_mod.getIo());
     if (stat.kind != .directory) return error.DurablePathUnsafe;
-    if (stat.permissions.toMode() & 0o777 != 0o700) {
+    if (!io_mod.isPrivateDirMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
     return .{ .dir = dir };
@@ -1133,7 +1133,7 @@ const FakeOAuthKeychain = struct {
 fn writeTestAuthFile(dir: std.Io.Dir, contents: []const u8) !void {
     var file = try dir.createFile(std.testing.io, auth_file_name, .{
         .truncate = true,
-        .permissions = std.Io.File.Permissions.fromMode(0o600),
+        .permissions = io_mod.private_file_permissions,
     });
     defer file.close(std.testing.io);
     try file.writeStreamingAll(std.testing.io, contents);
@@ -1147,6 +1147,18 @@ fn testKeychainMutation(dir: std.Io.Dir, keychain: KeychainBackend) !Mutation {
         .macos_keychain,
         keychain,
     );
+}
+
+test "OAuth session load rejects a hard-linked auth file as insecure" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeTestAuthFile(tmp.dir, test_session_json);
+    try io_mod.testHardLink(tmp.dir, auth_file_name, "auth-alias.json");
+
+    var pf_dir = try tmp.dir.openDir(std.testing.io, ".", .{ .iterate = true });
+    defer pf_dir.close(std.testing.io);
+    try std.testing.expectError(error.InsecureAuthFile, loadFromDir(alloc, &pf_dir));
 }
 
 test "OAuth migration keeps a valid file authoritative until verified cleanup" {

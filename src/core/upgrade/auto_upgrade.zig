@@ -285,7 +285,7 @@ pub const AutoUpgrade = struct {
         var client: std.http.Client = .{ .allocator = alloc, .io = io_mod.getIo() };
         defer client.deinit();
 
-        const tmp_base: []const u8 = io_mod.getenv("TMPDIR") orelse "/tmp";
+        const tmp_base: []const u8 = io_mod.tempDir();
         sweepStaleDownloadDirs(tmp_base, io_mod.nanoTimestamp());
         var rand_buf: [8]u8 = undefined;
         io_mod.getIo().random(&rand_buf);

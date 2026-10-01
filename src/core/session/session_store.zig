@@ -410,7 +410,7 @@ fn retainWorkspaceSummaries(alloc: Allocator, summaries: *std.ArrayList(SessionS
             summary.deinit(alloc);
             continue;
         };
-        if (!std.mem.eql(u8, summary_workspace, workspace_root)) {
+        if (!io_mod.pathsEqual(summary_workspace, workspace_root)) {
             summary.deinit(alloc);
             continue;
         }
@@ -441,7 +441,7 @@ fn openUsageRecoveryProfileRoot(
     errdefer profile.close(zio);
     const stat = try profile.stat(zio);
     if (stat.kind != .directory or
-        stat.permissions.toMode() & 0o777 != 0o700)
+        !io_mod.isPrivateDirMode(stat.permissions))
     {
         return error.InvalidUsageRecoveryIndex;
     }
@@ -464,7 +464,7 @@ fn openUsageRecoveryDir(
     errdefer dir.close(io_mod.getIo());
     const stat = try dir.stat(io_mod.getIo());
     if (stat.kind != .directory or
-        stat.permissions.toMode() & 0o777 != 0o700)
+        !io_mod.isPrivateDirMode(stat.permissions))
     {
         return error.InvalidUsageRecoveryIndex;
     }
@@ -490,7 +490,7 @@ fn validateUsageRecoveryMarker(
         stat.nlink != 1 or
         stat.size == 0 or
         stat.size > max_usage_recovery_marker_bytes or
-        stat.permissions.toMode() & 0o777 != 0o600)
+        !io_mod.isPrivateFileMode(stat.permissions))
     {
         return error.InvalidUsageRecoveryIndex;
     }
@@ -546,13 +546,13 @@ pub const Store = struct {
 
     /// Opens a writable store rooted at `$HOME`, creating the layout if needed.
     pub fn init(alloc: Allocator, workspace_root: []const u8) !Store {
-        const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+        const home = io_mod.homeDir() orelse return error.HomeNotSet;
         return initWithHome(alloc, home, workspace_root, true);
     }
 
     /// Opens a read-only store rooted at `$HOME`; never creates layout.
     pub fn initReadOnly(alloc: Allocator, workspace_root: []const u8) !Store {
-        const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+        const home = io_mod.homeDir() orelse return error.HomeNotSet;
         return initWithHome(alloc, home, workspace_root, false);
     }
 
@@ -608,7 +608,7 @@ pub const Store = struct {
     fn readRememberedSessionFile(alloc: Allocator, file: *std.Io.File) ![]u8 {
         const stat = try file.stat(io_mod.getIo());
         // An atomic replacement can unlink the valid version already opened here.
-        if (stat.kind != .file or stat.nlink > 1 or stat.permissions.toMode() & 0o777 != 0o600 or stat.size > 256) {
+        if (stat.kind != .file or stat.nlink > 1 or !io_mod.isPrivateFileMode(stat.permissions) or stat.size > 256) {
             return error.InvalidRememberedSession;
         }
         const bytes = try io_mod.readFileToEnd(alloc, file, 256);
@@ -649,7 +649,7 @@ pub const Store = struct {
             else => return err,
         };
         defer profile.close(zio);
-        if ((try profile.stat(zio)).permissions.toMode() & 0o777 != 0o700) return error.SessionPathUnsafe;
+        if (!io_mod.isPrivateDirMode((try profile.stat(zio)).permissions)) return error.SessionPathUnsafe;
         if (create) return try io_mod.openOrCreateVerifiedPrivateDirFromDir(profile, "continue");
         var directory = profile.openDir(zio, "continue", .{
             .iterate = true,
@@ -659,7 +659,7 @@ pub const Store = struct {
             else => return err,
         };
         errdefer directory.close(zio);
-        if ((try directory.stat(zio)).permissions.toMode() & 0o777 != 0o700) return error.SessionPathUnsafe;
+        if (!io_mod.isPrivateDirMode((try directory.stat(zio)).permissions)) return error.SessionPathUnsafe;
         return .{ .dir = directory };
     }
 
@@ -1228,7 +1228,7 @@ pub const Store = struct {
         var unreadable = catalog.skipped_invalid;
         for (catalog.summaries.items) |summary| {
             const summary_workspace = summary.workspace_root orelse continue;
-            if (!std.mem.eql(u8, summary_workspace, workspace_root)) continue;
+            if (!io_mod.pathsEqual(summary_workspace, workspace_root)) continue;
             if (catalog.isUnreplayable(summary.id)) {
                 debug_trace.logf("session", "latest selection skipped unreplayable id={s}", .{summary.id});
                 unreadable += 1;
@@ -4539,12 +4539,11 @@ fn loadedWriterBelongsToRoot(
 }
 
 fn prepareWritableSessionDir(dir: std.Io.Dir) !void {
-    const permissions = std.Io.File.Permissions.fromMode(0o700);
-    dir.setPermissions(io_mod.getIo(), permissions) catch
+    io_mod.applyPrivatePermissions(dir, io_mod.private_dir_permissions) catch
         return error.PrivateStatePermissionsUnsupported;
     const stat = try dir.stat(io_mod.getIo());
     if (stat.kind != .directory) return error.SessionPathUnsafe;
-    if (stat.permissions.toMode() & 0o777 != 0o700) {
+    if (!io_mod.isPrivateDirMode(stat.permissions)) {
         return error.PrivateStatePermissionsUnsupported;
     }
 }
@@ -4909,7 +4908,7 @@ fn makeRawSessionsEntry(store: Store, name: []const u8) !void {
     sessions.dir.createDir(
         io_mod.getIo(),
         name,
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     ) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
@@ -5040,7 +5039,7 @@ pub fn writeSchemaV3Fixture(
     try makeSessionDir(alloc, store, id);
     var dir = try store.openSessionDir(id);
     defer dir.close();
-    try dir.dir.setPermissions(io_mod.getIo(), .fromMode(0o700));
+    try io_mod.applyPrivatePermissions(dir.dir, io_mod.private_dir_permissions);
     const preferences = session_codec.DurableSessionPreferences{ .model = @constCast("test/model"), .effort = .auto, .fast_mode = false };
     const started = try session_event.encodeLegacyFixtureFrame(alloc, .{
         .log_generation = schema_v3_test_generation,
@@ -5082,7 +5081,7 @@ pub fn writeSchemaV3Fixture(
     defer alloc.free(second);
     const log_bytes = first.len + second.len;
     {
-        var events = try dir.dir.createFile(io_mod.getIo(), "events.jsonl", .{ .permissions = .fromMode(0o600) });
+        var events = try dir.dir.createFile(io_mod.getIo(), "events.jsonl", .{ .permissions = io_mod.private_file_permissions });
         defer events.close(io_mod.getIo());
         try events.writeStreamingAll(io_mod.getIo(), first);
         try events.writeStreamingAll(io_mod.getIo(), second);

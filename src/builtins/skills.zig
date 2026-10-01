@@ -43,7 +43,7 @@ pub fn loadVisibleSkillsForTool(
     workspace_root: []const u8,
     skills_dir: []const u8,
 ) !skill_runtime.SkillDiscovery {
-    const home = io_mod.getenv("HOME") orelse homeFromSkillsDir(skills_dir);
+    const home = io_mod.homeDir() orelse homeFromSkillsDir(skills_dir);
     return skill_runtime.loadVisibleSkills(
         alloc,
         workspace_root,
@@ -265,7 +265,9 @@ pub fn createSkillTemplate(alloc: Allocator, skills_dir: []const u8, name: []con
 fn installFromGitHub(alloc: Allocator, skills_dir: []const u8, url: []const u8, filter: ?[]const u8) !InstallResult {
     try ensureDir(skills_dir);
 
-    const tmp_dir = try std.fmt.allocPrint(alloc, "/tmp/pf-skill-install-{d}", .{io_mod.milliTimestamp()});
+    const tmp_name = try std.fmt.allocPrint(alloc, "pf-skill-install-{d}", .{io_mod.milliTimestamp()});
+    defer alloc.free(tmp_name);
+    const tmp_dir = try std.fs.path.join(alloc, &.{ io_mod.tempDir(), tmp_name });
     defer alloc.free(tmp_dir);
     defer std.Io.Dir.cwd().deleteTree(io_mod.getIo(), tmp_dir) catch {};
 

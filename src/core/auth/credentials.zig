@@ -1481,7 +1481,7 @@ const ExpiredPfLoginFixture = struct {
         defer alloc.free(auth_path);
         var file = try std.Io.Dir.createFileAbsolute(io_mod.getIo(), auth_path, .{
             .truncate = true,
-            .permissions = std.Io.File.Permissions.fromMode(0o600),
+            .permissions = io_mod.private_file_permissions,
         });
         defer file.close(io_mod.getIo());
         try file.writeStreamingAll(
@@ -1531,7 +1531,7 @@ const PfLoginRefreshProbe = struct {
                     defer file.close(io_mod.getIo());
                     try file.setPermissions(
                         io_mod.getIo(),
-                        std.Io.File.Permissions.fromMode(0o400),
+                        io_mod.private_file_permissions.setReadOnly(true),
                     );
                 }
                 break :blk self.token_body;

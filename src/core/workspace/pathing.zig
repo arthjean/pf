@@ -218,7 +218,7 @@ pub fn resolveWorkspaceOrExternalPath(
         arena,
         workspace_root,
         input_path,
-        io_mod.getenv("HOME"),
+        io_mod.homeDir(),
         .existing,
     );
 }
@@ -230,7 +230,7 @@ pub fn resolve_workspace_or_external_literal_path(
     workspace_root: []const u8,
     path: []const u8,
 ) ![]const u8 {
-    return resolve_workspace_or_external_literal_path_with_home(arena, workspace_root, path, io_mod.getenv("HOME"));
+    return resolve_workspace_or_external_literal_path_with_home(arena, workspace_root, path, io_mod.homeDir());
 }
 
 /// Same literal policy with captured HOME bytes. The caller owns the result.
@@ -252,7 +252,7 @@ pub fn resolveWorkspaceOrExternalCreatePath(
         arena,
         workspace_root,
         input_path,
-        io_mod.getenv("HOME"),
+        io_mod.homeDir(),
         .create,
     );
 }
@@ -377,7 +377,9 @@ fn classifyExternalPathInput(cleaned: []const u8) error{InvalidPath}!ExternalPat
     if (cleaned.len == 0) return error.InvalidPath;
     if (std.fs.path.isAbsolute(cleaned)) return .{ .absolute = cleaned };
     if (std.mem.eql(u8, cleaned, "~")) return .{ .home_relative = "" };
-    if (std.mem.startsWith(u8, cleaned, "~/")) {
+    if (std.mem.startsWith(u8, cleaned, "~/") or
+        (builtin_mod.os.tag == .windows and std.mem.startsWith(u8, cleaned, "~\\")))
+    {
         return .{ .home_relative = cleaned[1..] };
     }
     if (cleaned[0] == '~') return error.InvalidPath;
@@ -395,7 +397,7 @@ fn resolveBoundedFileTargetInput(
             .external_intent = true,
         },
         .home_relative => |relative| blk: {
-            const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+            const home = io_mod.homeDir() orelse return error.HomeNotSet;
             if (home.len == 0 or !std.fs.path.isAbsolute(home)) return error.InvalidPath;
             break :blk .{
                 .absolute = try normalizeBaseRelativePathInto(scratch, home, relative),
@@ -1157,6 +1159,21 @@ pub fn pathInside(root: []const u8, candidate: []const u8) bool {
     if (root.len == 0) return false;
     if (root[root.len - 1] == std.fs.path.sep) return true;
     return candidate.len > root.len and candidate[root.len] == std.fs.path.sep;
+}
+
+test "home-relative inputs accept a backslash separator on Windows only" {
+    switch (try classifyExternalPathInput("~/notes.md")) {
+        .home_relative => |relative| try std.testing.expectEqualStrings("/notes.md", relative),
+        else => return error.TestUnexpectedResult,
+    }
+    if (builtin_mod.os.tag == .windows) {
+        switch (try classifyExternalPathInput("~\\notes.md")) {
+            .home_relative => |relative| try std.testing.expectEqualStrings("\\notes.md", relative),
+            else => return error.TestUnexpectedResult,
+        }
+    } else {
+        try std.testing.expectError(error.InvalidPath, classifyExternalPathInput("~\\notes.md"));
+    }
 }
 
 test "pathInside preserves exact child empty-root and prefix semantics" {

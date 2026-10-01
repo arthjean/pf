@@ -1123,7 +1123,7 @@ pub fn Handlers(comptime App: type) type {
         }
 
         fn requestUsageDashboardRefresh(app: *App) !void {
-            const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+            const home = io_mod.homeDir() orelse return error.HomeNotSet;
             const availability = try app.session.ensureProfileUsageReadable(
                 app.alloc,
                 home,
@@ -1178,7 +1178,7 @@ pub fn Handlers(comptime App: type) type {
             if (scope == .session) {
                 return app.session.usage.reportSnapshot(app.alloc);
             }
-            const home = io_mod.getenv("HOME") orelse return error.HomeNotSet;
+            const home = io_mod.homeDir() orelse return error.HomeNotSet;
             const availability = try app.session.ensureProfileUsageReadable(
                 app.alloc,
                 home,
@@ -1280,7 +1280,7 @@ pub fn Handlers(comptime App: type) type {
                 return;
             }
             const result = try app.mcpCommandProvider().handle(app.alloc, rest, .{
-                .home = io_mod.getenv("HOME"),
+                .home = io_mod.homeDir(),
                 .list_ctx = @ptrCast(app),
                 .summarize_servers = summarizeMcpServers,
                 .list_servers_and_tools = listMcpServersAndTools,
@@ -2095,15 +2095,11 @@ pub fn Handlers(comptime App: type) type {
 const trace_transcript_max_line_bytes: usize = 300;
 
 fn traceFilePermissions() std.Io.File.Permissions {
-    const builtin = @import("builtin");
-    return switch (builtin.os.tag) {
-        .windows => .default_file,
-        else => std.Io.File.Permissions.fromMode(0o600),
-    };
+    return io_mod.private_file_permissions;
 }
 
 fn writeTraceReportFile(alloc: std.mem.Allocator, contents: []const u8) ![]u8 {
-    const tmp_dir = io_mod.getenv("TMPDIR") orelse "/tmp";
+    const tmp_dir = io_mod.tempDir();
     const trimmed = std.mem.trimEnd(u8, tmp_dir, "/");
     const now_ms = io_mod.milliTimestamp();
     const now_secs: i64 = @max(@divFloor(now_ms, 1000), 0);

@@ -173,7 +173,7 @@ pub const EphemeralStore = struct {
         var writer_file = std.Io.Dir.createFileAbsolute(io_mod.getIo(), temp_path, .{
             .read = true,
             .exclusive = true,
-            .permissions = std.Io.File.Permissions.fromMode(0o600),
+            .permissions = io_mod.private_file_permissions,
         }) catch |err| switch (err) {
             error.PathAlreadyExists => return error.ReplayNameCollision,
             else => return error.EphemeralReplayUnavailable,

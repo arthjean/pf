@@ -715,7 +715,7 @@ fn applySessionPickerCatalogPage(
             var index: usize = 0;
             for (cache.catalog.summaries.items) |summary| {
                 if (workspace) |root| {
-                    if (summary.workspace_root == null or !std.mem.eql(u8, summary.workspace_root.?, root)) continue;
+                    if (summary.workspace_root == null or !io_mod.pathsEqual(summary.workspace_root.?, root)) continue;
                 }
                 if (std.mem.eql(u8, summary.id, selected_id)) {
                     selected_index = index;

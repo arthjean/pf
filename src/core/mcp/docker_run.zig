@@ -141,10 +141,7 @@ fn hasCidfile(argv: []const []const u8) bool {
 }
 
 fn temporaryRoot() ?[]const u8 {
-    return io_mod.getenv("TMPDIR") orelse
-        io_mod.getenv("TEMP") orelse
-        io_mod.getenv("TMP") orelse
-        if (@import("builtin").os.tag == .windows) null else "/tmp";
+    return io_mod.tempDir();
 }
 
 fn readContainerId(alloc: Allocator, path: []const u8) ![]u8 {
