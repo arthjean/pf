@@ -655,6 +655,19 @@ Close the remaining feature gaps between Windows and the POSIX platforms after t
 - [ ] Given the clipboard is held by another process, when pf copies, then it retries for up to 500 ms and then reports that the clipboard is busy.
 - [ ] Given a turn completes while the window is unfocused, when notifications are enabled, then pf emits an OSC 9 notification on Windows Terminal, and otherwise a terminal bell.
 
+#### US-033: Load linked skills through symlink authorities on Windows
+**Description:** As a Windows user who links skills into a workspace, I want linked skill candidates to load and reopen as they do on Linux so that `skill_symlink_authorities` and contained links work on Windows.
+
+**Priority:** P1
+**Size:** M (3 pts)
+**Dependencies:** Blocked by US-021
+
+**Acceptance Criteria:**
+- [ ] Given a contained directory link under a workspace skill root, when skills are discovered and the candidate is reopened, then `openValidatedSkillCandidate` returns it as current instead of failing with `IsDir` (filed by the EP-005 review from `loadVisibleSkills discovers and reopens a contained linked workspace candidate`).
+- [ ] Given a link whose target lies under an external or configured symlink authority, when skills are discovered on Windows, then the linked candidate and its linked metadata load (`loadVisibleSkills discovers linked metadata through external authority`, `loadVisibleSkills discovers a linked candidate resolved via external symlink authority`).
+- [ ] Given those three tests, when this story lands, then their Windows skips are removed and they pass natively on Windows.
+- [ ] Given a link outside every authority, when skills are discovered on Windows, then it is still rejected with the same diagnostic as on Linux.
+
 ---
 
 ## Functional Requirements
@@ -775,6 +788,7 @@ Framed as questions for engineering input:
 
 - **Q1 (Arthur, before Release 2 ships; reserved by CLAUDE.md, distribution):** How should Windows users get `pf.exe`? Options: (a) a zip on GitHub Releases plus an `install.ps1` script: smallest effort, but SmartScreen warns on unsigned binaries; (b) a winget manifest: the expected channel on Windows, requires a stable release URL and benefits from signing; (c) a scoop bucket: popular with developers, requires maintaining a bucket repository. Authenticode signing costs a certificate but removes SmartScreen friction. Nothing in this PRD depends on the answer except the README install section.
 - **Q2 (Arthur, before US-026; reserved by CLAUDE.md, `.github/workflows/`):** What form should Windows CI take? Options: (a) add a Windows runner to `full-ci.yml` as a required job: strongest guarantee, longer CI, and the gate becomes part of the ship rule; (b) a separate informational workflow: visible signal without blocking merges; (c) local qualification only: no CI cost, no automatic protection. US-026 is blocked by this decision.
+  - **Decided (Arthur, 2026-10-02):** (a), a Windows runner added to `full-ci.yml` as a required job.
 - **Q3 (Arthur, before US-028; authentication storage):** Which backend should store secrets on Windows? Options: (a) DPAPI on the existing profile files: no size limit, transparent, bound to the Windows account; (b) Credential Manager: visible in Windows settings, but limited to 2,560 bytes per secret, which some OAuth token sets exceed; (c) plaintext files under the profile ACL: parity with Linux, no protection from administrators or copied disks. The PRD assumes (a).
 - **Q4 (Arthur, after Release 1 dogfooding):** Should a follow-up PRD specify a PowerShell-aware parser so that routine PowerShell commands can use fast paths and allow rules? It depends on the review latency and cost measured in Release 1.
 - **Q5 (Arthur, before Release 3):** Is persistent hosted-session reattachment on Windows (US-031) worth its size, or is per-process session lifetime enough?

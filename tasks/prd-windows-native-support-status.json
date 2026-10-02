@@ -41,17 +41,17 @@
     {
       "id": "EP-005",
       "title": "Windows quality signal",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 0
+      "stories_done": 4
     },
     {
       "id": "EP-006",
       "title": "Windows parity",
       "status": "TODO",
       "priority": "P1",
-      "stories_total": 5,
+      "stories_total": 6,
       "stories_done": 0
     }
   ],
@@ -376,35 +376,35 @@
       "id": "US-023",
       "title": "Compile the unit test suite for Windows",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-008"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-02",
+      "completed_at": "2026-10-02",
+      "reviewed_at": "2026-10-02"
     },
     {
       "id": "US-024",
       "title": "Pass the unit test suite on Windows",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-023"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-02",
+      "completed_at": "2026-10-02",
+      "reviewed_at": "2026-10-02"
     },
     {
       "id": "US-025",
       "title": "Run a Windows end-to-end subset",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
@@ -412,39 +412,39 @@
         "US-009",
         "US-010"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-02",
+      "completed_at": "2026-10-02",
+      "reviewed_at": "2026-10-02"
     },
     {
       "id": "US-026",
       "title": "Add a Windows CI job",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-024",
         "US-025"
       ],
-      "started_at": null,
+      "started_at": "2026-10-02",
       "completed_at": null,
-      "reviewed_at": null
+      "reviewed_at": "2026-10-02"
     },
     {
       "id": "US-027",
       "title": "Document Windows support",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-015",
         "US-016"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-02",
+      "completed_at": "2026-10-02",
+      "reviewed_at": "2026-10-02"
     },
     {
       "id": "US-028",
@@ -516,6 +516,20 @@
       "size": "S",
       "blocked_by": [
         "US-010"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-033",
+      "title": "Load linked skills through symlink authorities on Windows",
+      "epic": "EP-006",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "M",
+      "blocked_by": [
+        "US-021"
       ],
       "started_at": null,
       "completed_at": null,
