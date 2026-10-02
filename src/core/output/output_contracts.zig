@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const auth_runtime = @import("../auth/auth_runtime.zig");
 const credentials = @import("../auth/credentials.zig");
 const doctor_runtime = @import("../cli/doctor_runtime.zig");
@@ -1703,7 +1704,11 @@ fn displayGrantTarget(alloc: Allocator, workspace_root: []const u8, grant: types
     }
 
     if (std.fs.path.isAbsolute(grant.target_path)) {
-        return std.fs.path.relative(alloc, "/", null, workspace_root, grant.target_path) catch alloc.dupe(u8, grant.target_path);
+        const relative = std.fs.path.relative(alloc, "/", null, workspace_root, grant.target_path) catch
+            return alloc.dupe(u8, grant.target_path);
+        // Grant display matches persisted rule patterns, which use `/`.
+        if (builtin.os.tag == .windows) std.mem.replaceScalar(u8, relative, '\\', '/');
+        return relative;
     }
 
     return alloc.dupe(u8, grant.target_path);

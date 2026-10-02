@@ -6,6 +6,7 @@ const command_effect = @import("../shell_command/command_effect.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const local_executor = @import("local_executor.zig");
 const command_runner = @import("../execution/command_runner.zig");
+const io_mod = @import("../shared/io.zig");
 
 pub const RouteKind = local_executor.RouteKind;
 pub const PreparedCommandRoute = local_executor.PreparedCommand;
@@ -131,6 +132,7 @@ fn context(command: []const u8, background: bool) command_admission.CommandConte
         .command = command,
         .resolved_cwd = "/tmp",
         .target_os = builtin.os.tag,
+        .dialect = .posix_sh,
     };
 }
 
@@ -271,7 +273,10 @@ test "router executes direct plan without consulting approved shell capacity" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
-    const ctx = context("printf x | wc -c", false);
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var ctx = context("printf x | wc -c", false);
+    ctx.resolved_cwd = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
     const routed = try executePlannedCommand(.{
         .max_command_output_bytes = 1,
     }, arena, ctx, directAuthority(ctx));

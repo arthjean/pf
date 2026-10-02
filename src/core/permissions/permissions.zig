@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const command_environment = @import("../execution/command_environment.zig");
 const shell_selection = @import("../execution/shell_selection.zig");
 
@@ -1460,7 +1461,7 @@ pub fn permissionRulePatternForGrant(alloc: std.mem.Allocator, workspace_root: [
             alloc.free(relative);
             return alloc.dupe(u8, "*");
         }
-        return relative;
+        return portableRelativePath(relative);
     }
 
     return alloc.dupe(u8, pattern);
@@ -1699,14 +1700,45 @@ fn staticCommandWildcardMatch(pattern: []const u8, candidate: []const u8) bool {
 }
 
 fn directoryTreePatternMatches(pattern: []const u8, candidate: []const u8) bool {
-    if (!std.mem.endsWith(u8, pattern, "/**")) return false;
-    if (std.mem.eql(u8, pattern, "/**")) return std.mem.startsWith(u8, candidate, "/");
+    if (pattern.len < "/**".len or
+        !std.mem.endsWith(u8, pattern, "**") or
+        !isPatternSeparator(pattern[pattern.len - "/**".len]))
+    {
+        return false;
+    }
+    if (pattern.len == "/**".len) return candidate.len > 0 and isPatternSeparator(candidate[0]);
 
     const dir = pattern[0 .. pattern.len - "/**".len];
-    if (std.mem.eql(u8, candidate, dir)) return true;
+    if (patternBytesEql(candidate, dir)) return true;
     return candidate.len > dir.len and
-        std.mem.startsWith(u8, candidate, dir) and
-        candidate[dir.len] == '/';
+        patternBytesEql(candidate[0..dir.len], dir) and
+        isPatternSeparator(candidate[dir.len]);
+}
+
+/// Reports a path separator in a rule pattern or target: `/`, and on Windows
+/// also `\`, so a rule written with either separator matches native paths.
+fn isPatternSeparator(byte: u8) bool {
+    return byte == '/' or (builtin.os.tag == .windows and byte == '\\');
+}
+
+fn patternByteEql(pattern_byte: u8, candidate_byte: u8) bool {
+    return pattern_byte == candidate_byte or
+        (isPatternSeparator(pattern_byte) and isPatternSeparator(candidate_byte));
+}
+
+fn patternBytesEql(candidate: []const u8, pattern: []const u8) bool {
+    if (candidate.len != pattern.len) return false;
+    for (candidate, pattern) |candidate_byte, pattern_byte| {
+        if (!patternByteEql(pattern_byte, candidate_byte)) return false;
+    }
+    return true;
+}
+
+/// Rewrites a workspace-relative path in place with `/` separators, which
+/// policy display and persisted rules use on every platform. Returns it.
+fn portableRelativePath(relative: []u8) []u8 {
+    if (builtin.os.tag == .windows) std.mem.replaceScalar(u8, relative, '\\', '/');
+    return relative;
 }
 
 fn wildcardMatch(pattern: []const u8, candidate: []const u8) bool {
@@ -1717,7 +1749,7 @@ fn wildcardMatch(pattern: []const u8, candidate: []const u8) bool {
 
     while (candidate_index < candidate.len) {
         if (pattern_index < pattern.len and
-            (pattern[pattern_index] == '?' or pattern[pattern_index] == candidate[candidate_index]))
+            (pattern[pattern_index] == '?' or patternByteEql(pattern[pattern_index], candidate[candidate_index])))
         {
             pattern_index += 1;
             candidate_index += 1;
@@ -1859,7 +1891,7 @@ fn displayPathTarget(alloc: std.mem.Allocator, workspace_root: []const u8, targe
             alloc.free(relative);
             return alloc.dupe(u8, ".");
         }
-        return relative;
+        return portableRelativePath(relative);
     }
     return alloc.dupe(u8, target_path);
 }
@@ -1874,7 +1906,7 @@ fn displayCommandTarget(alloc: std.mem.Allocator, workspace_root: []const u8, ta
     const display_cwd = try (if (std.mem.eql(u8, cwd, workspace_root))
         alloc.dupe(u8, ".")
     else if (std.fs.path.isAbsolute(cwd) and pathing.pathInside(workspace_root, cwd))
-        (std.fs.path.relative(alloc, "/", null, workspace_root, cwd) catch alloc.dupe(u8, cwd))
+        portableRelativePath(std.fs.path.relative(alloc, "/", null, workspace_root, cwd) catch try alloc.dupe(u8, cwd))
     else
         alloc.dupe(u8, cwd));
     defer alloc.free(display_cwd);
@@ -2116,8 +2148,8 @@ test "permissionTargetsForCall exposes every canonical Vision path" {
     defer alloc.free(second);
     const arguments = try std.fmt.allocPrint(
         alloc,
-        "{{\"paths\":[\"first.png\",\"{s}\"],\"focus\":\"compare\"}}",
-        .{second},
+        "{{\"paths\":[\"first.png\",{f}],\"focus\":\"compare\"}}",
+        .{std.json.fmt(second, .{})},
     );
     defer alloc.free(arguments);
 
@@ -2157,8 +2189,8 @@ test "permissionTargetsForCall rejects duplicate canonical Vision paths" {
     defer alloc.free(absolute);
     const arguments = try std.fmt.allocPrint(
         alloc,
-        "{{\"paths\":[\"image.png\",\"{s}\"],\"focus\":\"compare\"}}",
-        .{absolute},
+        "{{\"paths\":[\"image.png\",{f}],\"focus\":\"compare\"}}",
+        .{std.json.fmt(absolute, .{})},
     );
     defer alloc.free(arguments);
 
@@ -2188,7 +2220,7 @@ test "permissionTargetForCall covers active target kinds" {
     defer alloc.free(workspace);
     const src_dir = try std.fs.path.join(alloc, &.{ workspace, "src" });
     defer alloc.free(src_dir);
-    const app_file = try std.fs.path.join(alloc, &.{ workspace, "src/app.zig" });
+    const app_file = try std.fs.path.join(alloc, &.{ workspace, "src", "app.zig" });
     defer alloc.free(app_file);
 
     var arena_state = std.heap.ArenaAllocator.init(alloc);
@@ -2259,14 +2291,14 @@ test "permissionTargetForCall resolves external absolute file tool targets" {
     const read_call: types.ToolCall = .{
         .id = "read",
         .name = "read_file",
-        .arguments_json = try std.fmt.allocPrint(arena, "{{\"path\":\"{s}\"}}", .{external_file}),
+        .arguments_json = try std.fmt.allocPrint(arena, "{{\"path\":{f}}}", .{std.json.fmt(external_file, .{})}),
     };
     try std.testing.expectEqualStrings(external_file, try permissionTargetForCall(arena, workspace, read_call, .path_existing));
 
     const write_call: types.ToolCall = .{
         .id = "write",
         .name = "write_file",
-        .arguments_json = try std.fmt.allocPrint(arena, "{{\"path\":\"{s}\",\"content\":\"\"}}", .{external_new_file}),
+        .arguments_json = try std.fmt.allocPrint(arena, "{{\"path\":{f},\"content\":\"\"}}", .{std.json.fmt(external_new_file, .{})}),
     };
     try std.testing.expectError(
         error.TypedFileMutationTargetRequired,
@@ -2276,7 +2308,7 @@ test "permissionTargetForCall resolves external absolute file tool targets" {
     const edit_call: types.ToolCall = .{
         .id = "edit",
         .name = "edit_file",
-        .arguments_json = try std.fmt.allocPrint(arena, "{{\"path\":\"{s}\",\"old_string\":\"main\",\"new_string\":\"start\"}}", .{external_file}),
+        .arguments_json = try std.fmt.allocPrint(arena, "{{\"path\":{f},\"old_string\":\"main\",\"new_string\":\"start\"}}", .{std.json.fmt(external_file, .{})}),
     };
     try std.testing.expectError(
         error.TypedFileMutationTargetRequired,
@@ -2311,7 +2343,7 @@ test "command cwd and grep accept explicit external paths" {
     const call = types.ToolCall{
         .id = "cwd",
         .name = "run_command",
-        .arguments_json = try std.fmt.allocPrint(arena_state.allocator(), "{{\"command\":\"pwd\",\"cwd\":\"{s}\"}}", .{shared}),
+        .arguments_json = try std.fmt.allocPrint(arena_state.allocator(), "{{\"command\":\"pwd\",\"cwd\":{f}}}", .{std.json.fmt(shared, .{})}),
     };
     const cwd = try resolveCommandCwdForCallInScope(alloc, active_scope, call);
     defer alloc.free(cwd);
@@ -2323,7 +2355,7 @@ test "command cwd and grep accept explicit external paths" {
     const search_call = types.ToolCall{
         .id = "search",
         .name = "grep_files",
-        .arguments_json = try std.fmt.allocPrint(arena_state.allocator(), "{{\"pattern\":\"needle\",\"path\":\"{s}\"}}", .{shared}),
+        .arguments_json = try std.fmt.allocPrint(arena_state.allocator(), "{{\"pattern\":\"needle\",\"path\":{f}}}", .{std.json.fmt(shared, .{})}),
     };
     const search_target = try permissionTargetForCallInScope(arena_state.allocator(), active_scope, search_call, .path_optional_existing);
     try std.testing.expectEqualStrings(shared, search_target);
@@ -2460,6 +2492,26 @@ test "generic wildcard matching remains total for maximum command-sized input" {
     @memset(candidate, 'x');
     try std.testing.expect(wildcardMatch("*", candidate));
     try std.testing.expect(!wildcardMatch("?", candidate));
+}
+
+test "file rule patterns match either separator only on Windows" {
+    const windows = builtin.os.tag == .windows;
+    try std.testing.expect(wildcardMatch("src/*", "src/app.zig"));
+    try std.testing.expectEqual(windows, wildcardMatch("src/*", "src\\app.zig"));
+    try std.testing.expectEqual(windows, directoryTreePatternMatches("src/**", "src\\nested\\app.zig"));
+    try std.testing.expectEqual(windows, directoryTreePatternMatches("src\\**", "src/nested/app.zig"));
+    try std.testing.expect(!directoryTreePatternMatches("src/**", "srcx/app.zig"));
+
+    var rules = [_]types.PermissionRule{.{
+        .permission = @constCast("edit"),
+        .pattern = @constCast("src/*"),
+        .action = .deny,
+    }};
+    const root = if (windows) "C:\\workspace" else "/workspace";
+    try std.testing.expectEqual(
+        if (windows) types.RuleDecision.deny else types.RuleDecision.none,
+        fileTargetRuleDecision(.{ .rules = &rules }, root, "write_file", root ++ std.fs.path.sep_str ++ "src\\app.zig"),
+    );
 }
 
 test "rulesDenyAllTargetsForPermission honors last matching overrides" {
@@ -3100,13 +3152,13 @@ test "file target evaluator returns ordered complete workspace proof" {
     try std.testing.expectEqual(.target, evaluated.items[0].kind);
     try std.testing.expectEqual(.target_entry, evaluated.items[0].disposition);
     try std.testing.expect(evaluated.items[0].expected_identity == null);
-    try std.testing.expectEqualStrings("existing/a/b/file.txt", evaluated.permissionPath(evaluated.items[0])[workspace.len + 1 ..]);
+    try std.testing.expectEqualStrings(try std.fs.path.join(arena, &.{ "existing", "a", "b", "file.txt" }), evaluated.permissionPath(evaluated.items[0])[workspace.len + 1 ..]);
     try std.testing.expectEqual(.parent, evaluated.items[1].kind);
     try std.testing.expectEqual(.create_parent, evaluated.items[1].disposition);
-    try std.testing.expectEqualStrings("existing/a/b", evaluated.permissionPath(evaluated.items[1])[workspace.len + 1 ..]);
+    try std.testing.expectEqualStrings(try std.fs.path.join(arena, &.{ "existing", "a", "b" }), evaluated.permissionPath(evaluated.items[1])[workspace.len + 1 ..]);
     try std.testing.expectEqual(.parent, evaluated.items[2].kind);
     try std.testing.expectEqual(.create_parent, evaluated.items[2].disposition);
-    try std.testing.expectEqualStrings("existing/a", evaluated.permissionPath(evaluated.items[2])[workspace.len + 1 ..]);
+    try std.testing.expectEqualStrings(try std.fs.path.join(arena, &.{ "existing", "a" }), evaluated.permissionPath(evaluated.items[2])[workspace.len + 1 ..]);
     try std.testing.expect(evaluated.prompt_required);
 }
 
@@ -3161,9 +3213,12 @@ test "file target evaluator scans intermediate deny before grants" {
         .{ .permission = @constCast("edit"), .pattern = @constCast("existing/a/b/file.txt"), .action = .ask },
         .{ .permission = @constCast("edit"), .pattern = @constCast("existing/a"), .action = .deny },
     };
+    // A tree grant over the temporary root covers every target on every
+    // platform; `/**` names no Windows drive.
+    const tmp_root = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
     const grants = [_]types.PermissionGrant{.{
         .tool_name = @constCast("edit"),
-        .target_path = @constCast("/**"),
+        .target_path = try std.fmt.allocPrint(arena, "{s}/**", .{tmp_root}),
     }};
 
     const result = try evaluateFileMutationTargets(
@@ -3247,9 +3302,12 @@ test "file target evaluator binds external parent and grant state" {
     const external = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "external");
     defer alloc.free(external);
     const target = try std.fs.path.join(arena, &.{ external, "file.txt" });
+    // A tree grant over the temporary root covers every target on every
+    // platform; `/**` names no Windows drive.
+    const tmp_root = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
     const grants = [_]types.PermissionGrant{.{
         .tool_name = @constCast("edit"),
-        .target_path = @constCast("/**"),
+        .target_path = try std.fmt.allocPrint(arena, "{s}/**", .{tmp_root}),
     }};
 
     const result = try evaluateFileMutationTargets(

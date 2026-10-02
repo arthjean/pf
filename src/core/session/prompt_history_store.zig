@@ -115,7 +115,8 @@ pub const Store = struct {
         try self.resolveIndeterminate();
 
         var file = (try self.openHistory(true, true)).?;
-        defer file.close(io_mod.getIo());
+        var file_open = true;
+        defer if (file_open) file.close(io_mod.getIo());
         try repairIncompleteTail(file);
 
         const boundary = try file.length(io_mod.getIo());
@@ -135,6 +136,10 @@ pub const Store = struct {
         const committed_length = boundary + line.len;
         if (committed_length <= compaction_threshold_bytes) return .appended;
 
+        // Compaction replaces the history, which Windows refuses while it is
+        // still open.
+        file.close(io_mod.getIo());
+        file_open = false;
         self.compact(alloc) catch |err| switch (err) {
             error.PromptHistoryCompactionStale => return .compaction_stale,
             error.PromptHistoryCommitIndeterminate => return .compaction_indeterminate,
@@ -179,15 +184,19 @@ pub const Store = struct {
         defer lock.release();
         try self.resolveIndeterminate();
 
-        var file = (try self.openHistory(false, false)) orelse return;
-        defer file.close(io_mod.getIo());
-        const length = try file.length(io_mod.getIo());
-        const replacement = try filterOtherWorkspaceRecords(
-            alloc,
-            file,
-            length,
-            workspace_root,
-        );
+        const replacement = blk: {
+            // Close the history before replacing it: Windows refuses to
+            // replace a file that is still open.
+            var file = (try self.openHistory(false, false)) orelse return;
+            defer file.close(io_mod.getIo());
+            const length = try file.length(io_mod.getIo());
+            break :blk try filterOtherWorkspaceRecords(
+                alloc,
+                file,
+                length,
+                workspace_root,
+            );
+        };
         defer alloc.free(replacement);
 
         const ops = if (self.fail_clear_after_rename)
@@ -330,10 +339,12 @@ pub const Store = struct {
         if (self.fail_compaction_before_rename) {
             return error.PromptHistoryCompactionStale;
         }
-        var file = (try self.openHistory(false, false)) orelse return;
-        defer file.close(io_mod.getIo());
-        const length = try file.length(io_mod.getIo());
-        const replacement = try compactRecords(alloc, file, length);
+        const replacement = blk: {
+            var file = (try self.openHistory(false, false)) orelse return;
+            defer file.close(io_mod.getIo());
+            const length = try file.length(io_mod.getIo());
+            break :blk try compactRecords(alloc, file, length);
+        };
         defer alloc.free(replacement);
 
         io_mod.durableReplaceVerified(
@@ -1354,20 +1365,11 @@ test "first append creates only private prompt history layout and reports layout
     );
     defer pf_dir.close(std.testing.io);
     const pf_stat = try pf_dir.stat(std.testing.io);
-    try std.testing.expectEqual(
-        @as(std.posix.mode_t, 0o700),
-        pf_stat.permissions.toMode() & 0o777,
-    );
+    try io_mod.expectPrivateDir(pf_stat);
     const history_stat = try pf_dir.statFile(std.testing.io, "history.jsonl", .{});
     const lock_stat = try pf_dir.statFile(std.testing.io, "history.lock", .{});
-    try std.testing.expectEqual(
-        @as(std.posix.mode_t, 0o600),
-        history_stat.permissions.toMode() & 0o777,
-    );
-    try std.testing.expectEqual(
-        @as(std.posix.mode_t, 0o600),
-        lock_stat.permissions.toMode() & 0o777,
-    );
+    try io_mod.expectPrivateFile(history_stat);
+    try io_mod.expectPrivateFile(lock_stat);
 
     var failed_tmp = std.testing.tmpDir(.{});
     defer failed_tmp.cleanup();

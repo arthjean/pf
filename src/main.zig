@@ -100,6 +100,13 @@ const assistant_presentation = @import("core/agent/assistant_presentation.zig");
 const auto_upgrade = @import("core/upgrade/auto_upgrade.zig");
 const update_target = @import("core/upgrade/update_target.zig");
 
+/// Zig's Windows I/O maps some routine statuses, such as a reset connection,
+/// to `error.Unexpected` and prints a stack trace for it in Debug builds. pf
+/// handles the error, so the trace would only break its stderr contract.
+pub const std_options: std.Options = .{
+    .unexpected_error_tracing = builtin.os.tag != .windows and (std.Options{}).unexpected_error_tracing,
+};
+
 const compiled_update_channel = update_target.Channel.parse(build_options.update_channel) orelse
     @compileError("invalid compiled update channel");
 const shell_process_provider = @import("tools/shell/process_provider.zig");

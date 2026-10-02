@@ -1450,9 +1450,9 @@ test "startup failure names how the server ended and its cleaned stderr" {
         "MCP server exited with code 1 before completing startup: npm error code E401 npm error Incorrect or missing password.",
         try formatStartupFailure(arena, .{ .closed = &exited }),
     );
-    const killed = testDiagnostics(.{ .signal = .KILL }, "");
+    const killed = testDiagnostics(.{ .signal = .TERM }, "");
     try std.testing.expectEqualStrings(
-        "MCP server was killed by signal 9 before completing startup",
+        "MCP server was killed by signal 15 before completing startup",
         try formatStartupFailure(arena, .{ .closed = &killed }),
     );
     try std.testing.expectEqualStrings(

@@ -265,6 +265,6 @@ test "native clipboard accepts only a successful exit" {
     try std.testing.expect(copySucceeded(.{ .exited = 0 }));
     try std.testing.expect(!copySucceeded(.{ .exited = 1 }));
     try std.testing.expect(!copySucceeded(.{ .signal = .TERM }));
-    try std.testing.expect(!copySucceeded(.{ .stopped = .STOP }));
+    try std.testing.expect(!copySucceeded(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }));
     try std.testing.expect(!copySucceeded(.{ .unknown = 1 }));
 }

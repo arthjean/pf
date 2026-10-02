@@ -1880,6 +1880,10 @@ test "captured managed execution capacity rejects before spawn" {
 }
 
 test "captured managed execution exposes full output only by opaque replay handle" {
+    // command_replay_store's EphemeralStore is unavailable on Windows
+    // (EphemeralReplayUnavailable), so an unsaved session has no replay
+    // handle for truncated output.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime builtin.os.tag == .wasi) return;
     const alloc = std.testing.allocator;
     var runtime = Runtime.init(alloc);
@@ -2031,6 +2035,10 @@ test "delivery reservation pins a tombstone across capacity eviction" {
 }
 
 test "terminal tombstone retains raw output behind an opaque replay handle" {
+    // command_replay_store's EphemeralStore is unavailable on Windows
+    // (EphemeralReplayUnavailable), so an unsaved session has no replay
+    // handle for truncated output.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var runtime = Runtime.init(alloc);
     defer runtime.deinit();
@@ -2072,7 +2080,7 @@ test "terminal tombstone releases consumed replay authority" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,

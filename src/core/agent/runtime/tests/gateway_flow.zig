@@ -728,8 +728,8 @@ test "fake gateway rejects assistant prefill and unexpected tail continuations" 
     );
     const continued = try std.fmt.allocPrint(
         alloc,
-        "{{\"prompt\":[{{\"role\":\"assistant\",\"content\":[]}},{{\"role\":\"user\",\"content\":[{{\"type\":\"text\",\"text\":\"{s}\"}}]}}]}}",
-        .{runtime_orchestrator.assistant_tail_continuation_prompt},
+        "{{\"prompt\":[{{\"role\":\"assistant\",\"content\":[]}},{{\"role\":\"user\",\"content\":[{{\"type\":\"text\",\"text\":{f}}}]}}]}}",
+        .{std.json.fmt(runtime_orchestrator.assistant_tail_continuation_prompt, .{})},
     );
     defer alloc.free(continued);
     try std.testing.expectError(error.TestAssistantTailContinued, check(alloc, continued, false));
@@ -3323,7 +3323,7 @@ test "compaction remeasures its rebuilt continuation after calibrated preflight"
     var completions: [6]FakeCompletion = undefined;
     for (ids, 0..) |id, index| {
         calls[index] = .{toolCall(id, "read_file", "{\"path\":\"fixture.txt\"}")};
-        states[index] = try std.fmt.allocPrint(alloc, "[{{\"type\":\"reasoning\",\"text\":\"\",\"providerOptions\":{{\"openai\":{{\"reasoningEncryptedContent\":\"{s}\"}}}}}},{{\"type\":\"tool-call\",\"toolCallId\":\"{s}\"}}]", .{ "r" ** 200_000, id });
+        states[index] = try std.fmt.allocPrint(alloc, "[{{\"type\":\"reasoning\",\"text\":\"\",\"providerOptions\":{{\"openai\":{{\"reasoningEncryptedContent\":{f}}}}}}},{{\"type\":\"tool-call\",\"toolCallId\":{f}}}]", .{ std.json.fmt("r" ** 200_000, .{}), std.json.fmt(id, .{}) });
         initialized += 1;
         completions[index] = .{ .tool_calls = &calls[index], .provider_state_json = states[index], .usage = .{ .input_tokens = inputs[index] } };
     }

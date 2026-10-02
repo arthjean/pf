@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const build_options = @import("build_options");
 const app_lifecycle = @import("app_lifecycle.zig");
 const provider_runtime = @import("provider_runtime.zig");
@@ -1065,7 +1066,14 @@ fn runBootstrapWithOverridesForTest(app: *TestApp, capture: *TestCapture, overri
     );
 }
 
-fn resizeHandlerForTest(_: std.posix.SIG) callconv(.c) void {}
+const resizeHandlerForTest: app_lifecycle.ResizeHandler = if (builtin.os.tag == .windows)
+    struct {
+        fn handle() callconv(.c) void {}
+    }.handle
+else
+    struct {
+        fn handle(_: std.posix.SIG) callconv(.c) void {}
+    }.handle;
 
 test "app_bootstrap_runtime applies interactive launch flag overrides" {
     const alloc = std.testing.allocator;

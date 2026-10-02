@@ -83,8 +83,11 @@ noinline fn migrateLegacyLockedInto(
     preference_source: MigrationPreferenceSource,
     options: ResumeOptions,
 ) !void {
+    // Close the legacy primary before the import replaces session.json:
+    // Windows refuses to replace a file that is still open.
     var primary = try openSessionFile(&writable.dir, "session.json", .read_only);
-    defer primary.close(io_mod.getIo());
+    var primary_open = true;
+    defer if (primary_open) primary.close(io_mod.getIo());
     const primary_stat = try primary.stat(io_mod.getIo());
     const allowed_size = if (options.allow_large_legacy)
         primary_stat.size
@@ -100,6 +103,8 @@ noinline fn migrateLegacyLockedInto(
         else => return error.LegacySessionMigrationFailed,
     };
     defer alloc.free(primary_bytes);
+    primary.close(io_mod.getIo());
+    primary_open = false;
     const schema = try session_json.parseLegacySchemaVersion(alloc, primary_bytes);
 
     var legacy = session_json.parseLegacyExact(
@@ -408,7 +413,7 @@ test "schema v3 import follows the committed watermark beyond a stale manifest" 
     defer alloc.free(home);
     var store = try @import("session_store.zig").Store.initFromHome(alloc, home, "/workspace");
     defer store.deinit(alloc);
-    try store.canonical_root.sessions.?.dir.createDir(std.testing.io, id, .fromMode(0o700));
+    try store.canonical_root.sessions.?.dir.createDir(std.testing.io, id, io_mod.private_dir_permissions);
     var dir = io_mod.VerifiedDir{ .dir = try store.canonical_root.sessions.?.dir.openDir(std.testing.io, id, .{}) };
     defer dir.close();
     const generation = [_]u8{1} ** 16;
@@ -479,8 +484,8 @@ test "schema v3 import follows the committed watermark beyond a stale manifest" 
     const watermark_name = "commit.01010101010101010101010101010101.json";
     const watermark = try std.fmt.allocPrint(
         alloc,
-        "{{\"schema_version\":1,\"session_id\":\"{s}\",\"log_generation\":\"{s}\",\"through_seq\":2,\"through_event_id\":\"{s}\",\"through_event_log_bytes\":{d}}}\n",
-        .{ id, std.fmt.bytesToHex(generation, .lower), std.fmt.bytesToHex(event_id, .lower), started.len + committed.len },
+        "{{\"schema_version\":1,\"session_id\":{f},\"log_generation\":{f},\"through_seq\":2,\"through_event_id\":{f},\"through_event_log_bytes\":{d}}}\n",
+        .{ std.json.fmt(id, .{}), std.json.fmt(std.fmt.bytesToHex(generation, .lower), .{}), std.json.fmt(std.fmt.bytesToHex(event_id, .lower), .{}), started.len + committed.len },
     );
     defer alloc.free(watermark);
     try dir.dir.writeFile(std.testing.io, .{ .sub_path = watermark_name, .data = watermark });

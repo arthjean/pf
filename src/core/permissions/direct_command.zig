@@ -1034,10 +1034,14 @@ test "git direct profile removes ambient authority and disables optional mutatio
 }
 
 test "direct executor runs a supported pipeline and reports final output" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, ".");
+    defer std.testing.allocator.free(cwd);
     var admission = try command_effect.plan(
         std.testing.allocator,
         "printf x | wc -c",
-        "/tmp",
+        cwd,
         false,
         @import("builtin").os.tag,
         .posix_sh,
@@ -1057,7 +1061,8 @@ test "direct executor runs a supported pipeline and reports final output" {
     const foreground = result.command_result.?;
     try std.testing.expectEqualStrings("printf x | wc -c", foreground.command);
     try std.testing.expectEqual(@as(?i64, 0), foreground.exit_code);
-    const expected_stdout_bytes: usize = if (builtin.os.tag == .linux) 2 else 9;
+    // GNU wc, which Git Bash also ships, prints no padding; BSD wc pads.
+    const expected_stdout_bytes: usize = if (builtin.os.tag == .macos) 9 else 2;
     try std.testing.expectEqual(expected_stdout_bytes, foreground.stdout_bytes);
     try std.testing.expectEqual(@as(?[]const u8, null), foreground.output_file);
     try std.testing.expectEqual(@as(?[]const u8, null), foreground.stdout_file);
@@ -1514,8 +1519,14 @@ test "direct executor cleans up cancellation after the first pipeline spawn" {
 }
 
 test "direct executor projects hostile final stdout and stderr" {
-    const hostile_stdout = "\x1b]52;c;secret\x07\xff";
-    const stdout_argv = [_][]const u8{ "/usr/bin/printf", "%s", hostile_stdout };
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try io_mod.dirRealpathAlloc(std.testing.allocator, tmp.dir, ".");
+    defer std.testing.allocator.free(cwd);
+    // printf decodes the octal escapes, so argv stays valid UTF-8, which a
+    // Windows command line requires, while stdout carries ESC, BEL, and 0xff.
+    const hostile_stdout = "\\033]52;c;secret\\007\\377";
+    const stdout_argv = [_][]const u8{ "/usr/bin/printf", hostile_stdout };
     const stdout_stages = [_]command_effect.DirectStage{.{
         .executable = "/usr/bin/printf",
         .argv = &stdout_argv,
@@ -1523,7 +1534,7 @@ test "direct executor projects hostile final stdout and stderr" {
     }};
     const stdout_result = try executeDirectReadOnly(.{
         .max_command_output_bytes = 1,
-    }, std.testing.allocator, injectedPlan("/tmp", &stdout_stages));
+    }, std.testing.allocator, injectedPlan(cwd, &stdout_stages));
     defer std.testing.allocator.free(stdout_result.output);
     try std.testing.expect(std.mem.find(u8, stdout_result.output, "\\x1b]52;c;secret\\x07\\xff") != null);
     try std.testing.expect(std.mem.findScalar(u8, stdout_result.output, 0x1b) == null);
@@ -1540,7 +1551,7 @@ test "direct executor projects hostile final stdout and stderr" {
     }};
     const stderr_result = try executeDirectReadOnly(.{
         .max_command_output_bytes = 1,
-    }, std.testing.allocator, injectedPlan("/tmp", &stderr_stages));
+    }, std.testing.allocator, injectedPlan(cwd, &stderr_stages));
     defer std.testing.allocator.free(stderr_result.output);
     try std.testing.expect(std.mem.findScalar(u8, stderr_result.output, 0x1b) == null);
     try std.testing.expect(std.mem.find(u8, stderr_result.output, "\\x1b[31m-missing") != null);

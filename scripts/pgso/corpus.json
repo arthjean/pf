@@ -13,7 +13,8 @@
     "tui-render-lab.test.ts": "The suite validates render-lab infrastructure and owns separate native opt-in scenarios.",
     "tui-render-live-stress.test.ts": "The suite requires a real model credential and explicit live stress opt-in.",
     "web-fetch-live.test.ts": "The suite requires explicit live-network opt-in.",
-    "web-search-live.test.ts": "The suite requires a real model credential and live provider responses."
+    "web-search-live.test.ts": "The suite requires a real model credential and live provider responses.",
+    "windows-tui-smoke.test.ts": "The suite requires Windows ConPTY and skips on the macOS training host."
   },
   "defaults": {
     "cwd": "tests/e2e",

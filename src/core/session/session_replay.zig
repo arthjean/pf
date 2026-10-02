@@ -544,7 +544,9 @@ fn replayRangeRaw(
             return state;
         }
     }
-    const length = try file.length(io_mod.getIo());
+    // A handle that cannot be queried is an I/O failure, not a malformed log.
+    // Windows rejects the size query on a handle without read access.
+    const length = file.length(io_mod.getIo()) catch return error.ReadFailed;
     if (length < position.through_event_log_bytes) return error.InvalidSessionFormat;
 
     var file_buffer: [8192]u8 = undefined;

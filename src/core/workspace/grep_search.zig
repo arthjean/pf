@@ -793,6 +793,9 @@ fn lineMatchesPattern(line: []const u8, pattern: []const u8, case_insensitive: b
         std.mem.find(u8, line, pattern) != null;
 }
 
+// Absolute match paths use the native separator.
+const sep = std.fs.path.sep_str;
+
 fn writeTempFile(alloc: Allocator, tmp: *std.testing.TmpDir, sub_path: []const u8, content: []const u8) ![]u8 {
     if (std.fs.path.dirname(sub_path)) |parent| {
         try tmp.dir.createDirPath(io_mod.getIo(), parent);
@@ -808,7 +811,6 @@ fn workspaceRoot(alloc: Allocator, tmp: std.testing.TmpDir) ![]u8 {
 }
 
 fn createBrokenSymlinkOrSkip(tmp: *std.testing.TmpDir, target_path: []const u8, link_path: []const u8) !void {
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     tmp.dir.symLink(std.testing.io, target_path, link_path, .{ .is_directory = false }) catch |err| {
         if (err == error.AccessDenied or std.mem.eql(u8, @errorName(err), "Permission" ++ "Denied")) return error.SkipZigTest;
         return err;
@@ -816,7 +818,6 @@ fn createBrokenSymlinkOrSkip(tmp: *std.testing.TmpDir, target_path: []const u8, 
 }
 
 fn createSymlinkOrSkip(tmp: *std.testing.TmpDir, target_path: []const u8, link_path: []const u8) !void {
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     tmp.dir.symLink(std.testing.io, target_path, link_path, .{ .is_directory = false }) catch |err| {
         if (err == error.AccessDenied or std.mem.eql(u8, @errorName(err), "Permission" ++ "Denied")) return error.SkipZigTest;
         return err;
@@ -894,7 +895,7 @@ test "grep search preserves explicitly requested ignored directory roots" {
 
     try std.testing.expectEqual(@as(usize, 1), result.matches.len);
     try std.testing.expect(result.truncated_reason == null);
-    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "node_modules/pkg/ignored.txt"));
+    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "node_modules" ++ sep ++ "pkg" ++ sep ++ "ignored.txt"));
     try std.testing.expectEqualStrings("needle ignored", result.matches[0].line);
 }
 
@@ -913,7 +914,7 @@ test "grep search preserves explicitly requested ignored file roots" {
 
     try std.testing.expectEqual(@as(usize, 1), result.matches.len);
     try std.testing.expect(result.truncated_reason == null);
-    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "node_modules/pkg/ignored.txt"));
+    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "node_modules" ++ sep ++ "pkg" ++ sep ++ "ignored.txt"));
     try std.testing.expectEqualStrings("needle ignored", result.matches[0].line);
 }
 
@@ -1082,13 +1083,13 @@ test "grep search directory traversal skips external symlink targets with trace"
     const result = try collectDirectoryMatches(arena_state.allocator(), workspace, links_root, "needle", false, null);
 
     try std.testing.expectEqual(@as(usize, 1), result.matches.len);
-    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "links/internal.txt"));
+    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "links" ++ sep ++ "internal.txt"));
     try std.testing.expectEqualStrings("needle internal", result.matches[0].line);
 
     const trace = try readTrace(alloc, trace_path);
     defer alloc.free(trace);
     try std.testing.expect(std.mem.find(u8, trace, "grep_files skipped external symlink target path=") != null);
-    try std.testing.expect(std.mem.find(u8, trace, "links/external.txt") != null);
+    try std.testing.expect(std.mem.find(u8, trace, "links" ++ sep ++ "external.txt") != null);
     try std.testing.expect(std.mem.find(u8, trace, external_target) != null);
 }
 
@@ -1297,7 +1298,7 @@ test "grep_files path narrowing applies before candidate cap" {
     try std.testing.expectEqual(@as(usize, 1), result.candidate_count);
     try std.testing.expect(!result.candidate_incomplete);
     try std.testing.expectEqual(@as(usize, 1), result.matches.len);
-    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "src/core/target.txt"));
+    try std.testing.expect(std.mem.endsWith(u8, result.matches[0].absolute_path, "src" ++ sep ++ "core" ++ sep ++ "target.txt"));
     try std.testing.expectEqualStrings("needle target", result.matches[0].line);
 }
 

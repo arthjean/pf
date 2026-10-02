@@ -7,7 +7,8 @@
     "test": "bun test",
     "test:cli": "bun test cli.test.ts",
     "test:acp": "bun test acp.test.ts",
-    "test:tui": "bun test tui-*.test.ts"
+    "test:tui": "bun test tui-*.test.ts",
+    "test:windows": "bun windows-subset.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -359,7 +359,7 @@ test "unknown read_tool_result handle returns failure for legacy and managed sto
     try tmp.dir.createDir(
         io_mod.getIo(),
         "legacy",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     const dir = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "legacy");
     defer alloc.free(dir);
@@ -381,7 +381,7 @@ test "unknown read_tool_result handle returns failure for legacy and managed sto
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -421,7 +421,7 @@ test "read_tool_result pages and searches saved command replay handles" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -498,7 +498,7 @@ test "large web_search result is previewed and available through read_tool_resul
     try std.testing.expect(std.mem.find(u8, prepared.model_output, "<tool_result_preview") != null);
     try std.testing.expect(std.mem.find(u8, prepared.model_output, "Use read_tool_result") != null);
 
-    const args_json = try std.fmt.allocPrint(alloc, "{{\"handle\":\"{s}\",\"query\":\"needle\"}}", .{prepared.memory.output_handle.?});
+    const args_json = try std.fmt.allocPrint(alloc, "{{\"handle\":{f},\"query\":\"needle\"}}", .{std.json.fmt(prepared.memory.output_handle.?, .{})});
     defer alloc.free(args_json);
     const decoded = try decode(.{ .allocator = alloc }, args_json);
     const input = switch (decoded) {
@@ -525,7 +525,7 @@ test "persisted provider search results remain readable" {
     const handle = try result_store.storeLargeResult(alloc, dir, "legacy_provider_call", "perplexity_search", "historical provider search result");
     defer alloc.free(handle);
 
-    const args_json = try std.fmt.allocPrint(alloc, "{{\"handle\":\"{s}\"}}", .{handle});
+    const args_json = try std.fmt.allocPrint(alloc, "{{\"handle\":{f}}}", .{std.json.fmt(handle, .{})});
     defer alloc.free(args_json);
     const decoded = try decode(.{ .allocator = alloc }, args_json);
     const input = switch (decoded) {

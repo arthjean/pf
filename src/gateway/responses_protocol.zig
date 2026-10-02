@@ -1460,7 +1460,7 @@ test "Responses output kinds remain exclusive across item event stages" {
                 const event = if (std.mem.eql(u8, stage, "response.completed"))
                     try std.fmt.allocPrint(stream.alloc, "{{\"type\":\"response.completed\",\"response\":{{\"status\":\"completed\",\"output\":[{s}]}}}}", .{replacement})
                 else
-                    try std.fmt.allocPrint(stream.alloc, "{{\"type\":\"{s}\",\"output_index\":0,\"item\":{s}}}", .{ stage, replacement });
+                    try std.fmt.allocPrint(stream.alloc, "{{\"type\":{f},\"output_index\":0,\"item\":{s}}}", .{ std.json.fmt(stage, .{}), replacement });
                 defer stream.alloc.free(event);
                 if (from == to) {
                     try stream.apply(event);
@@ -1714,7 +1714,7 @@ test "Responses reasoning replay binds supplied identity before ciphertext" {
     for ([_][]const u8{ "response.output_item.added", "response.output_item.done" }) |kind| {
         var stream = ToolRecordTest.init(std.testing.allocator);
         defer stream.deinit();
-        const event = try std.fmt.allocPrint(stream.alloc, "{{\"type\":\"{s}\",\"output_index\":0,\"item\":{{\"type\":\"reasoning\",\"id\":\"rs_original\"}}}}", .{kind});
+        const event = try std.fmt.allocPrint(stream.alloc, "{{\"type\":{f},\"output_index\":0,\"item\":{{\"type\":\"reasoning\",\"id\":\"rs_original\"}}}}", .{std.json.fmt(kind, .{})});
         defer stream.alloc.free(event);
         try stream.apply(event);
         try std.testing.expectError(error.ResponsesReasoningConflict, stream.apply("{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_replacement\",\"encrypted_content\":\"opaque\"}]}}"));

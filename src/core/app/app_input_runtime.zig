@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const file_picker_path = @import("../input/file_picker_path.zig");
 const question_prompt = @import("../agent/question_prompt.zig");
 const app_auth_runtime = @import("app_auth_runtime.zig");
@@ -7202,6 +7203,8 @@ test "app_input_runtime quotes whitespace paths only while they are active" {
 }
 
 test "app_input_runtime file completion escapes quotes inside whitespace paths" {
+    // Windows file names cannot contain quotes, so the non-escaping native style rejects them.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const completions = [_]file_index.Candidate{.{ .path = "space\" dir", .kind = .directory }};
     var app = try RoutingFakeApp.init(alloc);
@@ -13505,7 +13508,7 @@ test "app_input_runtime rejected second image keeps the first pending image and 
     try std.testing.expectEqual(@as(usize, 0), app.queue_accept_count);
     try std.testing.expect(app.last_prompt == null);
 
-    var probe = try std.Io.Dir.openDirAbsolute(std.testing.io, first_snapshot[0..std.mem.lastIndexOfScalar(u8, first_snapshot, '/').?], .{});
+    var probe = try std.Io.Dir.openDirAbsolute(std.testing.io, std.fs.path.dirname(first_snapshot).?, .{});
     defer probe.close(std.testing.io);
     var snapshot_file = try probe.openFile(std.testing.io, std.fs.path.basename(first_snapshot), .{});
     snapshot_file.close(std.testing.io);

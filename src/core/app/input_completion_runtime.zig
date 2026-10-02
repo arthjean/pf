@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const runtime_profile = @import("../hosts/runtime_profile.zig");
 const edit_contract = @import("../input/editor_state.zig");
 const file_picker_path = @import("../input/file_picker_path.zig");
@@ -1922,6 +1923,8 @@ test "streaming file selection commits the selected path" {
 }
 
 test "file picker encodes literal quotes without reopening quote grammar" {
+    // Windows file names cannot contain quotes, so the non-escaping native style rejects them.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const rt = CompletionRuntime(FilePickerTestApp);
     var app = FilePickerTestApp{
@@ -1941,6 +1944,8 @@ test "file picker encodes literal quotes without reopening quote grammar" {
 }
 
 test "file picker quoted middle replacement preserves only the outside tail" {
+    // A backslash is a separator in the native Windows style, so it is never escaped.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const rt = CompletionRuntime(FilePickerTestApp);
     var app = FilePickerTestApp{ .alloc = alloc, .file_completion_values = &.{.{ .path = "a\\b.txt", .kind = .file }} };

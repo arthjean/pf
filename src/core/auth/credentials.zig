@@ -1380,7 +1380,7 @@ test "credential source presence reads metadata without parsing session secrets"
         );
         var file = try tmp.dir.createFile(io_mod.getIo(), relative_path, .{
             .truncate = true,
-            .permissions = std.Io.File.Permissions.fromMode(0o600),
+            .permissions = io_mod.private_file_permissions,
         });
         defer file.close(io_mod.getIo());
         try file.writeStreamingAll(io_mod.getIo(), "not valid session JSON");
@@ -1389,14 +1389,17 @@ test "credential source presence reads metadata without parsing session secrets"
             host.SecretStorePresence.present,
             sourcePresence(host.unavailable_secret_store, case.source),
         );
-        try file.setPermissions(
-            io_mod.getIo(),
-            std.Io.File.Permissions.fromMode(0o644),
-        );
-        try std.testing.expectEqual(
-            host.SecretStorePresence.unavailable,
-            sourcePresence(host.unavailable_secret_store, case.source),
-        );
+        // Windows has no group or other mode bits to widen.
+        if (comptime builtin.os.tag != .windows) {
+            try file.setPermissions(
+                io_mod.getIo(),
+                std.Io.File.Permissions.fromMode(0o644),
+            );
+            try std.testing.expectEqual(
+                host.SecretStorePresence.unavailable,
+                sourcePresence(host.unavailable_secret_store, case.source),
+            );
+        }
     }
 }
 
@@ -1526,14 +1529,15 @@ const PfLoginRefreshProbe = struct {
             },
             1 => blk: {
                 if (request.method != .post_form) return error.UnexpectedOAuthRequest;
-                if (self.auth_path_to_make_read_only) |auth_path| {
+                // The test that sets this path is skipped on Windows.
+                if (comptime builtin.os.tag != .windows) if (self.auth_path_to_make_read_only) |auth_path| {
                     var file = try std.Io.Dir.openFileAbsolute(io_mod.getIo(), auth_path, .{ .mode = .read_write });
                     defer file.close(io_mod.getIo());
                     try file.setPermissions(
                         io_mod.getIo(),
                         io_mod.private_file_permissions.setReadOnly(true),
                     );
-                }
+                };
                 break :blk self.token_body;
             },
             else => return error.UnexpectedOAuthRequest,
@@ -1616,6 +1620,8 @@ test "a malformed successful pf login refresh retires the session" {
 }
 
 test "an pf login refresh retires the consumed token when durable replacement fails" {
+    // Makes the credential file read-only through Permissions.setReadOnly, which does not compile on Windows in Zig 0.16.0.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = try ExpiredPfLoginFixture.install(alloc);
     defer fixture.deinit();

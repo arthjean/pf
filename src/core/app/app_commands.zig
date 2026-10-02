@@ -4701,7 +4701,7 @@ test "trace report file uses private randomized markdown path" {
     const stat = try file.stat(std.testing.io);
     try std.testing.expectEqual(@as(u64, 6), stat.size);
     if (@import("builtin").os.tag != .windows) {
-        try std.testing.expectEqual(@as(std.posix.mode_t, 0), stat.permissions.toMode() & 0o077);
+        try std.testing.expect(io_mod.isOwnerOnlyMode(stat.permissions));
     }
 }
 

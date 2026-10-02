@@ -3399,6 +3399,13 @@ pub const Store = struct {
             try session_log.copy_conversation_recovery_prefix(alloc, &source.dir, &target.log.dir, boundary);
             if (metadata.?.value.title) |title| _ = try target.renameConversation(alloc, title);
         }
+        if (comptime builtin.os.tag == .windows) {
+            // Windows refuses to rename a directory that holds open handles.
+            // The staging lock still excludes other recoveries, and the next
+            // recovery removes a stage left behind by a failed promotion.
+            target.deinit(alloc);
+            target_owned = false;
+        }
         const promotion = self.promoteRecoveryStagedSession(
             &staging_root,
             recovered_id,
@@ -3412,7 +3419,7 @@ pub const Store = struct {
         };
         target_promoted = true;
         if (promotion == .indeterminate) {
-            target.deinit(alloc);
+            if (target_owned) target.deinit(alloc);
             target_owned = false;
             return .{
                 .source_session_id = source_id,
@@ -3422,7 +3429,7 @@ pub const Store = struct {
                 .status = .indeterminate,
             };
         }
-        target.deinit(alloc);
+        if (target_owned) target.deinit(alloc);
         target_owned = false;
 
         var verified = self.loadReadOnly(alloc, recovered_id) catch |err| {
@@ -4278,6 +4285,7 @@ fn resolveImageSnapshotLocators(
 
 test "session snapshot locators resolve through their owning store" {
     const alloc = std.testing.allocator;
+    const sep = std.fs.path.sep_str;
     var history = try alloc.alloc(session.HistoryTurn, 1);
     errdefer alloc.free(history);
     history[0] = try session.makeAssistantTurn(alloc, "images", "done");
@@ -4313,11 +4321,11 @@ test "session snapshot locators resolve through their owning store" {
     );
 
     try std.testing.expectEqualStrings(
-        "/new/pf-home/sessions/id/images/image-1-aaaaaaaaaaaaaaaa.bin",
+        "/new/pf-home/sessions" ++ sep ++ "id" ++ sep ++ "images" ++ sep ++ "image-1-aaaaaaaaaaaaaaaa.bin",
         history[0].assistant.user.images[0].snapshot_path.?,
     );
     try std.testing.expectEqualStrings(
-        "/new/pf-home/sessions/id/images/image-2-bbbbbbbbbbbbbbbb.bin",
+        "/new/pf-home/sessions" ++ sep ++ "id" ++ sep ++ "images" ++ sep ++ "image-2-bbbbbbbbbbbbbbbb.bin",
         history[0].assistant.user.images[1].snapshot_path.?,
     );
     try std.testing.expect(history[0].assistant.user.images[2].snapshot_path == null);
@@ -4418,14 +4426,14 @@ test "session snapshot locator resolver rejects symlink leaves and directories" 
         try tmp.dir.createDir(
             std.testing.io,
             sessions_name,
-            std.Io.File.Permissions.fromMode(0o700),
+            io_mod.private_dir_permissions,
         );
         var sessions = try tmp.dir.openDir(std.testing.io, sessions_name, .{});
         defer sessions.close(std.testing.io);
         try sessions.createDir(
             std.testing.io,
             "session",
-            std.Io.File.Permissions.fromMode(0o700),
+            io_mod.private_dir_permissions,
         );
         var session_dir = try sessions.openDir(std.testing.io, "session", .{});
         defer session_dir.close(std.testing.io);
@@ -4434,7 +4442,7 @@ test "session snapshot locator resolver rejects symlink leaves and directories" 
             try tmp.dir.createDir(
                 std.testing.io,
                 "outside-images",
-                std.Io.File.Permissions.fromMode(0o700),
+                io_mod.private_dir_permissions,
             );
             var outside_images = try tmp.dir.openDir(std.testing.io, "outside-images", .{});
             defer outside_images.close(std.testing.io);
@@ -4466,7 +4474,7 @@ test "session snapshot locator resolver rejects symlink leaves and directories" 
             try session_dir.createDir(
                 std.testing.io,
                 "images",
-                std.Io.File.Permissions.fromMode(0o700),
+                io_mod.private_dir_permissions,
             );
             var images_dir = try session_dir.openDir(std.testing.io, "images", .{});
             defer images_dir.close(std.testing.io);
@@ -4683,7 +4691,18 @@ test "native subagent control opens do not decode conversation payloads" {
     {
         var writer = try ctx.store.startWritableSession(alloc, initial);
         defer writer.deinit(alloc);
-        try io_mod.durableReplaceVerified(alloc, &writer.log.dir, "events.jsonl", "invalid conversation\n");
+        if (comptime builtin.os.tag != .windows) {
+            try io_mod.durableReplaceVerified(alloc, &writer.log.dir, "events.jsonl", "invalid conversation\n");
+        }
+    }
+    if (comptime builtin.os.tag == .windows) {
+        // Replace the log after the writer closes it: Windows refuses to
+        // replace a file that is still open.
+        const session_path = try sessionDirPath(alloc, ctx.store.sessions_dir, initial.id);
+        defer alloc.free(session_path);
+        var session_dir = io_mod.VerifiedDir{ .dir = try std.Io.Dir.openDirAbsolute(io_mod.getIo(), session_path, .{}) };
+        defer session_dir.close();
+        try io_mod.durableReplaceVerified(alloc, &session_dir, "events.jsonl", "invalid conversation\n");
     }
     var writable = try ctx.store.openSubagentControlCapabilityWritable(alloc, initial.id, .{});
     defer writable.deinit();
@@ -6494,6 +6513,8 @@ test "bounded doctor inspection stops at valid session limit" {
 }
 
 test "doctor reports unsafe managed child artifacts" {
+    // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -6560,14 +6581,11 @@ test "doctor ignores legacy task records" {
         .{ .iterate = true },
     );
     defer session_dir.close(io_mod.getIo());
-    try session_dir.setPermissions(
-        io_mod.getIo(),
-        std.Io.File.Permissions.fromMode(0o700),
-    );
+    try io_mod.applyPrivatePermissions(session_dir, io_mod.private_dir_permissions);
     try session_dir.createDir(
         io_mod.getIo(),
         "tasks",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     const corrupt_path = try std.fs.path.join(alloc, &.{
         session_path,
@@ -6975,10 +6993,14 @@ test "recovery copies diff content artifacts and rejects changed content" {
         after,
     );
     defer alloc.free(handle);
-    var source_artifact = try source.openFileReadOnly(alloc, .tool_results, handle);
-    defer source_artifact.deinit();
-    const source_artifact_stat = try source_artifact.stat();
-    const source_digest = try managedFileDigest(&source_artifact, source_artifact_stat.size);
+    // Close the artifact before the test replaces it: Windows refuses to
+    // replace a file that is still open.
+    const source_digest = blk: {
+        var source_artifact = try source.openFileReadOnly(alloc, .tool_results, handle);
+        defer source_artifact.deinit();
+        const source_artifact_stat = try source_artifact.stat();
+        break :blk try managedFileDigest(&source_artifact, source_artifact_stat.size);
+    };
     try std.testing.expectError(
         error.SessionRecoveryBoundaryInvalid,
         validateRecoveredManagedChildDigest(
@@ -7372,8 +7394,8 @@ test "resumable session pages filter before paging and preserve continuation ord
         defer alloc.free(id);
         const body = try std.fmt.allocPrint(
             alloc,
-            "{{\"schema_version\":1,\"id\":\"{s}\",\"created_at_ms\":1,\"updated_at_ms\":{d},\"workspace_root\":\"/tmp/ws\",\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}]}}",
-            .{ id, index },
+            "{{\"schema_version\":1,\"id\":{f},\"created_at_ms\":1,\"updated_at_ms\":{d},\"workspace_root\":\"/tmp/ws\",\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}]}}",
+            .{ std.json.fmt(id, .{}), index },
         );
         defer alloc.free(body);
         const path = try writeSessionFixture(alloc, ctx.store, id, body);
@@ -7387,8 +7409,8 @@ test "resumable session pages filter before paging and preserve continuation ord
     }) |fixture| {
         const body = try std.fmt.allocPrint(
             alloc,
-            "{{\"schema_version\":1,\"id\":\"{s}\",\"created_at_ms\":1,\"updated_at_ms\":{d},\"workspace_root\":\"/tmp/ws\",\"conversation_language\":\"en\",\"history_len\":{d},\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}]}}",
-            .{ fixture[0], fixture[1], fixture[2] },
+            "{{\"schema_version\":1,\"id\":{f},\"created_at_ms\":1,\"updated_at_ms\":{d},\"workspace_root\":\"/tmp/ws\",\"conversation_language\":\"en\",\"history_len\":{d},\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}]}}",
+            .{ std.json.fmt(fixture[0], .{}), fixture[1], fixture[2] },
         );
         defer alloc.free(body);
         const path = try writeSessionFixture(alloc, ctx.store, fixture[0], body);
@@ -7485,7 +7507,7 @@ test "list breaks updated_at ties by descending id" {
         .{ "1700000000000-100-aaaaaaaaaaaaaaaa", "1" },
         .{ "1700000000001-100-bbbbbbbbbbbbbbbb", "2" },
     }) |fixture| {
-        const body = try std.fmt.allocPrint(alloc, "{{\"schema_version\":1,\"id\":\"{s}\",\"created_at_ms\":{s},\"updated_at_ms\":40,\"workspace_root\":\"/tmp/ws\",\"conversation_language\":\"en\",\"history_len\":0,\"history\":[]}}", .{ fixture[0], fixture[1] });
+        const body = try std.fmt.allocPrint(alloc, "{{\"schema_version\":1,\"id\":{f},\"created_at_ms\":{s},\"updated_at_ms\":40,\"workspace_root\":\"/tmp/ws\",\"conversation_language\":\"en\",\"history_len\":0,\"history\":[]}}", .{ std.json.fmt(fixture[0], .{}), fixture[1] });
         defer alloc.free(body);
         const path = try writeSessionFixture(alloc, ctx.store, fixture[0], body);
         defer alloc.free(path);
@@ -7682,8 +7704,8 @@ test "writable last preserves unidentified data without blocking a healthy sessi
     var ctx = try initTempStore(alloc, &tmp);
     defer ctx.deinit(alloc);
     try createHistoryPageFixture(alloc, ctx.store, "local", ctx.workspace, 1, "saved");
-    try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "empty", .fromMode(0o700));
-    try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "lock-only", .fromMode(0o700));
+    try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "empty", io_mod.private_dir_permissions);
+    try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "lock-only", io_mod.private_dir_permissions);
     try writeFixtureEntry(alloc, ctx.store, "lock-only", "session.lock", "");
     {
         var resumed = try ctx.store.resumeTargetForWrite(alloc, .last, ctx.workspace, .{});
@@ -7711,10 +7733,10 @@ test "writable last preserves incomplete creation and exact resume diagnostics" 
         var ctx = try initTempStore(alloc, &tmp);
         defer ctx.deinit(alloc);
         try createHistoryPageFixture(alloc, ctx.store, "healthy", ctx.workspace, 1, "saved");
-        try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "failed-start", .fromMode(0o700));
+        try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "failed-start", io_mod.private_dir_permissions);
         var incomplete_dir = try ctx.store.openSessionDir("failed-start");
         defer incomplete_dir.close();
-        const lock_file = try incomplete_dir.dir.createFile(std.testing.io, "session.lock", .{ .permissions = .fromMode(0o600) });
+        const lock_file = try incomplete_dir.dir.createFile(std.testing.io, "session.lock", .{ .permissions = io_mod.private_file_permissions });
         lock_file.close(std.testing.io);
         const temp_name = ".session.json.tmp.0123456789abcdef0123456789abcdef";
         if (shape.temporary) try writeFixtureEntry(alloc, ctx.store, "failed-start", temp_name, "partial metadata");
@@ -7763,7 +7785,7 @@ test "writable last retains a pending authority directory without a manifest" {
     var ctx = try initTempStore(alloc, &tmp);
     defer ctx.deinit(alloc);
     try createHistoryPageFixture(alloc, ctx.store, "healthy", ctx.workspace, 1, "saved");
-    try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "pending", .fromMode(0o700));
+    try ctx.store.canonical_root.sessions.?.dir.createDir(std.testing.io, "pending", io_mod.private_dir_permissions);
     try writeFixtureEntry(alloc, ctx.store, "pending", "authority.pending.json", "pending authority");
     try writeFixtureEntry(alloc, ctx.store, "pending", "events.jsonl", "retained event data\n");
     var resumed = try ctx.store.resumeTargetForWrite(alloc, .last, ctx.workspace, .{});
@@ -7786,8 +7808,8 @@ test "writable last excludes newer child metadata and legacy owner markers" {
             try writeLegacyFixture(alloc, ctx.store, "child", ctx.workspace, std.math.maxInt(i64) - 1);
             var dir = try ctx.store.openSessionDir("child");
             defer dir.close();
-            try dir.dir.createDir(std.testing.io, "subagent", .fromMode(0o700));
-            try dir.dir.writeFile(std.testing.io, .{ .sub_path = "subagent/owner.json", .data = "{}", .flags = .{ .permissions = .fromMode(0o600) } });
+            try dir.dir.createDir(std.testing.io, "subagent", io_mod.private_dir_permissions);
+            try dir.dir.writeFile(std.testing.io, .{ .sub_path = "subagent/owner.json", .data = "{}", .flags = .{ .permissions = io_mod.private_file_permissions } });
         } else {
             try createHistoryPageFixture(alloc, ctx.store, "child", ctx.workspace, 1, "child");
             var dir = try ctx.store.openSessionDir("child");
@@ -8006,6 +8028,8 @@ test "a schema-v3 session with a lost manifest lists and resumes from its commit
 }
 
 test "a FIFO in a session never blocks listing or latest resume" {
+    // Creates a POSIX FIFO; Windows has no mkfifo.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const Case = struct {
         legacy: bool = false,
@@ -8418,7 +8442,7 @@ test "missing home is empty for reads and bootstrapped privately for writes" {
     defer home_dir.close(io_mod.getIo());
     const home_stat = try home_dir.stat(io_mod.getIo());
     try std.testing.expectEqual(std.Io.File.Kind.directory, home_stat.kind);
-    try std.testing.expectEqual(@as(u32, 0o700), home_stat.permissions.toMode() & 0o777);
+    try io_mod.expectPrivateDir(home_stat);
     const sessions_path = try std.fs.path.join(alloc, &.{ missing_home, ".pf", "sessions" });
     defer alloc.free(sessions_path);
     try std.Io.Dir.accessAbsolute(io_mod.getIo(), sessions_path, .{});
@@ -8511,10 +8535,7 @@ test "first write creates only the private session layout" {
     });
     defer durable_dir.close(io_mod.getIo());
     const durable_stat = try durable_dir.stat(io_mod.getIo());
-    try std.testing.expectEqual(
-        @as(u64, 0o700),
-        durable_stat.permissions.toMode() & 0o777,
-    );
+    try io_mod.expectPrivateDir(durable_stat);
     var durable_iter = durable_dir.iterate();
     const sessions_entry = (try durable_iter.next(io_mod.getIo())) orelse
         return error.TestExpectedEqual;
@@ -8528,10 +8549,7 @@ test "first write creates only the private session layout" {
     );
     defer sessions_dir.close(io_mod.getIo());
     const sessions_stat = try sessions_dir.stat(io_mod.getIo());
-    try std.testing.expectEqual(
-        @as(u64, 0o700),
-        sessions_stat.permissions.toMode() & 0o777,
-    );
+    try io_mod.expectPrivateDir(sessions_stat);
     var sessions_iter = sessions_dir.iterate();
     var saw_session = false;
     var saw_latest = false;
@@ -9120,6 +9138,8 @@ test "history page maps missing unsafe unavailable unsupported and corrupt sessi
     };
     try std.testing.expectError(error.SessionPathUnsafe, ctx.store.loadHistoryPage(alloc, "history-unsafe", null, 1));
 
+    // Windows has no POSIX mode bits to make the sessions directory unreadable.
+    if (comptime builtin.os.tag == .windows) return;
     try chmodPath(alloc, ctx.store.sessions_dir, 0o000);
     var restore_sessions_permissions = true;
     defer if (restore_sessions_permissions) {
@@ -9528,12 +9548,15 @@ test "remembered session selection is private per workspace and read-only lookup
     defer directory.close();
     const name = ctx.store.rememberedSessionFilename();
     const stat = try directory.dir.statFile(io_mod.getIo(), &name, .{});
-    try std.testing.expectEqual(@as(u32, 0o600), stat.permissions.toMode() & 0o777);
-    var file = try directory.dir.openFile(io_mod.getIo(), &name, .{ .mode = .read_write });
-    defer file.close(io_mod.getIo());
-    try file.setPermissions(io_mod.getIo(), .fromMode(0o400));
-    try std.testing.expectError(error.AccessDenied, ctx.store.rememberSessionId(alloc, "third"));
-    try file.setPermissions(io_mod.getIo(), .fromMode(0o600));
+    try io_mod.expectPrivateFile(stat);
+    // Windows has no POSIX mode bits to make the file read-only.
+    if (comptime builtin.os.tag != .windows) {
+        var file = try directory.dir.openFile(io_mod.getIo(), &name, .{ .mode = .read_write });
+        defer file.close(io_mod.getIo());
+        try file.setPermissions(io_mod.getIo(), .fromMode(0o400));
+        try std.testing.expectError(error.AccessDenied, ctx.store.rememberSessionId(alloc, "third"));
+        try file.setPermissions(io_mod.getIo(), io_mod.private_file_permissions);
+    }
     const preserved = (try reader.readRememberedSessionId(alloc)).?;
     defer alloc.free(preserved);
     try std.testing.expectEqualStrings("second", preserved);
@@ -9546,6 +9569,8 @@ test "remembered session selection is private per workspace and read-only lookup
 }
 
 test "remembered session reader retains an opened version across atomic replacement" {
+    // Windows cannot replace a file that another handle holds open.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

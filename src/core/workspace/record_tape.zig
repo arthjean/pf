@@ -749,7 +749,7 @@ test "debug recording request creates a private tape under home" {
             defer file.close(io_mod.getIo());
             if (@import("builtin").os.tag != .windows) {
                 const stat = try file.stat(io_mod.getIo());
-                try testing.expectEqual(@as(std.posix.mode_t, 0), stat.permissions.toMode() & 0o077);
+                try testing.expect(io_mod.isOwnerOnlyMode(stat.permissions));
             }
         },
         else => return error.TestExpectedActiveRecording,
@@ -847,7 +847,13 @@ test "debug recording request uses the temporary fallback when HOME is empty" {
     defer status.deinit(alloc);
     switch (status) {
         .active => |active| {
-            try testing.expect(std.mem.startsWith(u8, active.path, "/tmp/pf-recordings/"));
+            // Windows falls back to the system temporary directory instead of `/tmp`.
+            const fallback_root = if (comptime @import("builtin").os.tag == .windows)
+                try std.fs.path.join(alloc, &.{ io_mod.tempDir(), "pf-recordings/" })
+            else
+                try alloc.dupe(u8, "/tmp/pf-recordings/");
+            defer alloc.free(fallback_root);
+            try testing.expect(std.mem.startsWith(u8, active.path, fallback_root));
             shutdown();
             if (std.fs.path.isAbsolute(active.path)) {
                 std.Io.Dir.deleteFileAbsolute(io_mod.getIo(), active.path) catch {};

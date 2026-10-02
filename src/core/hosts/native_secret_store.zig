@@ -231,7 +231,7 @@ test "stored key file round-trips byte-identically at mode 0600" {
     try storeInDir(std.testing.allocator, &pf_dir, written);
 
     const stat = try tmp.dir.statFile(std.testing.io, profile_paths.api_key_file_name, .{});
-    try std.testing.expect(stat.permissions.toMode() & 0o777 == 0o600);
+    try io_mod.expectPrivateFile(stat);
 
     const read_back = (try loadFromDir(std.testing.allocator, &pf_dir.dir)) orelse
         return error.TestUnexpectedMissingStoredKey;
@@ -250,7 +250,8 @@ test "stored key file refusal stays distinguishable from absence" {
     try std.testing.expect((try loadFromDir(std.testing.allocator, &pf_dir.dir)) == null);
 
     try storeInDir(std.testing.allocator, &pf_dir, "vt2-secret-value");
-    for ([_]std.posix.mode_t{ 0o640, 0o604, 0o644 }) |mode| {
+    // Windows has no group or other mode bits to widen.
+    if (comptime builtin.os.tag != .windows) for ([_]std.posix.mode_t{ 0o640, 0o604, 0o644 }) |mode| {
         var file = try tmp.dir.openFile(std.testing.io, profile_paths.api_key_file_name, .{ .mode = .read_write });
         try file.setPermissions(std.testing.io, std.Io.File.Permissions.fromMode(mode));
         file.close(std.testing.io);
@@ -259,7 +260,7 @@ test "stored key file refusal stays distinguishable from absence" {
             error.StoredKeyInsecure,
             loadFromDir(std.testing.allocator, &pf_dir.dir),
         );
-    }
+    };
 
     try tmp.dir.deleteFile(std.testing.io, profile_paths.api_key_file_name);
     try std.testing.expect((try loadFromDir(std.testing.allocator, &pf_dir.dir)) == null);

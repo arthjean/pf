@@ -3846,8 +3846,15 @@ test "run_command default user profile requires configured or reviewed shell aut
         .name = "shell",
         .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\"}",
     }, .ask, &.{}));
-    try std.testing.expectEqual(ToolPermissionDecision.permission_required, direct.decision);
-    try std.testing.expect(direct.execution_authority == null);
+    if (comptime builtin.os.tag == .windows) {
+        // Windows has no login shell profile: the legacy environment admits
+        // the direct plan, as it does on Linux and macOS.
+        try std.testing.expectEqual(ToolPermissionDecision.once, direct.decision);
+        try std.testing.expect(direct.execution_authority.?.run_command == .direct_only);
+    } else {
+        try std.testing.expectEqual(ToolPermissionDecision.permission_required, direct.decision);
+        try std.testing.expect(direct.execution_authority == null);
+    }
 
     const blocked = (try tool_admission.requestPermissionOutcome(rt.context().admissionInput(), arena, .{
         .id = "blocked",
@@ -3964,8 +3971,8 @@ test "local file mutations bypass review while external mutations use exact revi
     for (targets, 0..) |target, index| {
         const args = try std.fmt.allocPrint(
             arena,
-            "{{\"path\":\"{s}\",\"content\":\"alpha\\nbeta\\n\"}}",
-            .{target},
+            "{{\"path\":{f},\"content\":\"alpha\\nbeta\\n\"}}",
+            .{std.json.fmt(target, .{})},
         );
         const call: ToolCall = .{
             .id = if (index == 0) "approved-local-write" else "approved-external-write",
@@ -3995,6 +4002,8 @@ test "local file mutations bypass review while external mutations use exact revi
 }
 
 test "main file mutation producer rejects wildcard-bearing grant roots before prompt publication" {
+    // Windows file names cannot contain the `*` and `?` this test creates.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -4363,8 +4372,8 @@ test "file mutation lifecycle decodes each call at most once" {
     );
     const prompted_args = try std.fmt.allocPrint(
         call_arena,
-        "{{\"path\":\"{s}\",\"content\":\"prompted\"}}",
-        .{prompted_target},
+        "{{\"path\":{f},\"content\":\"prompted\"}}",
+        .{std.json.fmt(prompted_target, .{})},
     );
     const PreflightTag = std.meta.Tag(tool_admission.FileMutationPreflight);
     const cases = [_]struct {
@@ -4551,13 +4560,13 @@ test "file mutation preflight separates edit approval from equality disclosure" 
     };
     const private_noop_args = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"private\\n\"}}",
-        .{private_target},
+        "{{\"path\":{f},\"content\":\"private\\n\"}}",
+        .{std.json.fmt(private_target, .{})},
     );
     const private_changed_args = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"changed\\n\"}}",
-        .{private_target},
+        "{{\"path\":{f},\"content\":\"changed\\n\"}}",
+        .{std.json.fmt(private_target, .{})},
     );
     const PreflightTag = std.meta.Tag(tool_admission.FileMutationPreflight);
     const cases = [_]struct {
@@ -4658,7 +4667,7 @@ test "disabled automatic reviewer returns a recoverable denial without a human p
         defer existing.close(io_mod.getIo());
         try existing.writeStreamingAll(io_mod.getIo(), "before");
     }
-    const args = try std.fmt.allocPrint(arena, "{{\"path\":\"{s}\",\"content\":\"hello\"}}", .{target});
+    const args = try std.fmt.allocPrint(arena, "{{\"path\":{f},\"content\":\"hello\"}}", .{std.json.fmt(target, .{})});
 
     const outcome = try tool_admission.requestPermissionOutcome(rt.context().admissionInput(), arena, .{
         .id = "external-write",
@@ -4778,7 +4787,7 @@ test "executeToolCall rejects overlong glob pattern with failure status" {
     var arena_state = std.heap.ArenaAllocator.init(alloc);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
-    const args = try std.fmt.allocPrint(arena, "{{\"pattern\":\"{s}\"}}", .{pattern});
+    const args = try std.fmt.allocPrint(arena, "{{\"pattern\":{f}}}", .{std.json.fmt(pattern, .{})});
 
     const result = try executeToolCall(rt.context(), arena, .{
         .id = "glob",
@@ -4887,7 +4896,7 @@ test "executeToolCall traces non-text grep skips in normal runtime" {
     const trace = try readTraceFileForTest(alloc, trace_path);
     defer alloc.free(trace);
     try expectContains(trace, "grep_files skipped non-text file path=");
-    try expectContains(trace, "binaryish/blob.bin");
+    try expectContains(trace, "binaryish" ++ std.fs.path.sep_str ++ "blob.bin");
 }
 
 test "executeToolCall traces oversized grep skips in normal runtime" {
@@ -4921,7 +4930,7 @@ test "executeToolCall traces oversized grep skips in normal runtime" {
     const trace = try readTraceFileForTest(alloc, trace_path);
     defer alloc.free(trace);
     try expectContains(trace, "grep_files skipped oversized file path=");
-    try expectContains(trace, "oversized/huge.txt");
+    try expectContains(trace, "oversized" ++ std.fs.path.sep_str ++ "huge.txt");
 }
 
 test "executeToolCall returns failure status for missing grep path" {
@@ -5113,7 +5122,7 @@ test "saved noninteractive terminal exec captures replay by capability" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -5163,7 +5172,7 @@ test "registered read_tool_result restores an omitted stored-result suffix" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -5199,8 +5208,8 @@ test "registered read_tool_result restores an omitted stored-result suffix" {
     const arena = arena_state.allocator();
     const arguments_json = try std.fmt.allocPrint(
         arena,
-        "{{\"handle\":\"{s}\",\"query\":\"suffix needle\"}}",
-        .{suffixless_handle},
+        "{{\"handle\":{f},\"query\":\"suffix needle\"}}",
+        .{std.json.fmt(suffixless_handle, .{})},
     );
 
     const result = try executeToolCall(rt.context(), arena, .{
@@ -5276,8 +5285,8 @@ test "no-save terminal exec publishes one readable ephemeral replay" {
     try std.testing.expect(std.mem.find(u8, prepared.model_output, descriptor.handle) != null);
     const read_arguments = try std.fmt.allocPrint(
         arena,
-        "{{\"handle\":\"{s}\",\"start_byte\":1,\"byte_count\":4096}}",
-        .{descriptor.handle},
+        "{{\"handle\":{f},\"start_byte\":1,\"byte_count\":4096}}",
+        .{std.json.fmt(descriptor.handle, .{})},
     );
     const read_ctx = tool_dispatch.DispatchContext{
         .allocator = arena,
@@ -5348,7 +5357,7 @@ test "run_command timeout returns model-visible failure" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -6685,7 +6694,7 @@ test "install_skill explicit tool installs local skill source" {
 
     var rt = TestRuntime{ .workspace_root = repo_root, .skills_dir = skills_dir };
     defer rt.deinit(alloc);
-    const args_json = try std.fmt.allocPrint(alloc, "{{\"source\":\"{s}\",\"skill\":\"workflow\"}}", .{repo_root});
+    const args_json = try std.fmt.allocPrint(alloc, "{{\"source\":{f},\"skill\":\"workflow\"}}", .{std.json.fmt(repo_root, .{})});
     defer alloc.free(args_json);
 
     var arena_state = std.heap.ArenaAllocator.init(alloc);
@@ -6824,7 +6833,7 @@ test "skill tool loads the exact advertised duplicate and rejects ambiguous or u
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
-    const exact_managed_args = try std.fmt.allocPrint(arena, "{{\"name\":\"workflow\",\"location\":\"{s}\"}}", .{managed_skill});
+    const exact_managed_args = try std.fmt.allocPrint(arena, "{{\"name\":\"workflow\",\"location\":{f}}}", .{std.json.fmt(managed_skill, .{})});
     const exact = try executeToolCall(rt.context(), arena, .{ .id = "exact", .name = "skill", .arguments_json = exact_managed_args });
     try std.testing.expectEqual(tool_contracts.ToolExecutionStatus.success, exact.status);
     try expectContains(exact.model_output, "MANAGED BODY B");
@@ -6843,13 +6852,13 @@ test "skill tool loads the exact advertised duplicate and rejects ambiguous or u
     try expectContains(ambiguous.model_output, workspace_skill);
     try expectContains(ambiguous.model_output, managed_skill);
 
-    const outside_args = try std.fmt.allocPrint(arena, "{{\"name\":\"workflow\",\"location\":\"{s}\"}}", .{outside_skill});
+    const outside_args = try std.fmt.allocPrint(arena, "{{\"name\":\"workflow\",\"location\":{f}}}", .{std.json.fmt(outside_skill, .{})});
     const outside = try executeToolCall(rt.context(), arena, .{ .id = "outside", .name = "skill", .arguments_json = outside_args });
     try std.testing.expectEqual(tool_contracts.ToolExecutionStatus.failure, outside.status);
     try expectNotContains(outside.model_output, "OUTSIDE BODY SENTINEL");
     try expectNotContains(outside.model_output, "outside-only.txt");
 
-    const mismatch_args = try std.fmt.allocPrint(arena, "{{\"name\":\"other\",\"location\":\"{s}\"}}", .{managed_skill});
+    const mismatch_args = try std.fmt.allocPrint(arena, "{{\"name\":\"other\",\"location\":{f}}}", .{std.json.fmt(managed_skill, .{})});
     const mismatch = try executeToolCall(rt.context(), arena, .{ .id = "mismatch", .name = "skill", .arguments_json = mismatch_args });
     try std.testing.expectEqual(tool_contracts.ToolExecutionStatus.failure, mismatch.status);
     try expectContains(mismatch.model_output, "does not match");

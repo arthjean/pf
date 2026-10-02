@@ -564,7 +564,7 @@ test "configured provider scalar bounds and minimum input budget" {
     const alloc = std.testing.allocator;
     for ([_]usize{ max_env_bytes, max_env_bytes + 1 }) |length| {
         const env = "E" ** (max_env_bytes + 1);
-        const json = try std.fmt.allocPrint(alloc, "{{\"local\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"https://example.com\",\"auth\":{{\"type\":\"bearer\",\"env\":\"{s}\"}}}}}}", .{env[0..length]});
+        const json = try std.fmt.allocPrint(alloc, "{{\"local\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"https://example.com\",\"auth\":{{\"type\":\"bearer\",\"env\":{f}}}}}}}", .{std.json.fmt(env[0..length], .{})});
         defer alloc.free(json);
         if (length == max_env_bytes) {
             var registry = try Registry.parse_json(alloc, json);

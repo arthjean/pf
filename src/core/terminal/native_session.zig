@@ -585,6 +585,8 @@ fn launcherStatusToTerm(raw_status: u32) std.process.Child.Term {
 }
 
 test "launcher wait status classifies terminal results before stops" {
+    // Decodes POSIX wait statuses, which Windows processes do not produce.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     try std.testing.expectEqual(
         std.process.Child.Term{ .exited = 23 },
         launcherStatusToTerm(23 << 8),
@@ -4716,7 +4718,7 @@ test "terminal outcomes preserve exact exit and signal status" {
         outcomeFromTerm(.{ .signal = .TERM }).?,
     );
     try std.testing.expect(outcomeFromTerm(.{ .unknown = 1 }) == null);
-    try std.testing.expect(outcomeFromTerm(.{ .stopped = .STOP }) == null);
+    try std.testing.expect(outcomeFromTerm(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }) == null);
     try std.testing.expectEqual(
         std.posix.SIG.SEGV,
         signalFromInt(@intFromEnum(std.posix.SIG.SEGV)).?,
@@ -5542,7 +5544,7 @@ test "malformed raw fallback durably replaces an invalid checkpoint with corrupt
 }
 
 test "shutdownSessionsOnly signals live sessions and leaves them allocated" {
-    if (!isSupported()) return error.SkipZigTest;
+    if (comptime !isSupported()) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = try TestDurableFixture.init(alloc);
     defer fixture.deinit();
@@ -5601,7 +5603,7 @@ test "shutdownSessionsOnly signals live sessions and leaves them allocated" {
 }
 
 test "durable release and exit wait survive resident session removal" {
-    if (!isSupported()) return error.SkipZigTest;
+    if (comptime !isSupported()) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = try TestDurableFixture.init(alloc);
     defer fixture.deinit();
@@ -5684,7 +5686,7 @@ test "durable release and exit wait survive resident session removal" {
 }
 
 test "a referenced slot is never recycled out from under its holder" {
-    if (!isSupported()) return error.SkipZigTest;
+    if (comptime !isSupported()) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = try TestDurableFixture.init(alloc);
     defer fixture.deinit();

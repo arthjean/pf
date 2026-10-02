@@ -1447,7 +1447,7 @@ fn writeIdentity(
     instance: []const u8,
 ) !void {
     var pid_buffer: [32]u8 = undefined;
-    const pid = try std.fmt.bufPrint(&pid_buffer, "{d}", .{std.c.getpid()});
+    const pid = try std.fmt.bufPrint(&pid_buffer, "{d}", .{io_mod.currentProcessId()});
     const process_token = try process_provider.captureToken(
         alloc,
         pid,
@@ -1698,7 +1698,7 @@ test "host identity capture and reconciliation use the injected provider" {
 }
 
 test "endpoint paths honor the native sockaddr capacity" {
-    if (!isSupported()) return error.SkipZigTest;
+    if (comptime !isSupported()) return error.SkipZigTest;
     const path_limit = comptime nativeEndpointPathLimit(builtin.os.tag).?;
     var maximum: [path_limit - 1]u8 = @splat('x');
     var oversized: [path_limit]u8 = @splat('x');
@@ -1707,7 +1707,7 @@ test "endpoint paths honor the native sockaddr capacity" {
 }
 
 test "endpoint selection preserves short homes and deterministically separates long homes" {
-    if (!isSupported()) return error.SkipZigTest;
+    if (comptime !isSupported()) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const short_home = "/Users/terminal-short";
     var short = try resolveEndpointSelection(
@@ -1808,7 +1808,9 @@ test "endpoint selection allocation and unsupported targets fail closed" {
 }
 
 test "runtime transport directories reject symlinks non-private modes and foreign owners" {
-    if (!isSupported()) return error.SkipZigTest;
+    // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime !isSupported()) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
@@ -1819,10 +1821,7 @@ test "runtime transport directories reject symlinks non-private modes and foreig
     );
     defer private.close();
     const private_stat = try private.dir.stat(std.testing.io);
-    try std.testing.expectEqual(
-        @as(std.posix.mode_t, 0o700),
-        private_stat.permissions.toMode() & 0o777,
-    );
+    try io_mod.expectPrivateDir(private_stat);
     try std.testing.expectError(
         error.RuntimeDirectoryOwnerMismatch,
         validatePrivateRuntimeDir(

@@ -419,7 +419,9 @@ test "current host describes its operating system" {
     defer std.testing.allocator.free(text);
 
     try std.testing.expect(text.len > 0);
-    if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (comptime builtin.os.tag == .windows) {
+        try std.testing.expect(std.mem.startsWith(u8, text, "Windows"));
+    } else if (comptime builtin.os.tag == .wasi) {
         try std.testing.expectEqualStrings(@tagName(builtin.os.tag), text);
     }
 }

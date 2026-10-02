@@ -2279,10 +2279,7 @@ fn createShellDispatcher(script: []const u8) !struct {
 
 fn expectProcessReaped(pid: io_mod.ProcessId) !void {
     for (0..100) |_| {
-        std.posix.kill(io_mod.posixPid(pid), @enumFromInt(0)) catch |err| switch (err) {
-            error.ProcessNotFound => return,
-            else => {},
-        };
+        if (io_mod.testProcessGone(pid)) return;
         io_mod.sleep(5 * std.time.ns_per_ms);
     }
     return error.TestProcessStillRunning;

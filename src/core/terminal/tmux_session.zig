@@ -2356,6 +2356,8 @@ fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
 extern "c" fn tcsetpgrp(fd: c_int, pgrp: std.c.pid_t) c_int;
 
 test "tmux launcher wait status classifies terminal results before stops" {
+    // Decodes POSIX wait statuses, which Windows processes do not produce.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     try std.testing.expectEqual(
         std.process.Child.Term{ .exited = 23 },
         launcherStatusToTerm(23 << 8),
@@ -2424,7 +2426,7 @@ test "tmux marker arrival deadlines follow authenticated phase transitions" {
 }
 
 test "tmux peer deadline bounds accept receive partial frames and cancellation" {
-    if (!supported()) return error.SkipZigTest;
+    if (comptime !supported()) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const socket_path = try std.fmt.allocPrint(
         alloc,
@@ -2497,6 +2499,8 @@ test "tmux peer deadline bounds accept receive partial frames and cancellation" 
 }
 
 test "checked tmux cleanup requires saved process absence without a socket" {
+    // Cleans up a tmux Unix socket; tmux does not exist on Windows.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const MatchStub = struct {
         result: process_identity.TokenMatch,
@@ -2688,6 +2692,8 @@ test "tmux backend identity and shell quoting remain deterministic" {
 }
 
 test "tmux paths keep artifacts durable and place only the server socket in transport" {
+    // The tmux terminal host runs only on POSIX; Windows has no tmux.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const durable_root = "/profiles/example/.pf/terminal-host";
     const transport_root = "/tmp/pf-terminal-501-profile";
@@ -2721,6 +2727,8 @@ test "tmux paths keep artifacts durable and place only the server socket in tran
 }
 
 test "lifecycle parser rejects partial and reordered control history" {
+    // The tmux terminal host runs only on POSIX; Windows has no tmux.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

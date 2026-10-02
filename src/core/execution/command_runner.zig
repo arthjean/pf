@@ -1805,7 +1805,7 @@ test "zsh user profile reports natural SIGTERM after alias-safe startup" {
         try wrapper.writeStreamingAll(io_mod.getIo(), source);
         try wrapper.setPermissions(
             io_mod.getIo(),
-            std.Io.File.Permissions.fromMode(0o700),
+            io_mod.private_dir_permissions,
         );
     }
 
@@ -3748,7 +3748,7 @@ test "managed command artifact confirms an indeterminate rename target" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     const workspace = try io_mod.dirRealpathAlloc(
         alloc,
@@ -3828,7 +3828,7 @@ test "managed command artifact rejects an unconfirmed rename target" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     const workspace = try io_mod.dirRealpathAlloc(
         alloc,
@@ -4191,7 +4191,7 @@ test "cancellation preserves the termination grace in an invoked script" {
         );
         try script.setPermissions(
             io_mod.getIo(),
-            std.Io.File.Permissions.fromMode(0o700),
+            io_mod.private_dir_permissions,
         );
     }
 
@@ -4267,7 +4267,7 @@ test "cancelled managed command confirms an indeterminate artifact target" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     const workspace = try io_mod.dirRealpathAlloc(
         alloc,
@@ -4543,6 +4543,8 @@ test "timeout source is distinct from cancellation" {
 }
 
 test "foreground force cleanup preserves the supervisor" {
+    // Checks the POSIX foreground supervisor signal mask, which Windows does not use.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const mask = foregroundSupervisorSignalMask();
     try std.testing.expect(std.posix.sigismember(&mask, std.posix.SIG.TERM));
     try std.testing.expect(std.posix.sigismember(&mask, foreground_session_force_signal));
@@ -4646,7 +4648,7 @@ test "nonterminal child terms remain indeterminate" {
     );
     try std.testing.expectEqual(
         command_contract.CommandStatus.indeterminate,
-        commandStatusFromTerm(.{ .stopped = std.posix.SIG.STOP }),
+        commandStatusFromTerm(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }),
     );
 }
 

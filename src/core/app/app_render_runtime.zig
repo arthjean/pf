@@ -4179,7 +4179,10 @@ fn feedRewritePublicationFrame(
         rows.clearRetainingCapacity();
         for (0..physical.rows) |index| {
             starts[index] = rows.items.len;
-            try physical.rowTextTrimmed(@intCast(index + 1), &rows);
+            // Trims in place: the per-row scratch list of `rowTextTrimmed`
+            // dominates this per-byte snapshot in Debug builds.
+            try physical.rowText(@intCast(index + 1), &rows);
+            rows.items.len = starts[index] + std.mem.trimEnd(u8, rows.items[starts[index]..], " ").len;
             try rows.append(alloc, '\n');
         }
         starts[physical.rows] = rows.items.len;

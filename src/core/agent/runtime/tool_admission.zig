@@ -1200,8 +1200,8 @@ test "preserved external file denial stops equivalent retry before effects or di
     );
     const first_arguments = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"private-value\\n\"}}",
-        .{target},
+        "{{\"path\":{f},\"content\":\"private-value\\n\"}}",
+        .{std.json.fmt(target, .{})},
     );
 
     var first = switch (try tooling_tool_admission.prepareFileMutationCall(

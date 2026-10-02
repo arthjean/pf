@@ -2497,8 +2497,8 @@ test "loadStartupState defaults fast mode off and requires bound explicit prefer
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"model\":\"openai/gpt-5\"}},\"{s}\":{{\"fast_mode\":false}},\"{s}\":{{\"model\":\"zai/glm-5.3\",\"fast_mode\":true}},\"{s}\":{{\"model\":\"provider/fast-toggle\",\"fast_mode\":true,\"fast_mode_model_bound\":true}},\"{s}\":{{\"provider\":\"codex\",\"codex_model\":\"gpt-5.4-mini\"}}}}}}\n",
-        .{ configured_root, disabled_root, legacy_fast_root, bound_fast_root, codex_root },
+        "{{\"workspaces\":{{{f}:{{\"model\":\"openai/gpt-5\"}},{f}:{{\"fast_mode\":false}},{f}:{{\"model\":\"zai/glm-5.3\",\"fast_mode\":true}},{f}:{{\"model\":\"provider/fast-toggle\",\"fast_mode\":true,\"fast_mode_model_bound\":true}},{f}:{{\"provider\":\"codex\",\"codex_model\":\"gpt-5.4-mini\"}}}}}}\n",
+        .{ std.json.fmt(configured_root, .{}), std.json.fmt(disabled_root, .{}), std.json.fmt(legacy_fast_root, .{}), std.json.fmt(bound_fast_root, .{}), std.json.fmt(codex_root, .{}) },
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -2561,8 +2561,8 @@ test "loadStartupState resolves startup scrollback default and explicit false" {
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"startup_scrollback\":false}}}}}}\n",
-        .{disabled_root},
+        "{{\"workspaces\":{{{f}:{{\"startup_scrollback\":false}}}}}}\n",
+        .{std.json.fmt(disabled_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);

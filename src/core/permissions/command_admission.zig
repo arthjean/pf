@@ -163,6 +163,7 @@ test "normalized default emits direct-only only for a direct plan" {
         .command = "pwd",
         .resolved_cwd = "/workspace",
         .target_os = .macos,
+        .dialect = .posix_sh,
     };
     const direct = defaultForRunCommand(std.testing.allocator, direct_ctx, .ask);
     switch (direct) {
@@ -174,6 +175,7 @@ test "normalized default emits direct-only only for a direct plan" {
         .command = "touch created.txt",
         .resolved_cwd = "/workspace",
         .target_os = .macos,
+        .dialect = .posix_sh,
     };
     try std.testing.expectEqual(
         command_effect.ApprovalReason.filesystem_write,
@@ -202,6 +204,7 @@ test "explicit clean environment is direct only in automatic mode" {
         .resolved_cwd = "/workspace",
         .target_os = .macos,
         .environment = .{ .clean = "/bin/zsh" },
+        .dialect = .posix_sh,
     };
     const automatic = defaultForRunCommand(std.testing.allocator, clean_ctx, .auto);
     switch (automatic) {

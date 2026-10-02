@@ -1589,8 +1589,8 @@ test "compact form keeps review for short text numbers and booleans" {
         var fixture = Fixture{ .answers = &.{ case.answer, "Submit" } };
         const requests = try std.fmt.allocPrint(
             alloc,
-            "{{\"form\":{{\"method\":\"elicitation/create\",\"params\":{{\"message\":\"Value\",\"requestedSchema\":{{\"type\":\"object\",\"properties\":{{\"value\":{{\"type\":\"{s}\"}}}},\"required\":[\"value\"]}}}}}}}}",
-            .{case.kind},
+            "{{\"form\":{{\"method\":\"elicitation/create\",\"params\":{{\"message\":\"Value\",\"requestedSchema\":{{\"type\":\"object\",\"properties\":{{\"value\":{{\"type\":{f}}}}},\"required\":[\"value\"]}}}}}}}}",
+            .{std.json.fmt(case.kind, .{})},
         );
         defer alloc.free(requests);
         const response = try respond(alloc, Fixture.origin(), .{ .input_requests_json = requests }, .{

@@ -331,7 +331,7 @@ test "host tool runtime bounds descriptions at 64 KiB" {
     defer alloc.free(description);
     @memset(description, 'a');
     for ([_]usize{ 64 * 1024, 64 * 1024 + 1 }) |length| {
-        const json = try std.fmt.allocPrint(alloc, "[{{\"name\":\"lookup\",\"description\":\"{s}\",\"inputSchema\":{{}}}}]", .{description[0..length]});
+        const json = try std.fmt.allocPrint(alloc, "[{{\"name\":\"lookup\",\"description\":{f},\"inputSchema\":{{}}}}]", .{std.json.fmt(description[0..length], .{})});
         defer alloc.free(json);
         const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
         defer parsed.deinit();

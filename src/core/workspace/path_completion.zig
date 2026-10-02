@@ -304,6 +304,8 @@ test "path completion browses bare current and parent directories" {
 }
 
 test "path completion enumerates immediate entries with deterministic bounded order" {
+    // Windows reserves `"` in file names, so the quote-bearing name uses `'` there.
+    const quoted_name = if (comptime builtin.os.tag == .windows) "space ' file.txt" else "space \" file.txt";
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -313,7 +315,7 @@ test "path completion enumerates immediate entries with deterministic bounded or
     try writeTestFile(tmp.dir, "workspace/src/Alpha.txt");
     try writeTestFile(tmp.dir, "workspace/src/beta.txt");
     try writeTestFile(tmp.dir, "workspace/src/.hidden.txt");
-    try writeTestFile(tmp.dir, "workspace/src/space \" file.txt");
+    try writeTestFile(tmp.dir, "workspace/src/" ++ quoted_name);
 
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(root);
@@ -330,13 +332,13 @@ test "path completion enumerates immediate entries with deterministic bounded or
     const filtered_count = try complete(root, "src/al", &results, &spans, &paths);
     try std.testing.expectEqual(@as(usize, 2), filtered_count);
     try std.testing.expectEqualStrings("src/Alpha.txt", results[0].path);
-    try std.testing.expectEqualStrings("src/space \" file.txt", results[1].path);
+    try std.testing.expectEqualStrings("src/" ++ quoted_name, results[1].path);
     try std.testing.expectEqual(file_index.CandidateKind.file, results[0].kind);
     try std.testing.expectEqual(@as(usize, 1), results[0].matched_spans.len);
     try std.testing.expectEqual(@as(u16, "src/".len), results[0].matched_spans[0].byte_start);
     try std.testing.expectEqual(@as(u16, "src/al".len), results[0].matched_spans[0].byte_end);
     try std.testing.expectEqual(@as(usize, 1), try complete(root, "src/space", &results, &spans, &paths));
-    try std.testing.expectEqualStrings("src/space \" file.txt", results[0].path);
+    try std.testing.expectEqualStrings("src/" ++ quoted_name, results[0].path);
 }
 
 test "path completion resolves parent and absolute forms without recursive traversal" {
@@ -370,14 +372,16 @@ test "path completion resolves parent and absolute forms without recursive trave
 }
 
 test "path completion follows listed symlinks and filters unsafe names" {
-    if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
+    if (comptime builtin.os.tag == .wasi) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(std.testing.io, "workspace/target-dir");
     try writeTestFile(tmp.dir, "workspace/target.txt");
-    try writeTestFile(tmp.dir, "workspace/unsafe-\x1b.txt");
+    // Windows forbids control characters such as ESC in file names.
+    const unsafe_names = comptime builtin.os.tag != .windows;
+    if (unsafe_names) try writeTestFile(tmp.dir, "workspace/unsafe-\x1b.txt");
     try tmp.dir.symLink(std.testing.io, "target-dir", "workspace/linked-dir", .{ .is_directory = true });
     try tmp.dir.symLink(std.testing.io, "target.txt", "workspace/linked-file", .{ .is_directory = false });
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
@@ -390,7 +394,7 @@ test "path completion follows listed symlinks and filters unsafe names" {
     try std.testing.expectEqual(@as(usize, 2), count);
     try std.testing.expectEqual(file_index.CandidateKind.directory, results[0].kind);
     try std.testing.expectEqual(file_index.CandidateKind.file, results[1].kind);
-    try std.testing.expectEqual(@as(usize, 0), try complete(root, "./unsafe", &results, &spans, &paths));
+    if (unsafe_names) try std.testing.expectEqual(@as(usize, 0), try complete(root, "./unsafe", &results, &spans, &paths));
 }
 
 test "path completion reports bounded storage and unavailable parents" {
@@ -468,15 +472,17 @@ test "path completion cancellable operation uses captured HOME and literal paren
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try writeTestFile(tmp.dir, "dir /chosen.txt");
+    // Win32 path normalization strips a trailing space, so Windows keeps the space inside the parent name.
+    const parent = if (comptime builtin.os.tag == .windows) "di r" else "dir ";
+    try writeTestFile(tmp.dir, parent ++ "/chosen.txt");
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
     var results: [2]file_index.SearchResult = undefined;
     var spans: [2]file_index.MatchSpan = undefined;
     var paths: [2 * file_index.max_path_len]u8 = undefined;
     var cancel: std.atomic.Value(bool) = .init(false);
-    try std.testing.expectEqual(@as(usize, 1), try completeCancellable("/unused-workspace", root, "~/dir /ch", &cancel, &results, &spans, &paths));
-    try std.testing.expectEqualStrings("~/dir /chosen.txt", results[0].path);
+    try std.testing.expectEqual(@as(usize, 1), try completeCancellable("/unused-workspace", root, "~/" ++ parent ++ "/ch", &cancel, &results, &spans, &paths));
+    try std.testing.expectEqualStrings("~/" ++ parent ++ "/chosen.txt", results[0].path);
     cancel.store(true, .release);
     try std.testing.expectError(error.Cancelled, completeCancellable(root, null, "./missing/", &cancel, &results, &spans, &paths));
 }

@@ -1920,8 +1920,6 @@ test "prepare derives a missing write without creating the target" {
 }
 
 test "prepare shows the canonical external target when a symlink redirects outside the workspace" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -2294,6 +2292,8 @@ test "prepare emits explicit empty and no-change notices" {
 }
 
 test "prepare terminal-encodes hostile path and preview content" {
+    // Windows file names cannot contain the control characters this path uses.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -2432,8 +2432,6 @@ test "prepare rejects call target and authority identity mismatches" {
 }
 
 test "prepare rejects an intermediate-directory retarget" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
-
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDir(std.testing.io, "approved", .default_dir);
@@ -2991,14 +2989,15 @@ fn mutateAfterStage(
         replacement.writeStreamingAll(std.testing.io, "foreign") catch return error.TestControlFailed;
     }
     if (state.mutate_temp) {
-        var staged = parent.openFile(std.testing.io, temp_name, .{
+        // The process Io gives a no-follow Windows handle synchronous I/O.
+        var staged = parent.openFile(io_mod.getIo(), temp_name, .{
             .mode = .write_only,
             .follow_symlinks = false,
             .resolve_beneath = true,
         }) catch return error.TestControlFailed;
-        defer staged.close(std.testing.io);
-        staged.writeStreamingAll(std.testing.io, "tampered") catch return error.TestControlFailed;
-        staged.sync(std.testing.io) catch return error.TestControlFailed;
+        defer staged.close(io_mod.getIo());
+        staged.writeStreamingAll(io_mod.getIo(), "tampered") catch return error.TestControlFailed;
+        staged.sync(io_mod.getIo()) catch return error.TestControlFailed;
     }
     if (state.add_blocker) {
         var blocker = parent.createFile(std.testing.io, "blocker", .{
@@ -3212,6 +3211,9 @@ test "apply rejects a target pathname replaced during final preimage validation"
 }
 
 test "apply rejects a parent moved during final preimage validation" {
+    // Windows refuses to move a directory while pf holds handles beneath it,
+    // so this race cannot be staged there.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
     try tmp.dir.createDir(std.testing.io, "parent", .default_dir);
@@ -3268,6 +3270,9 @@ test "apply rejects a parent moved during final preimage validation" {
 }
 
 test "apply commits through a parent moved after final validation" {
+    // Windows refuses to move a directory while pf holds handles beneath it,
+    // so this race cannot be staged there.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
     try tmp.dir.createDir(std.testing.io, "parent", .default_dir);
@@ -3378,6 +3383,9 @@ test "apply observes cancellation between bounded stage writes" {
 }
 
 test "apply rejects replacement of transaction-created parent directories" {
+    // Windows refuses to move a directory while pf holds handles beneath it,
+    // so this race cannot be staged there.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     inline for ([_]CreatedParentReplacement{ .shallow, .deep }) |replacement| {
         var tmp = std.testing.tmpDir(.{ .iterate = true });
         defer tmp.cleanup();
@@ -3533,7 +3541,8 @@ test "apply returns deepest-first bounded residue when created parents are not e
 }
 
 test "apply preserves the existing destination mode" {
-    if (builtin.os.tag == .windows) return error.SkipZigTest;
+    // Asserts a preserved POSIX mode; Windows files have no mode bits.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

@@ -2907,9 +2907,9 @@ test "same-batch file mutation retarget stops before permission and execution" {
     defer alloc.free(new_directory);
     const link_path = try std.fs.path.join(alloc, &.{ workspace, "link" });
     defer alloc.free(link_path);
-    const old_output = try std.fs.path.join(alloc, &.{ workspace, "old/proof.txt" });
+    const old_output = try std.fs.path.join(alloc, &.{ workspace, "old", "proof.txt" });
     defer alloc.free(old_output);
-    const new_output = try std.fs.path.join(alloc, &.{ workspace, "new/proof.txt" });
+    const new_output = try std.fs.path.join(alloc, &.{ workspace, "new", "proof.txt" });
     defer alloc.free(new_output);
 
     const calls = [_]ToolCall{
@@ -4320,7 +4320,7 @@ test "terminal publication failure deletes retained command replay" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -4933,8 +4933,6 @@ test "initial session grants follow active registry metadata" {
 }
 
 test "processQueuedPrompt once permission binds external mutation grants before prompt returns" {
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
-
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -4960,7 +4958,7 @@ test "processQueuedPrompt once permission binds external mutation grants before 
 
     const link_path = try std.fs.path.join(arena, &.{ workspace, "link" });
     const requested = try std.fs.path.join(arena, &.{ link_path, "created.txt" });
-    const args = try std.fmt.allocPrint(arena, "{{\"path\":\"{s}\",\"content\":\"x\"}}", .{requested});
+    const args = try std.fmt.allocPrint(arena, "{{\"path\":{f},\"content\":\"x\"}}", .{std.json.fmt(requested, .{})});
     const calls = [_]ToolCall{toolCall("call_1", "write_file", args)};
     const completions = [_]FakeCompletion{
         .{ .tool_calls = &calls },
@@ -4999,8 +4997,6 @@ test "processQueuedPrompt once permission binds external mutation grants before 
 }
 
 test "processQueuedPrompt always permission retains external mutation session grants from approved targets" {
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
-
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5026,7 +5022,7 @@ test "processQueuedPrompt always permission retains external mutation session gr
 
     const link_path = try std.fs.path.join(arena, &.{ workspace, "link" });
     const requested = try std.fs.path.join(arena, &.{ link_path, "created.txt" });
-    const args = try std.fmt.allocPrint(arena, "{{\"path\":\"{s}\",\"content\":\"x\"}}", .{requested});
+    const args = try std.fmt.allocPrint(arena, "{{\"path\":{f},\"content\":\"x\"}}", .{std.json.fmt(requested, .{})});
     const calls = [_]ToolCall{toolCall("call_1", "write_file", args)};
     const completions = [_]FakeCompletion{
         .{ .tool_calls = &calls },

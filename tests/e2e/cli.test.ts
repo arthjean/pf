@@ -23,6 +23,7 @@ import {
   createIsolatedTestHome,
   PF_BIN,
   HAS_API_KEY,
+  mirrorTestHome,
   REPO_ROOT,
   runPf,
 } from "../evals/eval-helpers";
@@ -38,6 +39,7 @@ const NO_GATEWAY_AUTH = {
   AI_GATEWAY_API_KEY: undefined,
   VERCEL_OIDC_TOKEN: undefined,
 };
+const WINDOWS_MISSING_HOME_MESSAGE = "pf cannot find your profile directory: set USERPROFILE.\n";
 const MISSING_AUTH_MESSAGE =
   "pf needs access to Vercel AI Gateway. Run pf login to sign in, pf setup to use an API key, or set AI_GATEWAY_API_KEY.";
 const MODERN_MCP_FIXTURE = join(
@@ -1854,7 +1856,8 @@ describe("cli: logout", () => {
     TIMEOUT,
   );
 
-  test(
+  // Windows has no POSIX mode bits, so chmod cannot loosen the saved login.
+  test.skipIf(process.platform === "win32")(
     "pf logout removes an unsafe saved login and warns that it could not revoke it",
     async () => {
       const home = mkdtempSync(join(tmpdir(), "pf-e2e-logout-rejected-login-"));
@@ -1895,7 +1898,8 @@ describe("cli: logout", () => {
     TIMEOUT,
   );
 
-  test(
+  // Windows has no POSIX mode bits, so chmod cannot make the profile read-only.
+  test.skipIf(process.platform === "win32")(
     "pf logout fails when the saved login cannot be deleted",
     async () => {
       const home = mkdtempSync(join(tmpdir(), "pf-e2e-logout-delete-failure-"));
@@ -2160,8 +2164,9 @@ exit 99
 });
 
 // The file backend is only selected off macOS, so these run on Linux CI.
+// Windows has no POSIX mode bits to loosen.
 describe("cli: stored key file backend", () => {
-  test.skipIf(platform() === "darwin")(
+  test.skipIf(platform() === "darwin" || platform() === "win32")(
     "a 0600 key file resolves, and a loosened one is refused rather than reported absent",
     async () => {
       const home = mkdtempSync(join(tmpdir(), "pf-stored-key-file-"));
@@ -2454,6 +2459,19 @@ describe("cli: missing durable home", () => {
           HOME: undefined,
         };
 
+        if (process.platform === "win32") {
+          // Windows stops every command at startup, doctor included, before
+          // any file is written.
+          for (const args of [["sessions", "--json"], ["doctor", "--json"]]) {
+            const result = await runPf(args, { cwd, env, timeoutMs: TIMEOUT });
+            expect(result.code).toBe(1);
+            expect(result.stdout).toBe("");
+            expect(result.stderr).toBe(WINDOWS_MISSING_HOME_MESSAGE);
+          }
+          expect(readdirSync(workspace)).toEqual([]);
+          return;
+        }
+
         for (const args of [
           ["sessions", "--json"],
           ["session", "last", "--json"],
@@ -2684,7 +2702,8 @@ describe("cli: sessions", () => {
     TIMEOUT,
   );
 
-  test(
+  // Windows has no POSIX mode bits, so the fixture cannot make an event log unreadable.
+  test.skipIf(process.platform === "win32")(
     "session lists use projections when event logs are unreadable",
     async () => {
       const root = mkdtempSync(join(tmpdir(), "pf-e2e-session-projections-"));
@@ -3366,12 +3385,12 @@ describe("cli: models", () => {
       const gateway = startFakeGateway([], {
         models: () => new Promise<Response>(() => {}),
       });
+      const overrides = modelsGatewayEnv(home, `${gateway.baseUrl}/coding-agent/v1/models`);
+      const env: Record<string, string | undefined> = { ...process.env, ...overrides };
+      mirrorTestHome(env, overrides);
       const proc = Bun.spawn([PF_BIN, "models", "--json"], {
         cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          ...modelsGatewayEnv(home, `${gateway.baseUrl}/coding-agent/v1/models`),
-        },
+        env,
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -5561,7 +5580,9 @@ describe("cli: MCP profile add", () => {
       env: { HOME: undefined, ...NO_GATEWAY_AUTH },
     });
     expect(missingHome.code).not.toBe(0);
-    expect(missingHome.stderr).toContain("HomeNotSet");
+    expect(missingHome.stderr).toContain(
+      process.platform === "win32" ? WINDOWS_MISSING_HOME_MESSAGE : "HomeNotSet",
+    );
 
     const invalid = await runPf(
       ["mcp", "add", "--transport", "sse", "fixture", "https://example.test"],

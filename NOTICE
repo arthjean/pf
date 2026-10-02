@@ -12,6 +12,10 @@ and has been modified since. Notable modifications:
 - The product, command, configuration paths, environment variables, and
   identifiers are renamed from fx to pf (Paneflow Agent).
 - Manual and automatic upgrades from fx release channels are disabled.
+- pf builds and runs natively on Windows x86_64: profile and temp paths,
+  private state, the console UI, command execution through Git Bash or
+  PowerShell inside Job Objects, line-ending-preserving edits, and
+  workspace containment are ported to Windows.
 
 "fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
 where this code comes from.

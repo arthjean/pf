@@ -1357,7 +1357,7 @@ test "legacy route checkpoints retain history without resumable authority" {
     const fields = "\"turn_id\":1,\"user\":{\"text\":\"saved request\",\"images\":[]},\"assistant_source\":\"saved partial\",\"execution\":{\"schema_version\":3,\"tool_steps\":[],\"files\":[]},\"cause\":\"response_interrupted\",\"action\":\"continuing_response\",\"tool_state\":\"uncertain\",\"route_model\":\"test/model\",\"requested_fast_mode\":false,\"fast_mode\":false,\"max_provider_attempts\":3,\"consumed_provider_attempts\":0,\"outstanding_reservation\":false}";
     for (routes, 2..) |route, version| {
         for ([_][]const u8{ "possibly_sent", "definitely_unsent" }) |delivery| {
-            const bytes = try std.fmt.allocPrint(alloc, "{{\"version\":{d},\"route_identity\":{s},\"delivery\":\"{s}\",{s}", .{ version, route, delivery, fields });
+            const bytes = try std.fmt.allocPrint(alloc, "{{\"version\":{d},\"route_identity\":{s},\"delivery\":{f},{s}", .{ version, route, std.json.fmt(delivery, .{}), fields });
             defer alloc.free(bytes);
             var parsed = try std.json.parseFromSlice(std.json.Value, alloc, bytes, .{});
             defer parsed.deinit();

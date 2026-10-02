@@ -112,6 +112,55 @@ zig build -Doptimize=ReleaseSafe
 
 Run the test suite with `zig build test`. See [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidelines.
 
+## Windows
+
+pf runs natively on Windows 10 version 1809 or later and Windows 11, on x86_64. The interactive shell needs a console with virtual terminal support: Windows Terminal and the VS Code integrated terminal are supported, and pf exits with an error in a console that cannot process escape sequences. Headless commands such as `pf ask` and `pf status` run from any console.
+
+Build from source as above, from PowerShell or Git Bash, with Zig 0.16.0 for Windows x86_64 on `PATH`. The build produces `zig-out\bin\pf.exe`; put that directory on `PATH`. Your profile lives in `%USERPROFILE%\.pf`, so pf finds the same settings, credentials, and sessions from PowerShell and from Git Bash.
+
+### Command shell
+
+The `shell` tool runs commands in Git Bash when it is available and in PowerShell otherwise. It never uses `cmd.exe`. pf selects the shell once per process, in this order:
+
+1. `PF_GIT_BASH_PATH`, the absolute path of a Git Bash `bash.exe`, when it is set
+2. the `bash.exe` installed with the `git.exe` found on `PATH`
+3. `%ProgramFiles%\Git\bin\bash.exe`
+4. `pwsh.exe` (PowerShell 7) on `PATH`
+5. `powershell.exe` (Windows PowerShell 5.1) on `PATH`
+
+Set `PF_WINDOWS_SHELL` to `bash` to require Git Bash, to `powershell` to skip it, or to `auto` (the default) for the order above. With `bash`, pf reports an error instead of falling back when Git Bash is missing. `pf doctor` shows the selected shell and why it was chosen, and the model is told which shell and path conventions to use.
+
+Under Git Bash, permission analysis works as on Linux and macOS. pf does not parse PowerShell, so under PowerShell every command needs an exact approval of that command or a configured rule that names it exactly; in `auto` mode, each one goes through the security review. Wildcard allow rules and the automatic approval of routine read-only commands never apply to PowerShell commands.
+
+### Not yet available on Windows
+
+- Hosted terminal sessions: the `terminal` tool, which runs interactive programs such as REPLs
+- Interactive OAuth authorization for remote MCP servers
+- Clipboard copy, image paste from the clipboard, and desktop notifications
+- Skill directories that a skill root reaches through a symlink
+- Encryption of stored credentials: they are protected by your profile's file permissions, as on Linux
+- `pf slack install`
+- The full output of a truncated command in a session that is not saved, such as `pf ask --no-save`: saved sessions keep it
+- Release downloads and `pf upgrade`: build from source
+
+### Key bindings in Windows Terminal
+
+Windows Terminal handles some key chords itself before pf receives them ([default actions](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/actions)). Use these alternatives, or remove the Windows Terminal binding in its settings:
+
+| Key | Windows Terminal action | Use instead |
+|---|---|---|
+| Alt+Enter | Toggle full screen | Shift+Enter, Ctrl+J, or Esc then Enter for a new line |
+| Ctrl+V | Paste text | Text paste works; image paste is not available on Windows |
+| Ctrl+Tab, Ctrl+Shift+Tab | Switch tabs | Tab, Shift+Tab |
+| Alt+Left, Alt+Right | Move pane focus | Ctrl+Left, Ctrl+Right, or Alt+B, Alt+F to move by word |
+| Alt+Up, Alt+Down | Move pane focus | Ctrl+Up, Ctrl+Down to move by row |
+| Alt+Shift+Arrow | Resize pane | Ctrl+Shift+Left, Ctrl+Shift+Right, or Alt+Shift+B, Alt+Shift+F to select by word; Shift+Up, Shift+Down to select by row |
+| Ctrl+Shift+Up, Ctrl+Shift+Down, Ctrl+Shift+PgUp, Ctrl+Shift+PgDn, Ctrl+Shift+Home, Ctrl+Shift+End | Scroll the buffer | Shift+Up, Shift+Down, Shift+PgUp, Shift+PgDn to extend the selection |
+| Ctrl+Shift+A, Ctrl+Shift+F | Select all, find | Shift+Home, Shift+Right |
+| Ctrl+Shift+C, Ctrl+Shift+V, Ctrl+Shift+P, and other Ctrl+Shift+letter chords | Copy, paste, command palette, tabs | The same chord without Shift |
+
+Ctrl+C reaches pf unless text is selected in Windows Terminal, in which case it copies the selection.
+
 ## Security
 
 Report security vulnerabilities privately through GitHub's private vulnerability reporting on this repository instead of a public issue.

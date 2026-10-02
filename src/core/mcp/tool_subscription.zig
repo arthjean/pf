@@ -1289,6 +1289,7 @@ const StdioCreateAttempt = struct {
 };
 
 fn createIdleStdioDispatcherForTest() !*stdio_dispatcher.StdioDispatcher {
+    // Spawns a POSIX `sh` fixture in its own process group; Windows stdio servers run in Job Objects.
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
     const child = try std.process.spawn(io_mod.getIo(), .{
         .argv = &.{ "sh", "-c", "while IFS= read -r request; do :; done" },

@@ -4597,10 +4597,13 @@ fn testConfig() Config {
     };
 }
 
+// Saved sessions refuse a workspace root that is not absolute on this platform.
+const test_ask_workspace = if (std_builtin.os.tag == .windows) "C:\\pf-test" else "/tmp/pf-test";
+
 fn testMissingKeyStartup(alloc: Allocator, _: oauth_transport.Provider, _: host.SecretStore, default_model: []const u8, default_agent_step_limit: usize, _: ?[]const u8) !app_lifecycle.StartupState {
     var state = app_lifecycle.StartupState{ .agent_step_limit = default_agent_step_limit };
     errdefer state.deinit(alloc);
-    state.workspace_root = try alloc.dupe(u8, "/tmp/pf-test");
+    state.workspace_root = try alloc.dupe(u8, test_ask_workspace);
     state.selected_model = try alloc.dupe(u8, default_model);
     state.context_enabled = false;
     return state;
@@ -4609,7 +4612,7 @@ fn testMissingKeyStartup(alloc: Allocator, _: oauth_transport.Provider, _: host.
 fn testPresentKeyStartup(alloc: Allocator, _: oauth_transport.Provider, _: host.SecretStore, default_model: []const u8, default_agent_step_limit: usize, _: ?[]const u8) !app_lifecycle.StartupState {
     var state = app_lifecycle.StartupState{ .agent_step_limit = default_agent_step_limit };
     errdefer state.deinit(alloc);
-    state.workspace_root = try alloc.dupe(u8, "/tmp/pf-test");
+    state.workspace_root = try alloc.dupe(u8, test_ask_workspace);
     state.credential = .{
         .token = try alloc.dupe(u8, "key"),
         .source = .ai_gateway_api_key,
@@ -4651,7 +4654,7 @@ fn testPushAssistantText(deps: *const agent_runtime.AgentRuntimeDeps, text: []co
 fn testProcessQueuedPrompt(_: *agent_runtime.Agent, deps: *const agent_runtime.AgentRuntimeDeps, semantic_presentation: ?agent_runtime.SemanticPresentationSink, lifecycle: agent_runtime.LifecycleContext, _: agent_runtime.Config, _: worker_runtime.QueuedPrompt) !void {
     try std.testing.expect(semantic_presentation == null);
     try std.testing.expectEqual(hooks.ScopeKind.ask, lifecycle.scope.kind);
-    try std.testing.expectEqualStrings("/tmp/pf-test", lifecycle.scope.workspace_root);
+    try std.testing.expectEqualStrings(test_ask_workspace, lifecycle.scope.workspace_root);
     try testPushAssistantText(deps, "assistant text");
 }
 
@@ -5926,7 +5929,10 @@ test "runWithDeps reports unsupported images in JSON before startup" {
     try std.testing.expectEqual(@as(usize, 0), stderr_capture.bytes.items.len);
     try std.testing.expect(std.mem.find(u8, stdout_capture.bytes.items, "\"exit_code\":1") != null);
     try std.testing.expect(std.mem.find(u8, stdout_capture.bytes.items, "UnsupportedImageType") != null);
-    try std.testing.expect(std.mem.find(u8, stdout_capture.bytes.items, invalid_path_z) != null);
+    // JSON escapes the backslashes of a Windows path.
+    const quoted_path = try std.fmt.allocPrint(alloc, "{f}", .{std.json.fmt(invalid_path, .{})});
+    defer alloc.free(quoted_path);
+    try std.testing.expect(std.mem.find(u8, stdout_capture.bytes.items, quoted_path[1 .. quoted_path.len - 1]) != null);
 }
 
 test "runWithDeps assigns image ids and owns the authorized catalog before processing" {
@@ -6199,11 +6205,20 @@ test "pf ask default user commands require configured authority or review" {
     var ctx = AskContext.init(alloc, testConfig(), testPromptRunDeps(&stdout_capture, &stderr_capture, testPresentKeyStartup), "/tmp/workspace");
     defer ctx.deinit();
 
-    try std.testing.expectError(error.NonInteractivePermissionRequired, requestToolPermissionOutcome(&ctx, arena, .{
+    const direct_call: ToolCall = .{
         .id = "direct",
         .name = "shell",
         .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\"}",
-    }, .ask, &.{}, &.{}));
+    };
+    if (comptime std_builtin.os.tag == .windows) {
+        // Windows has no login shell profile: the legacy environment admits
+        // the direct plan, as it does on Linux and macOS.
+        const direct = try requestToolPermissionOutcome(&ctx, arena, direct_call, .ask, &.{}, &.{});
+        try std.testing.expectEqual(ToolPermissionDecision.once, direct.decision);
+        try std.testing.expect(direct.execution_authority.?.run_command == .direct_only);
+    } else {
+        try std.testing.expectError(error.NonInteractivePermissionRequired, requestToolPermissionOutcome(&ctx, arena, direct_call, .ask, &.{}, &.{}));
+    }
 
     try std.testing.expectError(error.NonInteractivePermissionRequired, requestToolPermissionOutcome(&ctx, arena, .{
         .id = "blocked",
@@ -6284,9 +6299,18 @@ test "headless ask SIGINT sets process-lifetime cancellation storage" {
     var scope = try headless_interrupt.Scope.install(true);
     defer scope.deinit();
 
-    _ = std.c.raise(std.posix.SIG.INT);
+    testRaiseHeadlessInterrupt();
 
     try std.testing.expect(headless_interrupt.cancel_requested.load(.seq_cst));
+}
+
+fn testRaiseHeadlessInterrupt() void {
+    if (comptime std_builtin.os.tag == .windows) {
+        // CRT raise(SIGINT) bypasses the console control handler pf installs on Windows.
+        _ = headless_interrupt.handle(@import("../shared/win32.zig").CTRL_C_EVENT);
+    } else {
+        _ = std.c.raise(std.posix.SIG.INT);
+    }
 }
 
 test "headless ask interrupt installation exposes a typed busy result" {
@@ -6477,11 +6501,13 @@ test "headless ask rejects concurrent and nested interrupt scopes without overwr
     thread.join();
     try std.testing.expectEqual(@as(u8, 1), result.load(.seq_cst));
 
-    _ = std.c.raise(std.posix.SIG.INT);
+    testRaiseHeadlessInterrupt();
     try std.testing.expect(headless_interrupt.cancel_requested.load(.seq_cst));
 }
 
 test "headless ask restores the exact previous SIGINT handler" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6505,6 +6531,8 @@ test "headless ask restores the exact previous SIGINT handler" {
 }
 
 test "headless ask redelivers consumed SIGINT after restoring the previous handler" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6529,6 +6557,8 @@ test "headless ask redelivers consumed SIGINT after restoring the previous handl
 }
 
 test "headless ask returns nonzero when the restored SIGINT handler returns" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6566,6 +6596,8 @@ test "headless ask returns nonzero when the restored SIGINT handler returns" {
 }
 
 test "headless ask startup cancellation prevents later hooks" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6628,13 +6660,18 @@ test "headless ask startup cancellation prevents later hooks" {
 test "headless ask resets signal-visible cancellation state for each scope" {
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
+    const interrupt = if (comptime std_builtin.os.tag == .windows) @import("../shared/win32.zig").CTRL_C_EVENT else std.posix.SIG.INT;
     var scope = try headless_interrupt.Scope.install(true);
-    headless_interrupt.handle(std.posix.SIG.INT);
+    _ = headless_interrupt.handle(interrupt);
     try std.testing.expect(headless_interrupt.cancel_requested.load(.seq_cst));
     scope.deinit();
 
-    headless_interrupt.handle(std.posix.SIG.INT);
-    try std.testing.expect(headless_interrupt.cancel_requested.load(.seq_cst));
+    // On Windows a second Ctrl+C within the double-interrupt window exits the
+    // process, and the removed console handler never receives a late event.
+    if (comptime std_builtin.os.tag != .windows) {
+        _ = headless_interrupt.handle(interrupt);
+        try std.testing.expect(headless_interrupt.cancel_requested.load(.seq_cst));
+    }
 
     var next = try headless_interrupt.Scope.install(true);
     defer next.deinit();
@@ -6642,6 +6679,8 @@ test "headless ask resets signal-visible cancellation state for each scope" {
 }
 
 test "headless ask preserves signal ordering during install and teardown" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6670,6 +6709,8 @@ test "headless ask preserves signal ordering during install and teardown" {
 }
 
 test "headless ask cross-thread SIGINT teardown and reuse target only the active scope" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6710,6 +6751,8 @@ test "headless ask cross-thread SIGINT teardown and reuse target only the active
 }
 
 test "disabled headless ask scope leaves the interactive SIGINT handler untouched" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6774,11 +6817,18 @@ test "pf ask auto mode applies automatic clear and caution without a prompt" {
     };
     var direct_review = TestReviewTurn.init("Inspect the workspace.", direct_call);
     const direct = try requestToolPermissionOutcomeWithRequest(&ctx, arena, direct_call, direct_review.context(), .auto, &.{}, null, null, &.{}, null);
-    try std.testing.expectEqual(
-        command_admission.ShellAuthorizationSource.auto_classifier,
-        direct.execution_authority.?.run_command.shell_allowed.source,
-    );
-    try std.testing.expectEqual(@as(usize, 1), fake.calls);
+    // Windows has no login shell profile: the legacy environment admits the
+    // direct plan without review, as it does on Linux and macOS.
+    const direct_reviews: usize = if (std_builtin.os.tag == .windows) 0 else 1;
+    if (comptime std_builtin.os.tag == .windows) {
+        try std.testing.expect(direct.execution_authority.?.run_command == .direct_only);
+    } else {
+        try std.testing.expectEqual(
+            command_admission.ShellAuthorizationSource.auto_classifier,
+            direct.execution_authority.?.run_command.shell_allowed.source,
+        );
+    }
+    try std.testing.expectEqual(direct_reviews, fake.calls);
 
     const accepted_call: ToolCall = .{
         .id = "accepted",
@@ -6794,7 +6844,7 @@ test "pf ask auto mode applies automatic clear and caution without a prompt" {
             authority.source,
         ),
     }
-    try std.testing.expectEqual(@as(usize, 2), fake.calls);
+    try std.testing.expectEqual(direct_reviews + 1, fake.calls);
 
     fake.decision = .caution;
     const check_call: ToolCall = .{
@@ -6806,7 +6856,7 @@ test "pf ask auto mode applies automatic clear and caution without a prompt" {
     const blocked = try requestToolPermissionOutcomeWithRequest(&ctx, arena, check_call, check_review.context(), .auto, &.{}, null, null, &.{}, null);
     try std.testing.expectEqual(ToolPermissionDecision.deny, blocked.decision);
     try std.testing.expectEqual(types.ToolPermissionDenialReason.review_caution, blocked.denial_reason.?);
-    try std.testing.expectEqual(@as(usize, 3), fake.calls);
+    try std.testing.expectEqual(direct_reviews + 2, fake.calls);
     try std.testing.expectEqualStrings("", stderr_capture.bytes.items);
 }
 
@@ -7137,8 +7187,8 @@ test "pf ask prepared file mutation callback preserves terminal permission promp
         .name = "write_file",
         .arguments_json = try std.fmt.allocPrint(
             arena,
-            "{{\"path\":\"{s}\",\"content\":\"hello\\n\"}}",
-            .{target_path},
+            "{{\"path\":{f},\"content\":\"hello\\n\"}}",
+            .{std.json.fmt(target_path, .{})},
         ),
     };
     var prepared = switch (try tool_admission.prepareFileMutationCall(arena, call, .{
@@ -7232,8 +7282,8 @@ test "pf ask auto mode uses automatic allow for external prepared file mutation"
     const target_path = try std.fs.path.join(arena, &.{ external, "desktop-test.txt" });
     const arguments_json = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"hello\\n\"}}",
-        .{target_path},
+        "{{\"path\":{f},\"content\":\"hello\\n\"}}",
+        .{std.json.fmt(target_path, .{})},
     );
     const call: ToolCall = .{
         .id = "external-write",
@@ -8073,7 +8123,7 @@ test "saved ask ignores existing legacy task files" {
         tasks_path,
         .{
             .truncate = true,
-            .permissions = std.Io.File.Permissions.fromMode(0o600),
+            .permissions = io_mod.private_file_permissions,
         },
     );
     tasks_file.close(io_mod.getIo());
@@ -8494,7 +8544,7 @@ test "saved API key 401 discards the fresh pristine session" {
     try std.testing.expectEqual(@as(usize, 0), parsed.value.object.get("tool_calls").?.array.items.len);
     try std.testing.expect(parsed.value.object.get("auth_failure") != null);
 
-    var store = try session_store.Store.initFromHome(alloc, home, "/tmp/pf-test");
+    var store = try session_store.Store.initFromHome(alloc, home, test_ask_workspace);
     defer store.deinit(alloc);
     var sessions = try store.list(alloc);
     defer {
@@ -8504,7 +8554,7 @@ test "saved API key 401 discards the fresh pristine session" {
     try std.testing.expectEqual(@as(usize, 0), sessions.items.len);
     try std.testing.expectError(
         error.NoSavedSessions,
-        store.resumeTargetForWrite(alloc, .last, "/tmp/pf-test", .{}),
+        store.resumeTargetForWrite(alloc, .last, test_ask_workspace, .{}),
     );
 }
 
@@ -8556,12 +8606,12 @@ test "saved failures retain ineligible session lifecycles" {
             var seed_store = try session_store.Store.initFromHome(
                 alloc,
                 home,
-                "/tmp/pf-test",
+                test_ask_workspace,
             );
             defer seed_store.deinit(alloc);
             var seed_state = try testAskDurableState(
                 alloc,
-                "/tmp/pf-test",
+                test_ask_workspace,
                 "cli-protected-resume",
             );
             defer seed_state.deinit(alloc);
@@ -8608,7 +8658,7 @@ test "saved failures retain ineligible session lifecycles" {
         var store = try session_store.Store.initFromHome(
             alloc,
             home,
-            "/tmp/pf-test",
+            test_ask_workspace,
         );
         defer store.deinit(alloc);
         var loaded = try store.loadReadOnly(alloc, session_id);
@@ -8647,7 +8697,7 @@ test "saved auth fact followed by a prompt error retains the session" {
         runWithDeps(alloc, &.{"hello"}, testConfig(), deps),
     );
     try std.testing.expectEqual(@as(usize, 0), probe.calls);
-    var store = try session_store.Store.initFromHome(alloc, home, "/tmp/pf-test");
+    var store = try session_store.Store.initFromHome(alloc, home, test_ask_workspace);
     defer store.deinit(alloc);
     var sessions = try store.list(alloc);
     defer {
@@ -8711,7 +8761,7 @@ test "indeterminate saved auth cleanup keeps the primary result and session id" 
     const session_id = parsed.value.object.get("session_id").?.string;
     try std.testing.expect(session_id.len > 0);
 
-    var store = try session_store.Store.initFromHome(alloc, home, "/tmp/pf-test");
+    var store = try session_store.Store.initFromHome(alloc, home, test_ask_workspace);
     defer store.deinit(alloc);
     var loaded = try store.loadReadOnly(alloc, session_id);
     defer loaded.deinit(alloc);
@@ -9102,8 +9152,8 @@ test "pf ask JSON clips ask_user_question text at a UTF-8 boundary" {
     question_bytes[256] = 0xa9;
     const arguments_json = try std.fmt.allocPrint(
         alloc,
-        "{{\"questions\":[{{\"question\":\"{s}\"}}]}}",
-        .{question_bytes[0..]},
+        "{{\"questions\":[{{\"question\":{f}}}]}}",
+        .{std.json.fmt(question_bytes[0..], .{})},
     );
     defer alloc.free(arguments_json);
 
@@ -9189,9 +9239,9 @@ test "resumed ask preserves user and image identity after a retained mid-turn ch
         const test_home = try TestAskHome.install(alloc, home);
         defer test_home.deinit();
         const session_id = "retained-open-session";
-        var store = try session_store.Store.initFromHome(alloc, home, "/tmp/pf-test");
+        var store = try session_store.Store.initFromHome(alloc, home, test_ask_workspace);
         defer store.deinit(alloc);
-        var state = try testAskDurableState(alloc, "/tmp/pf-test", session_id);
+        var state = try testAskDurableState(alloc, test_ask_workspace, session_id);
         defer state.deinit(alloc);
         var images = [_]ImageAttachment{.{
             .id = 7,
@@ -9265,9 +9315,9 @@ test "recovery continuation checks local checkpoint before credentials" {
     defer test_home.deinit();
 
     const session_id = "completed-session";
-    var store = try session_store.Store.initFromHome(alloc, home, "/tmp/pf-test");
+    var store = try session_store.Store.initFromHome(alloc, home, test_ask_workspace);
     defer store.deinit(alloc);
-    var state = try testAskDurableState(alloc, "/tmp/pf-test", session_id);
+    var state = try testAskDurableState(alloc, test_ask_workspace, session_id);
     defer state.deinit(alloc);
     var writable = try store.startWritableSession(alloc, state);
     writable.deinit(alloc);

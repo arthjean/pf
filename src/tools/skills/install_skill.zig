@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const builtin_skills = @import("../../builtins/skills.zig");
 const io_mod = @import("../../core/shared/io.zig");
 const model_context_encoding = @import("../../core/shared/model_context_encoding.zig");
@@ -323,6 +324,8 @@ test "run command compatibility reports managed filesystem failures" {
 }
 
 test "install_skill owner keeps an unmatched source inside the status line" {
+    // Windows file names cannot contain the newline and angle brackets this fixture uses.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -346,6 +349,8 @@ test "install_skill owner keeps an unmatched source inside the status line" {
 }
 
 test "install_skill owner reports status when an unsafe root cannot be installed" {
+    // A backslash is a path separator on Windows, so no directory name can contain one.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

@@ -478,6 +478,8 @@ test "captured invocation provider projection shell-quotes every argv word" {
 }
 
 test "profile normalization defaults captured and persistent execution to user" {
+    // Windows has no login shell profiles: environment() returns .legacy by design.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -493,6 +495,8 @@ test "profile normalization defaults captured and persistent execution to user" 
 }
 
 test "unsupported login shell profiles fall back for captured and persistent execution" {
+    // Windows has no login shell profiles: environment() returns .legacy by design.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();

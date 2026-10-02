@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const contracts = @import("contracts.zig");
 const operation = @import("operation.zig");
 const recovery = @import("recovery.zig");
@@ -6106,7 +6107,7 @@ fn test_process_owner(
     process_provider: process_provider_mod.Provider,
 ) !contracts.ProcessOwner {
     var pid_buffer: [32]u8 = undefined;
-    const pid = std.c.getpid();
+    const pid = io_mod.currentProcessId();
     const pid_text = try std.fmt.bufPrint(&pid_buffer, "{d}", .{pid});
     const token = try process_provider.captureToken(
         alloc,
@@ -6824,6 +6825,8 @@ test "tmux recovery propagates execution scope allocation failure without durabl
 }
 
 test "tmux recovery propagates proof capability failure without durable loss" {
+    // Drives tmux recovery; tmux does not exist on Windows.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = try TestStoreFixture.init(alloc, test_options());
     defer fixture.deinit();
@@ -6874,7 +6877,7 @@ test "tmux recovery propagates proof capability failure without durable loss" {
     defer proof_file.close(std.testing.io);
     try proof_file.setPermissions(
         std.testing.io,
-        std.Io.File.Permissions.fromMode(0o600),
+        io_mod.private_file_permissions,
     );
 
     {

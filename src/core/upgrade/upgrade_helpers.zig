@@ -206,6 +206,8 @@ fn clearConnection(control: TransferControl) void {
 }
 
 test "transfer interrupt wakes a blocked socket read" {
+    // pf upgrade is disabled and unavailable on Windows. Its interrupt shuts
+    // the socket down gracefully, which does not wake a pending Windows receive.
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
     const zio = io_mod.getIo();
     const addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);

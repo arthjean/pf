@@ -1880,7 +1880,7 @@ test "provisional skill labels fall back when encoded resource exceeds the progr
         const resource = try alloc.alloc(u8, len);
         defer alloc.free(resource);
         @memset(resource, 'a');
-        const json = try std.fmt.allocPrint(alloc, "{{\"resource\":\"{s}\"}}", .{resource});
+        const json = try std.fmt.allocPrint(alloc, "{{\"resource\":{f}}}", .{std.json.fmt(resource, .{})});
         defer alloc.free(json);
         try statuses.publish(&hooks, alloc, 7, "skill_1", "skill", .read, eligibleActionLabel("skill"), "skill:opaque/location", json);
         const text = capture.events.items[1].progress.text;

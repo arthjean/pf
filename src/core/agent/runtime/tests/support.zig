@@ -170,6 +170,15 @@ const test_tools = [_]tool_dispatch.Tool{
 };
 const test_tool_registry = tool_dispatch.Registry{ .tools = test_tools[0..] };
 
+/// Removes a directory symlink, ignoring failure. Windows removes one as a
+/// directory.
+fn deleteDirectorySymlink(dir: std.Io.Dir, path: []const u8) void {
+    if (builtin.os.tag == .windows)
+        dir.deleteDir(io_mod.getIo(), path) catch {}
+    else
+        dir.deleteFile(io_mod.getIo(), path) catch {};
+}
+
 fn testExecutionAuthority(call: ToolCall) command_admission.ToolExecutionAuthority {
     if (!std.mem.eql(u8, call.name, "shell")) return .ordinary;
     if (std.mem.find(u8, call.arguments_json, "\"action\":\"run\"") == null) {
@@ -1232,7 +1241,7 @@ pub const FakeAgentRuntimeDeps = struct {
         if (self.swap_link_on_permission) |link| {
             if (self.swap_link_target_on_permission) |target| {
                 var cwd = std.Io.Dir.cwd();
-                cwd.deleteFile(io_mod.getIo(), link) catch {};
+                deleteDirectorySymlink(cwd, link);
                 try cwd.symLink(io_mod.getIo(), target, link, .{ .is_directory = true });
                 self.swap_link_on_permission = null;
                 self.swap_link_target_on_permission = null;
@@ -1543,7 +1552,7 @@ pub const FakeAgentRuntimeDeps = struct {
         if (swap_link) |link| {
             const target = swap_target orelse return error.InvalidToolArguments;
             var cwd = std.Io.Dir.cwd();
-            cwd.deleteFile(io_mod.getIo(), link) catch {};
+            deleteDirectorySymlink(cwd, link);
             try cwd.symLink(io_mod.getIo(), target, link, .{ .is_directory = true });
         }
         if (should_return_ordinary_cancel) return error.Cancelled;

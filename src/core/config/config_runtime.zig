@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const agent_steps = @import("agent_steps.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const io_mod = @import("../shared/io.zig");
@@ -2103,6 +2104,9 @@ fn stableEmptyTestEnviron() !*const std.process.Environ.Map {
     return map;
 }
 
+// Paths joined by the code under test use the native separator.
+const test_sep = std.fs.path.sep_str;
+
 const TestHome = struct {
     alloc: Allocator,
     map: std.process.Environ.Map,
@@ -2216,10 +2220,10 @@ test "discoverPathsFromHome returns home-backed and workspace paths" {
     defer paths.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings("/Users/tester", paths.home_dir.?);
-    try std.testing.expectEqualStrings("/Users/tester/.pf/settings.json", paths.user_settings.?);
-    try std.testing.expectEqualStrings("/tmp/workspace/.pf.json", paths.workspace_settings);
-    try std.testing.expectEqualStrings("/Users/tester/.pf", paths.home_pf_dir.?);
-    try std.testing.expectEqualStrings("/Users/tester/.pf/sessions", paths.sessions_dir.?);
+    try std.testing.expectEqualStrings("/Users/tester" ++ test_sep ++ ".pf" ++ test_sep ++ "settings.json", paths.user_settings.?);
+    try std.testing.expectEqualStrings("/tmp/workspace" ++ test_sep ++ ".pf.json", paths.workspace_settings);
+    try std.testing.expectEqualStrings("/Users/tester" ++ test_sep ++ ".pf", paths.home_pf_dir.?);
+    try std.testing.expectEqualStrings("/Users/tester" ++ test_sep ++ ".pf" ++ test_sep ++ "sessions", paths.sessions_dir.?);
     try std.testing.expectEqualStrings("/tmp/workspace", paths.workspace_root);
 }
 
@@ -2251,6 +2255,8 @@ test "merged settings rejects symlinked durable root reload path" {
 }
 
 test "merged settings rejects writable user policy files" {
+    // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
@@ -2285,7 +2291,7 @@ test "discoverPathsFromHome trims trailing workspace slashes" {
     defer paths.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings("/tmp/workspace", paths.workspace_root);
-    try std.testing.expectEqualStrings("/tmp/workspace/.pf.json", paths.workspace_settings);
+    try std.testing.expectEqualStrings("/tmp/workspace" ++ test_sep ++ ".pf.json", paths.workspace_settings);
 }
 
 test "discoverPathsFromHome rejects empty workspace root" {
@@ -2303,7 +2309,7 @@ test "discoverPaths with absent HOME returns owned workspace paths only" {
     try std.testing.expect(paths.home_pf_dir == null);
     try std.testing.expect(paths.sessions_dir == null);
     try std.testing.expectEqualStrings("/tmp/workspace", paths.workspace_root);
-    try std.testing.expectEqualStrings("/tmp/workspace/.pf.json", paths.workspace_settings);
+    try std.testing.expectEqualStrings("/tmp/workspace" ++ test_sep ++ ".pf.json", paths.workspace_settings);
 }
 
 test "ensureStateLayout creates only home-backed state directories" {
@@ -2347,8 +2353,8 @@ test "loadMergedSettings merges project defaults before profile layers" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"model\":\"user-model\",\"permission_mode\":\"ask\",\"max_agent_steps\":8,\"workspaces\":{{\"{s}\":{{\"model\":\"override-model\",\"permission_mode\":\"auto\"}}}}}}",
-        .{workspace_root},
+        "{{\"model\":\"user-model\",\"permission_mode\":\"ask\",\"max_agent_steps\":8,\"workspaces\":{{{f}:{{\"model\":\"override-model\",\"permission_mode\":\"auto\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
 
@@ -2380,8 +2386,8 @@ test "provider routing settings merge across layers with project defaults" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"provider_order\":[\"bedrock\",\"anthropic\"],\"provider_strict\":true,\"workspaces\":{{\"{s}\":{{\"provider_order\":[\"vertex\"],\"provider_strict\":false}}}}}}",
-        .{workspace_root},
+        "{{\"provider_order\":[\"bedrock\",\"anthropic\"],\"provider_strict\":true,\"workspaces\":{{{f}:{{\"provider_order\":[\"vertex\"],\"provider_strict\":false}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
 
@@ -2447,8 +2453,8 @@ test "provider routing empty list clears an inherited order" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"provider_order\":[\"bedrock\"],\"workspaces\":{{\"{s}\":{{\"provider_order\":[]}}}}}}",
-        .{workspace_root},
+        "{{\"provider_order\":[\"bedrock\"],\"workspaces\":{{{f}:{{\"provider_order\":[]}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
 
@@ -2528,8 +2534,8 @@ test "context limits resolve command line over workspace and global profile valu
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"context_limits\":{{\"skill_chunk_bytes\":111,\"mcp_description_bytes\":\"off\"}},\"workspaces\":{{\"{s}\":{{\"context_limits\":{{\"skill_chunk_bytes\":222}}}}}}}}",
-        .{workspace_root},
+        "{{\"context_limits\":{{\"skill_chunk_bytes\":111,\"mcp_description_bytes\":\"off\"}},\"workspaces\":{{{f}:{{\"context_limits\":{{\"skill_chunk_bytes\":222}}}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -2574,8 +2580,8 @@ test "loadStartupStatusSettings merges project defaults before profile layers" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"model\":\"user-model\",\"permission_mode\":\"ask\",\"max_agent_steps\":8,\"workspaces\":{{\"/other\":{{\"model\":\"wrong\"}},\"{s}\":{{\"model\":\"override-model\",\"permission_mode\":\"yolo\"}}}}}}",
-        .{workspace_root},
+        "{{\"model\":\"user-model\",\"permission_mode\":\"ask\",\"max_agent_steps\":8,\"workspaces\":{{\"/other\":{{\"model\":\"wrong\"}},{f}:{{\"model\":\"override-model\",\"permission_mode\":\"yolo\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
 
@@ -2604,8 +2610,8 @@ test "loadMergedSettings applies startup scrollback precedence with normalized w
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"startup_scrollback\":false,\"workspaces\":{{\"{s}\":{{\"startup_scrollback\":false}}}}}}",
-        .{workspace_root},
+        "{{\"startup_scrollback\":false,\"workspaces\":{{{f}:{{\"startup_scrollback\":false}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
 
@@ -2787,8 +2793,8 @@ test "skill_symlink_authorities is profile-only and workspace overrides replace 
 
     const user_settings = try std.fmt.allocPrint(
         alloc,
-        "{{\"skill_symlink_authorities\":[\"/opt/global-skills\"],\"workspaces\":{{\"{s}\":{{\"skill_symlink_authorities\":[\"/opt/workspace-skills\"]}}}}}}",
-        .{workspace_root},
+        "{{\"skill_symlink_authorities\":[\"/opt/global-skills\"],\"workspaces\":{{{f}:{{\"skill_symlink_authorities\":[\"/opt/workspace-skills\"]}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer alloc.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -2964,8 +2970,8 @@ test "workspace override can change effort from high to auto" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"effort\":\"high\",\"workspaces\":{{\"{s}\":{{\"effort\":\"auto\"}}}}}}",
-        .{workspace_root},
+        "{{\"effort\":\"high\",\"workspaces\":{{{f}:{{\"effort\":\"auto\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -2988,8 +2994,8 @@ test "profile workspace settings effort null loads as auto" {
     defer std.testing.allocator.free(workspace_root);
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"effort\":null}}}}}}\n",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"effort\":null}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -3055,8 +3061,8 @@ test "permission rules parse from workspace override" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"permission\":{{\"edit\":{{\"src/*\":\"allow\"}},\"bash\":{{\"rm -rf*\":\"deny\"}},\"open_url\":\"ask\"}}}}}}}}",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"permission\":{{\"edit\":{{\"src/*\":\"allow\"}},\"bash\":{{\"rm -rf*\":\"deny\"}},\"open_url\":\"ask\"}}}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -3083,8 +3089,8 @@ test "later permission layers replace earlier rules" {
     defer std.testing.allocator.free(workspace_root);
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"permission\":{{\"edit\":\"allow\"}},\"workspaces\":{{\"{s}\":{{\"permission\":{{\"bash\":\"deny\"}}}}}}}}\n",
-        .{workspace_root},
+        "{{\"permission\":{{\"edit\":\"allow\"}},\"workspaces\":{{{f}:{{\"permission\":{{\"bash\":\"deny\"}}}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -3111,8 +3117,8 @@ test "empty workspace override permission clears earlier rules" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"permission\":{{\"edit\":\"allow\"}},\"workspaces\":{{\"{s}\":{{\"permission\":{{}}}}}}}}",
-        .{workspace_root},
+        "{{\"permission\":{{\"edit\":\"allow\"}},\"workspaces\":{{{f}:{{\"permission\":{{}}}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -3188,7 +3194,7 @@ test "userSettingsPath follows absent and present HOME" {
 
         const path = (try userSettingsPath(std.testing.allocator)).?;
         defer std.testing.allocator.free(path);
-        try std.testing.expectEqualStrings("/Users/tester/.pf/settings.json", path);
+        try std.testing.expectEqualStrings("/Users/tester" ++ test_sep ++ ".pf" ++ test_sep ++ "settings.json", path);
     }
 }
 
@@ -3208,7 +3214,7 @@ test "HOME test helper remains stable across absent A and B states" {
 
         const path = (try userSettingsPath(std.testing.allocator)).?;
         defer std.testing.allocator.free(path);
-        try std.testing.expectEqualStrings("/home/a/.pf/settings.json", path);
+        try std.testing.expectEqualStrings("/home/a" ++ test_sep ++ ".pf" ++ test_sep ++ "settings.json", path);
     }
 
     {
@@ -3217,7 +3223,7 @@ test "HOME test helper remains stable across absent A and B states" {
 
         const path = (try userSettingsPath(std.testing.allocator)).?;
         defer std.testing.allocator.free(path);
-        try std.testing.expectEqualStrings("/home/b/.pf/settings.json", path);
+        try std.testing.expectEqualStrings("/home/b" ++ test_sep ++ ".pf" ++ test_sep ++ "settings.json", path);
     }
 }
 
@@ -3259,8 +3265,8 @@ test "explicit user permission mutation writes top level and preserves local rul
     defer std.testing.allocator.free(workspace_root);
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"permission\":{{\"bash\":{{\"local *\":\"allow\"}}}}}}}}}}\n",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"permission\":{{\"bash\":{{\"local *\":\"allow\"}}}}}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -3406,8 +3412,8 @@ test "addPermissionRule preserves unrelated workspace override keys" {
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -3437,8 +3443,8 @@ test "addPermissionRule preserves non-object category under star" {
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"permission\":{{\"bash\":true}}}}}}}}",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"permission\":{{\"bash\":true}}}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -3501,8 +3507,8 @@ test "removePermissionRule missing rule returns false without rewrite" {
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"permission\":{{\"bash\":{{\"git *\":\"allow\"}}}}}}}}}}\n",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"permission\":{{\"bash\":{{\"git *\":\"allow\"}}}}}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -3563,8 +3569,8 @@ test "user effort preference preserves unrelated workspace override keys" {
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -3605,8 +3611,8 @@ test "user fast mode preference writes bool and preserves unrelated keys" {
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -3647,8 +3653,8 @@ test "user startup scrollback preference writes bool and preserves unrelated key
 
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"workspaces\":{{\"{s}\":{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"model\":\"my-model\",\"permission_mode\":\"auto\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -3854,8 +3860,8 @@ test "workspace statusline is global only in ordinary and detailed loads" {
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"statusLine\":{{\"workspace\":true}},\"workspaces\":{{\"{s}\":{{\"statusLine\":{{\"workspace\":\"ignored\"}}}}}}}}\n",
-        .{workspace_root},
+        "{{\"statusLine\":{{\"workspace\":true}},\"workspaces\":{{{f}:{{\"statusLine\":{{\"workspace\":\"ignored\"}}}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -3883,8 +3889,8 @@ test "ordinary and detailed loads agree on workspace overrides with legacy statu
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"startup_scrollback\":true,\"workspaces\":{{\"{s}\":{{\"statusLine\":7,\"startup_scrollback\":false}}}}}}\n",
-        .{workspace_root},
+        "{{\"startup_scrollback\":true,\"workspaces\":{{{f}:{{\"statusLine\":7,\"startup_scrollback\":false}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -3960,8 +3966,8 @@ test "notification settings merge global and workspace while project values are 
 
     const user_settings = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"notifications\":{{\"turn_end\":true,\"attention_required\":false}},\"workspaces\":{{\"{s}\":{{\"notifications\":{{\"attention_required\":true}}}}}}}}",
-        .{workspace_root},
+        "{{\"notifications\":{{\"turn_end\":true,\"attention_required\":false}},\"workspaces\":{{{f}:{{\"notifications\":{{\"attention_required\":true}}}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -4004,8 +4010,8 @@ test "detailed settings diagnose legacy workspace preferences" {
     defer std.testing.allocator.free(workspace_root);
     const fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"model\":\"user/model\",\"workspaces\":{{\"{s}\":{{\"model\":\"legacy/model\",\"statusLine\":{{\"session\":true}}}}}}}}\n",
-        .{workspace_root},
+        "{{\"model\":\"user/model\",\"workspaces\":{{{f}:{{\"model\":\"legacy/model\",\"statusLine\":{{\"session\":true}}}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -4037,8 +4043,8 @@ test "detailed settings preserve model precedence and source" {
     defer std.testing.allocator.free(workspace_root);
     const user_fixture = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"model\":\"user/model\",\"workspaces\":{{\"{s}\":{{\"model\":\"workspace/model\"}}}}}}\n",
-        .{workspace_root},
+        "{{\"model\":\"user/model\",\"workspaces\":{{{f}:{{\"model\":\"workspace/model\"}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_fixture);
@@ -4065,10 +4071,10 @@ test "detailed settings expose target sources and permission views" {
         std.testing.allocator,
         "{{\"model\":\"user/model\",\"permission_mode\":\"ask\",\"fast_mode\":true,\"input_appearance\":\"tint\",\"startup_scrollback\":false," ++
             "\"prompt_history\":{{\"enabled\":false}},\"statusLine\":{{\"sandbox\":true,\"context\":false,\"session\":true}}," ++
-            "\"permission\":{{\"bash\":{{\"user *\":\"allow\"}}}},\"workspaces\":{{\"{s}\":{{" ++
+            "\"permission\":{{\"bash\":{{\"user *\":\"allow\"}}}},\"workspaces\":{{{f}:{{" ++
             "\"model\":\"workspace/model\",\"permission_mode\":\"auto\",\"input_appearance\":\"lines\",\"sandbox\":\"none\",\"permission\":{{\"bash\":{{\"local *\":\"allow\"}}}}" ++
             "}}}}}}\n",
-        .{workspace_root},
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer std.testing.allocator.free(user_settings);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", user_settings);
@@ -4228,8 +4234,8 @@ test "workspace provider definitions stay ignored when a sibling workspace field
     var json: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer json.deinit();
     try json.writer.print(
-        "{{\"providers\":{{\"local\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"http://localhost:11434/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"provider\":\"local\",\"models\":{{\"local\":\"local-model\"}},\"workspaces\":{{\"{s}\":{{\"providers\":{{\"shadow\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"http://localhost:11435/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"effort\":42}}}}}}\n",
-        .{workspace_root},
+        "{{\"providers\":{{\"local\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"http://localhost:11434/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"provider\":\"local\",\"models\":{{\"local\":\"local-model\"}},\"workspaces\":{{{f}:{{\"providers\":{{\"shadow\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"http://localhost:11435/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"effort\":42}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     const user_settings = try json.toOwnedSlice();
     defer std.testing.allocator.free(user_settings);
@@ -4266,8 +4272,8 @@ test "ignored workspace provider definitions with broken protocols stay inert du
     var json: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer json.deinit();
     try json.writer.print(
-        "{{\"providers\":{{\"local\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"http://localhost:11434/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"provider\":\"local\",\"models\":{{\"local\":\"local-model\"}},\"workspaces\":{{\"{s}\":{{\"providers\":{{\"shadow\":{{\"protocol\":\"bogus\",\"base_url\":\"http://localhost:11435/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"effort\":42}}}}}}\n",
-        .{workspace_root},
+        "{{\"providers\":{{\"local\":{{\"protocol\":\"openai-chat-completions\",\"base_url\":\"http://localhost:11434/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"provider\":\"local\",\"models\":{{\"local\":\"local-model\"}},\"workspaces\":{{{f}:{{\"providers\":{{\"shadow\":{{\"protocol\":\"bogus\",\"base_url\":\"http://localhost:11435/v1/\",\"auth\":{{\"type\":\"none\"}}}}}},\"effort\":42}}}}}}\n",
+        .{std.json.fmt(workspace_root, .{})},
     );
     const user_settings = try json.toOwnedSlice();
     defer std.testing.allocator.free(user_settings);
@@ -4325,6 +4331,8 @@ test "invalid user model emits typed diagnostic and project model is ignored" {
 }
 
 test "detailed settings report unsafe user permissions distinctly" {
+    // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
@@ -4412,8 +4420,8 @@ test "update channel resolves only from the global user profile" {
     defer alloc.free(workspace_root);
     const user_settings = try std.fmt.allocPrint(
         alloc,
-        "{{\"update_channel\":\"dev\",\"workspaces\":{{\"{s}\":{{\"update_channel\":\"stable\"}}}}}}",
-        .{workspace_root},
+        "{{\"update_channel\":\"dev\",\"workspaces\":{{{f}:{{\"update_channel\":\"stable\"}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer alloc.free(user_settings);
 
@@ -4465,16 +4473,16 @@ test "additional directories load only from the current profile workspace" {
 
     const settings_fixture = try std.fmt.allocPrint(
         alloc,
-        "{{\"additional_directories\":[\"{s}\"],\"workspaces\":{{\"{s}\":{{\"additional_directories\":[\"{s}\"]}}}}}}\n",
-        .{ global_root, workspace_root, shared_root },
+        "{{\"additional_directories\":[{f}],\"workspaces\":{{{f}:{{\"additional_directories\":[{f}]}}}}}}\n",
+        .{ std.json.fmt(global_root, .{}), std.json.fmt(workspace_root, .{}), std.json.fmt(shared_root, .{}) },
     );
     defer alloc.free(settings_fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", settings_fixture);
 
     const project_fixture = try std.fmt.allocPrint(
         alloc,
-        "{{\"additional_directories\":[\"{s}\"],\"max_agent_steps\":17}}\n",
-        .{project_root},
+        "{{\"additional_directories\":[{f}],\"max_agent_steps\":17}}\n",
+        .{std.json.fmt(project_root, .{})},
     );
     defer alloc.free(project_fixture);
     try writeFixtureFile(tmp.dir, "workspace/.pf.json", project_fixture);
@@ -4518,8 +4526,8 @@ test "detailed settings retain raw additional directory sources beside canonical
     defer alloc.free(shared_source);
     const fixture = try std.fmt.allocPrint(
         alloc,
-        "{{\"workspaces\":{{\"{s}\":{{\"additional_directories\":[\"{s}\"]}}}}}}\n",
-        .{ workspace_root, shared_source },
+        "{{\"workspaces\":{{{f}:{{\"additional_directories\":[{f}]}}}}}}\n",
+        .{ std.json.fmt(workspace_root, .{}), std.json.fmt(shared_source, .{}) },
     );
     defer alloc.free(fixture);
     try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);
@@ -4545,8 +4553,8 @@ test "malformed or duplicate additional directories do not discard sibling setti
     for (invalid_values) |value| {
         const fixture = try std.fmt.allocPrint(
             alloc,
-            "{{\"workspaces\":{{\"{s}\":{{\"model\":\"workspace/model\",\"additional_directories\":{s}}}}}}}\n",
-            .{ workspace_root, value },
+            "{{\"workspaces\":{{{f}:{{\"model\":\"workspace/model\",\"additional_directories\":{s}}}}}}}\n",
+            .{ std.json.fmt(workspace_root, .{}), value },
         );
         defer alloc.free(fixture);
         try writeFixtureFile(tmp.dir, "home/.pf/settings.json", fixture);

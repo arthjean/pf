@@ -86,7 +86,7 @@ pub fn build(b: *std.Build) void {
     run_exe_tests.step.dependOn(b.getInstallStep());
     run_exe_tests.setEnvironmentVariable(
         "PF_TEST_PRODUCT_EXE",
-        b.getInstallPath(.bin, "pf"),
+        b.getInstallPath(.bin, exe.out_filename),
     );
 
     const test_step = b.step("test", "Run tests");

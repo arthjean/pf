@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const model_context_encoding = @import("../shared/model_context_encoding.zig");
 const skill_contract = @import("skill_contract.zig");
@@ -1606,7 +1607,6 @@ fn createSkillSymlinkOrSkip(
     link_path: []const u8,
     is_directory: bool,
 ) !void {
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     dir.symLink(std.testing.io, target_path, link_path, .{ .is_directory = is_directory }) catch |err| {
         if (err == error.AccessDenied or std.mem.eql(u8, @errorName(err), "Permission" ++ "Denied")) {
             return error.SkipZigTest;
@@ -1906,6 +1906,8 @@ const CandidatePathReplacementHook = struct {
 };
 
 test "skill invocation reads validated candidate resources after path replacement" {
+    // Windows refuses to rename a directory pf holds open, so the replacement cannot be staged.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     inline for (.{
         .{ "SKILL.md", "ORIGINAL SKILL BODY", "REPLACEMENT SKILL BODY" },
@@ -2331,6 +2333,8 @@ test "skill resources continue on line-safe UTF-8 boundaries and reject unsafe i
 }
 
 test "skill invocation encodes loaded paths and preserves the skill body" {
+    // Windows file names cannot contain the newline and angle brackets this fixture uses.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

@@ -864,7 +864,9 @@ test "registered candidates expose only authoritative canonical targets" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(std.testing.io, "workspace/build/pkg");
-    try tmp.dir.createDirPath(std.testing.io, "workspace/segment::scope");
+    // Windows file names cannot contain the `::` permission-target delimiter.
+    const delimiter_names = @import("builtin").os.tag != .windows;
+    if (delimiter_names) try tmp.dir.createDirPath(std.testing.io, "workspace/segment::scope");
     {
         var file = try tmp.dir.createFile(std.testing.io, "workspace/build/pkg/existing.txt", .{});
         defer file.close(std.testing.io);
@@ -876,13 +878,7 @@ test "registered candidates expose only authoritative canonical targets" {
     defer alloc.free(existing_path);
     const build_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace/build");
     defer alloc.free(build_path);
-    const delimiter_cwd_path = try io_mod.dirRealpathAlloc(
-        alloc,
-        tmp.dir,
-        "workspace/segment::scope",
-    );
-    defer alloc.free(delimiter_cwd_path);
-    const new_path = try std.fs.path.join(alloc, &.{ workspace, "build/pkg/new.txt" });
+    const new_path = try std.fs.path.join(alloc, &.{ workspace, "build", "pkg", "new.txt" });
     defer alloc.free(new_path);
     const tools = [_]tool_dispatch.Tool{
         builtin_tools.read_file,
@@ -934,24 +930,32 @@ test "registered candidates expose only authoritative canonical targets" {
     try std.testing.expectEqual(context_contract.TargetKind.directory, command.candidate.applicable_targets[0].kind);
     try std.testing.expectEqualStrings(build_path, command.candidate.applicable_targets[0].path);
 
-    var delimiter_command = try prepareReadyCall(alloc, .{
-        .id = "delimiter-command",
-        .name = "shell",
-        .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\",\"cwd\":\"segment::scope\"}",
-    }, .{ .tool_registry = registry, .workspace_root = workspace, .classifiers = test_classifiers });
-    defer delimiter_command.deinit(alloc);
-    try std.testing.expectEqual(
-        @as(usize, 1),
-        delimiter_command.candidate.applicable_targets.len,
-    );
-    try std.testing.expectEqual(
-        context_contract.TargetKind.directory,
-        delimiter_command.candidate.applicable_targets[0].kind,
-    );
-    try std.testing.expectEqualStrings(
-        delimiter_cwd_path,
-        delimiter_command.candidate.applicable_targets[0].path,
-    );
+    if (delimiter_names) {
+        const delimiter_cwd_path = try io_mod.dirRealpathAlloc(
+            alloc,
+            tmp.dir,
+            "workspace/segment::scope",
+        );
+        defer alloc.free(delimiter_cwd_path);
+        var delimiter_command = try prepareReadyCall(alloc, .{
+            .id = "delimiter-command",
+            .name = "shell",
+            .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\",\"cwd\":\"segment::scope\"}",
+        }, .{ .tool_registry = registry, .workspace_root = workspace, .classifiers = test_classifiers });
+        defer delimiter_command.deinit(alloc);
+        try std.testing.expectEqual(
+            @as(usize, 1),
+            delimiter_command.candidate.applicable_targets.len,
+        );
+        try std.testing.expectEqual(
+            context_contract.TargetKind.directory,
+            delimiter_command.candidate.applicable_targets[0].kind,
+        );
+        try std.testing.expectEqualStrings(
+            delimiter_cwd_path,
+            delimiter_command.candidate.applicable_targets[0].path,
+        );
+    }
 
     var write = try prepareReadyCall(alloc, .{
         .id = "write",
@@ -1030,7 +1034,11 @@ test "ordinary applicable target freshness detects retarget and resolution failu
         config.workspace_root,
         &command.candidate,
     ));
-    try tmp.dir.deleteFile(std.testing.io, "workspace/link");
+    // Windows removes a directory symlink as a directory.
+    if (@import("builtin").os.tag == .windows)
+        try tmp.dir.deleteDir(std.testing.io, "workspace/link")
+    else
+        try tmp.dir.deleteFile(std.testing.io, "workspace/link");
     try tmp.dir.symLink(std.testing.io, "new", "workspace/link", .{ .is_directory = true });
     try std.testing.expect(!try ordinaryApplicableTargetsFresh(
         alloc,

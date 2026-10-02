@@ -1427,6 +1427,14 @@ fn unsafeSnapshotPathError(err: anyerror) anyerror {
     };
 }
 
+/// A no-follow open on Windows returns a handle to the symlink itself instead
+/// of failing, so the opened handle must be checked for the expected kind.
+fn rejectWindowsSymlink(handle: anytype, expected: std.Io.File.Kind) !void {
+    if (comptime builtin.os.tag != .windows) return;
+    const stat = handle.stat(io_mod.getIo()) catch |err| return unsafeSnapshotPathError(err);
+    if (stat.kind != expected) return error.ImageSnapshotPathUnsafe;
+}
+
 fn validateSnapshotPathComponent(component: []const u8) !void {
     if (component.len == 0 or
         std.mem.eql(u8, component, ".") or
@@ -1454,6 +1462,7 @@ fn openDirectoryNoFollow(path: []const u8) !std.Io.Dir {
         }) catch |err| return unsafeSnapshotPathError(err);
         dir.close(io_mod.getIo());
         dir = next;
+        try rejectWindowsSymlink(dir, .directory);
     }
     return dir;
 }
@@ -1474,7 +1483,7 @@ fn openOrCreateSnapshotDirectoryNoFollow(path: []const u8) !std.Io.Dir {
 
     var parent = try openDirectoryNoFollow(parent_path);
     defer parent.close(io_mod.getIo());
-    return parent.openDir(
+    var dir = parent.openDir(
         io_mod.getIo(),
         name,
         snapshot_dir_open_options,
@@ -1496,6 +1505,9 @@ fn openOrCreateSnapshotDirectoryNoFollow(path: []const u8) !std.Io.Dir {
         },
         else => return unsafeSnapshotPathError(err),
     };
+    errdefer dir.close(io_mod.getIo());
+    try rejectWindowsSymlink(dir, .directory);
+    return dir;
 }
 
 fn openSnapshotFileNoFollow(path: []const u8) !std.Io.File {
@@ -1506,11 +1518,14 @@ fn openSnapshotFileNoFollow(path: []const u8) !std.Io.File {
 
     var parent = try openDirectoryNoFollow(parent_path);
     defer parent.close(io_mod.getIo());
-    return parent.openFile(io_mod.getIo(), name, .{
+    var file = parent.openFile(io_mod.getIo(), name, .{
         .allow_directory = false,
         .follow_symlinks = false,
         .resolve_beneath = true,
     }) catch |err| return unsafeSnapshotPathError(err);
+    errdefer file.close(io_mod.getIo());
+    try rejectWindowsSymlink(file, .file);
+    return file;
 }
 
 pub fn loadVerifiedSnapshot(
@@ -2920,6 +2935,8 @@ test "extractInlineImageAttachments promotes workspace relative mentions" {
 }
 
 test "normalizePathInput unescapes finder style spaces" {
+    // `\` is a path separator on Windows, so `\ ` is not an escape there; see
+    // "normalizePathInput keeps Windows backslashes".
     if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const normalized = try normalizePathInput(std.testing.allocator, "/Users/me/CleanShot\\ 2026-04-08\\ at\\ 12.16.27.png");
     defer std.testing.allocator.free(normalized);
@@ -2955,7 +2972,9 @@ test "extractInlineImageAttachments replaces supported paths with matching place
         try std.fmt.allocPrint(arena, "look this \"{s}\" now", .{path}),
         try std.fmt.allocPrint(arena, "look this '{s}' now", .{path}),
     };
-    for (inputs) |input| {
+    // Backslash escapes nothing on Windows, so only quoted paths apply there.
+    const first_input: usize = if (comptime builtin.os.tag == .windows) 1 else 0;
+    for (inputs[first_input..]) |input| {
         const result = try extractInlineImageAttachments(arena, "/", input, 1);
         defer result.deinit(arena);
 
@@ -2999,7 +3018,7 @@ test "extractInlineImageAttachments preserves image-looking directories" {
     try tmp.dir.createDir(
         std.testing.io,
         "photos.png",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(workspace);
@@ -3089,7 +3108,11 @@ test "canonical at images load exact filenames and preserve legacy eligibility" 
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    const names = [_][]const u8{ "photo.png", ".png", "a\\b.png", "a\"b.png", " leading.png" };
+    // Windows filenames cannot contain a backslash or a double quote.
+    const names: []const []const u8 = if (comptime builtin.os.tag == .windows)
+        &.{ "photo.png", ".png", " leading.png" }
+    else
+        &.{ "photo.png", ".png", "a\\b.png", "a\"b.png", " leading.png" };
     for (names) |name| try tmp.dir.writeFile(std.testing.io, .{ .sub_path = name, .data = "\x89PNG\r\n\x1a\nfixture" });
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "ab.png", .data = "alternate is not an image" });
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "photo.png,", .data = "selected is plain text" });
@@ -3113,7 +3136,12 @@ test "canonical at images load exact filenames and preserve legacy eligibility" 
     defer unchanged.deinit(alloc);
     try std.testing.expectEqualStrings(selected, unchanged.text);
     try std.testing.expectEqual(@as(usize, 0), unchanged.images.len);
-    for ([_][]const u8{ "@\"photo.png\"other.png", "@\"photo.png", "@\"photo\\.png\"", "(@\"photo.png\")" }) |invalid| {
+    // A backslash is literal in Windows @ paths, so the noncanonical escape applies elsewhere only.
+    const invalid_tokens: []const []const u8 = if (comptime builtin.os.tag == .windows)
+        &.{ "@\"photo.png\"other.png", "@\"photo.png", "(@\"photo.png\")" }
+    else
+        &.{ "@\"photo.png\"other.png", "@\"photo.png", "@\"photo\\.png\"", "(@\"photo.png\")" };
+    for (invalid_tokens) |invalid| {
         try std.testing.expect(splitImagePathToken(invalid) == null);
     }
     const legacy = splitImagePathToken("@photo.png,").?;
@@ -4418,7 +4446,7 @@ test "verified snapshot loading rejects a symlinked directory" {
     try tmp.dir.createDir(
         std.testing.io,
         "owned",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     {
         var owned = try tmp.dir.openDir(std.testing.io, "owned", .{});

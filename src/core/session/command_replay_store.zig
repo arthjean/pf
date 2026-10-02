@@ -1367,7 +1367,7 @@ test "command replay capture spills without losing callback order" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -1407,10 +1407,7 @@ test "command replay capture spills without losing callback order" {
         replay_path,
         .{ .follow_symlinks = false },
     );
-    try std.testing.expectEqual(
-        @as(u32, 0o600),
-        replay_stat.permissions.toMode() & 0o777,
-    );
+    try io_mod.expectPrivateFile(replay_stat);
     var reader = try Reader.open(alloc, &capability, descriptor);
     defer reader.deinit();
 
@@ -1470,7 +1467,7 @@ test "saved and ephemeral replay backings share collision handling" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -1500,6 +1497,8 @@ test "saved and ephemeral replay backings share collision handling" {
         createSpoolWithStem(alloc, .{ .saved = &capability }, stem),
     );
 
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return;
     const temp_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(temp_path);
     var ephemeral_store = EphemeralStore.initForTesting(alloc, temp_path);
@@ -1525,6 +1524,8 @@ test "saved and ephemeral replay backings share collision handling" {
 }
 
 test "ephemeral command replay unlinks backing before publication and remains readable" {
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1574,6 +1575,8 @@ test "ephemeral command replay unlinks backing before publication and remains re
 }
 
 test "agent command replay preserves secrets split across callback frames" {
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1615,6 +1618,8 @@ test "agent command replay preserves secrets split across callback frames" {
 }
 
 test "agent command replay pages stay contiguous across utf8 boundaries" {
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1667,6 +1672,8 @@ test "agent command replay pages stay contiguous across utf8 boundaries" {
 }
 
 test "agent command replay keeps split utf8 valid and streams oversized secret-bearing lines" {
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1716,6 +1723,8 @@ test "agent command replay keeps split utf8 valid and streams oversized secret-b
 }
 
 test "agent command replay preserves oversized sensitive assignments split after delimiters" {
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const delimiters = [_][]const u8{ "=", "=\"", "='" };
 
@@ -1761,6 +1770,8 @@ test "agent command replay preserves oversized sensitive assignments split after
 }
 
 test "agent command replay streams non-secret oversized lines without omission" {
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1804,7 +1815,7 @@ test "saved command replay pages and searches beyond eight mebibytes with bounde
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -1862,7 +1873,7 @@ test "command replay reader rejects descriptor and frame corruption" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,
@@ -1939,6 +1950,8 @@ test "command replay reader rejects descriptor and frame corruption" {
 }
 
 test "failed ephemeral replay reader construction leaves its backing reusable" {
+    // Ephemeral replay unlinks an open backing file, which Windows does not support.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1967,7 +1980,9 @@ test "failed ephemeral replay reader construction leaves its backing reusable" {
 }
 
 test "command replay reader storage does not grow" {
-    try std.testing.expectEqual(@as(usize, 8256), @sizeOf(Reader));
+    // A Windows file handle is pointer-sized, which widens the file union.
+    const expected: usize = if (comptime builtin.os.tag == .windows) 8264 else 8256;
+    try std.testing.expectEqual(expected, @sizeOf(Reader));
 }
 
 test "command replay cleanup removes tentative and retained spools exactly once" {
@@ -1980,7 +1995,7 @@ test "command replay cleanup removes tentative and retained spools exactly once"
     try tmp.dir.createDir(
         io_mod.getIo(),
         "session",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var session_dir = try tmp.dir.openDir(io_mod.getIo(), "session", .{
         .iterate = true,

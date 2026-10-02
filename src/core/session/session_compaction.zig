@@ -1186,7 +1186,8 @@ test "compaction drops a torn tail the way the open scan truncates it" {
     try writeFatSessionLog(alloc, &dir, fat);
     // Append a torn partial frame: the open scan would truncate it, so the
     // compacted log must end at the last complete frame.
-    var file = try dir.dir.openFile(std.testing.io, events_file, .{ .mode = .write_only });
+    // Windows needs read access on the handle to query its length.
+    var file = try dir.dir.openFile(std.testing.io, events_file, .{ .mode = .read_write });
     {
         defer file.close(std.testing.io);
         const len = try file.length(std.testing.io);

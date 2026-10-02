@@ -532,11 +532,24 @@ test "isTruthy parses accepted and rejected values" {
     try std.testing.expect(!isTruthy(null));
 }
 
+/// Returns `path` with each `/` after the fake home replaced by the native
+/// separator, matching what `std.fs.path.join` produces.
+fn nativeTestPath(comptime path: []const u8) []const u8 {
+    const native = comptime native: {
+        var bytes: [path.len]u8 = path[0..path.len].*;
+        for (bytes["/tmp/fake-home".len..]) |*byte| {
+            if (byte.* == '/') byte.* = std.fs.path.sep;
+        }
+        break :native bytes;
+    };
+    return &native;
+}
+
 test "home default log path uses pf logs directory" {
     const alloc = std.testing.allocator;
     const path = try defaultLogPathForHome(alloc, "/tmp/fake-home");
     defer alloc.free(path);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/logs/trace.log", path);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/logs/trace.log"), path);
 }
 
 test "fallback default log path uses tmp trace path" {

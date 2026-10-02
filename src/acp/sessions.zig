@@ -2353,10 +2353,11 @@ test "ACP host-disabled new load and resume skip project MCP effects" {
         &.{ workspace_path, "project-mcp-launched" },
     );
     defer alloc.free(marker_path);
+    const marker_script = try std.fmt.allocPrint(arena, "printf launched > {s}", .{marker_path});
     const project_json = try std.fmt.allocPrint(
         alloc,
-        "{{\"mcpServers\":{{\"fixture\":{{\"command\":\"/bin/sh\",\"args\":[\"-c\",\"printf launched > {s}\"]}},\"remote\":{{\"type\":\"http\",\"url\":\"http://127.0.0.1:1/mcp\",\"startup_timeout_ms\":5000}}}}}}",
-        .{marker_path},
+        "{{\"mcpServers\":{{\"fixture\":{{\"command\":\"/bin/sh\",\"args\":[\"-c\",{f}]}},\"remote\":{{\"type\":\"http\",\"url\":\"http://127.0.0.1:1/mcp\",\"startup_timeout_ms\":5000}}}}}}",
+        .{std.json.fmt(marker_script, .{})},
     );
     defer alloc.free(project_json);
     try tmp.dir.writeFile(io_mod.getIo(), .{
@@ -2396,8 +2397,8 @@ test "ACP host-disabled new load and resume skip project MCP effects" {
     }, 0..) |restore, index| {
         const params = try std.fmt.allocPrint(
             arena,
-            "{{\"sessionId\":\"{s}\",\"mcpServers\":[]}}",
-            .{session_id},
+            "{{\"sessionId\":{f},\"mcpServers\":[]}}",
+            .{std.json.fmt(session_id, .{})},
         );
         var msg = jsonrpc.Message{
             .id = .{ .integer = @intCast(index + 2) },
@@ -2410,8 +2411,8 @@ test "ACP host-disabled new load and resume skip project MCP effects" {
 
     const local_request = try std.fmt.allocPrint(
         arena,
-        "{{\"name\":\"request-local\",\"command\":\"/bin/sh\",\"args\":[\"-c\",\"printf launched > {s}\"],\"env\":[]}}",
-        .{marker_path},
+        "{{\"name\":\"request-local\",\"command\":\"/bin/sh\",\"args\":[\"-c\",{f}],\"env\":[]}}",
+        .{std.json.fmt(marker_script, .{})},
     );
     const remote_request =
         "{\"type\":\"http\",\"name\":\"request-remote\",\"url\":\"http://127.0.0.1:1/mcp\",\"headers\":[]}";
@@ -2429,8 +2430,8 @@ test "ACP host-disabled new load and resume skip project MCP effects" {
         else
             try std.fmt.allocPrint(
                 arena,
-                "{{\"sessionId\":\"{s}\",\"mcpServers\":[{s}]}}",
-                .{ session_id, request.server },
+                "{{\"sessionId\":{f},\"mcpServers\":[{s}]}}",
+                .{ std.json.fmt(session_id, .{}), request.server },
             );
         var msg = jsonrpc.Message{
             .id = .{ .integer = @intCast(index + 10) },

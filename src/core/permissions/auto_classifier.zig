@@ -1822,7 +1822,7 @@ test "automatic review preserves the exact invalid completion cause" {
 
 test "review response uses the structured decision despite commentary" {
     for ([_][]const u8{ "clear", "caution" }) |decision| {
-        const args = try std.fmt.allocPrint(std.testing.allocator, "{{\"decision\":\"{s}\"}}", .{decision});
+        const args = try std.fmt.allocPrint(std.testing.allocator, "{{\"decision\":{f}}}", .{std.json.fmt(decision, .{})});
         defer std.testing.allocator.free(args);
         var result = try parseCompletion(std.testing.allocator, .{
             .content = "Additional text is not decision authority.",

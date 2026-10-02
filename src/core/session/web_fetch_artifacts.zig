@@ -499,8 +499,8 @@ test "web_fetch artifact store creates private managed directories" {
 
     const artifacts_stat = try tmp.dir.statFile(io_mod.getIo(), "artifacts", .{ .follow_symlinks = false });
     const web_fetch_stat = try tmp.dir.statFile(io_mod.getIo(), "artifacts/web-fetch", .{ .follow_symlinks = false });
-    try std.testing.expectEqual(@as(std.posix.mode_t, 0o700), artifacts_stat.permissions.toMode() & 0o777);
-    try std.testing.expectEqual(@as(std.posix.mode_t, 0o700), web_fetch_stat.permissions.toMode() & 0o777);
+    try io_mod.expectPrivateDir(artifacts_stat);
+    try io_mod.expectPrivateDir(web_fetch_stat);
 }
 
 test "web_fetch corrupt durable artifact store fails instead of degrading to storeless metadata" {

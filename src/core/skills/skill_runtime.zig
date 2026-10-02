@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const file_picker_path = @import("../input/file_picker_path.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const io_mod = @import("../shared/io.zig");
@@ -528,7 +529,10 @@ fn appendWorkspaceRoots(
 }
 
 fn appendSpecRoot(alloc: Allocator, roots: *std.ArrayList(SkillRoot), base: []const u8, spec: skill_contract.RootSpec) !void {
-    try appendOwnedRoot(alloc, roots, try std.fs.path.join(alloc, &.{ base, spec.path }), spec.source, base);
+    const path = try std.fs.path.join(alloc, &.{ base, spec.path });
+    // Spec paths such as `.pf/skills` use `/`; advertised locations use the native separator.
+    if (comptime builtin.os.tag == .windows) std.mem.replaceScalar(u8, path, '/', '\\');
+    try appendOwnedRoot(alloc, roots, path, spec.source, base);
 }
 
 fn appendDupeRoot(alloc: Allocator, roots: *std.ArrayList(SkillRoot), source: SkillSource, path: []const u8) !void {
@@ -3959,11 +3963,10 @@ fn writeTempFile(tmp: *std.testing.TmpDir, sub_path: []const u8, content: []cons
 }
 
 fn createTempSymlinkOrSkip(tmp: *std.testing.TmpDir, target_path: []const u8, link_path: []const u8) !void {
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     if (std.fs.path.dirname(link_path)) |parent| {
         try tmp.dir.createDirPath(io_mod.getIo(), parent);
     }
-    tmp.dir.symLink(std.testing.io, target_path, link_path, .{ .is_directory = false }) catch |err| {
+    io_mod.testSymLink(tmp.dir, target_path, link_path) catch |err| {
         if (err == error.AccessDenied or err == error.FileSystem) return error.SkipZigTest;
         return err;
     };
@@ -3972,6 +3975,8 @@ fn createTempSymlinkOrSkip(tmp: *std.testing.TmpDir, target_path: []const u8, li
 extern "c" fn mkfifo(path: [*:0]const u8, mode: std.c.mode_t) c_int;
 
 fn createTempFifoOrSkip(alloc: Allocator, tmp: *std.testing.TmpDir, sub_path: []const u8) !void {
+    // Windows has no mkfifo.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime @import("builtin").os.tag == .windows or @import("builtin").os.tag == .wasi) {
         return error.SkipZigTest;
     }
@@ -4280,6 +4285,8 @@ test "skill diagnostic summary identifies candidate and root consequences" {
 }
 
 test "skill diagnostic summary escapes the active trace path" {
+    // Windows file names cannot contain control characters such as a newline.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -4471,7 +4478,7 @@ test "skill catalog locations reject a changed identity mapping" {
     defer alloc.free(location);
     const resolved = try before.locations.resolve(alloc, location);
     defer alloc.free(resolved);
-    try std.testing.expectEqualStrings("/first/review", resolved);
+    try std.testing.expectEqualStrings("/first" ++ std.fs.path.sep_str ++ "review", resolved);
     try std.testing.expectError(error.StaleSkillLocation, after.locations.resolve(alloc, location));
 }
 
@@ -4499,7 +4506,7 @@ fn checkSkillPromptAllocationFailures(alloc: Allocator) !void {
     defer alloc.free(location);
     const path = try result.locations.resolve(alloc, location);
     defer alloc.free(path);
-    try std.testing.expectEqualStrings("/root-b/second", path);
+    try std.testing.expectEqualStrings("/root-b" ++ std.fs.path.sep_str ++ "second", path);
 }
 
 test "skill catalog releases partial projection allocations" {
@@ -4805,11 +4812,11 @@ test "loadVisibleSkills deduplicates symlinked workspace and global roots while 
     try std.testing.expectEqualStrings("global workflow", discovery.skills[2].description);
     try std.testing.expectEqual(SkillSource.global_claude, discovery.skills[2].source);
 
-    const alpha_alias = try std.fs.path.join(alloc, &.{ workspace_root, ".claude/skills/alpha" });
+    const alpha_alias = try std.fs.path.join(alloc, &.{ workspace_root, ".claude", "skills", "alpha" });
     defer alloc.free(alpha_alias);
-    const beta_alias = try std.fs.path.join(alloc, &.{ workspace_root, ".claude/skills/beta" });
+    const beta_alias = try std.fs.path.join(alloc, &.{ workspace_root, ".claude", "skills", "beta" });
     defer alloc.free(beta_alias);
-    const global_alias = try std.fs.path.join(alloc, &.{ home_root, ".claude/skills/global" });
+    const global_alias = try std.fs.path.join(alloc, &.{ home_root, ".claude", "skills", "global" });
     defer alloc.free(global_alias);
     try std.testing.expectEqualStrings(alpha_alias, discovery.skills[0].path);
     try std.testing.expectEqualStrings(beta_alias, discovery.skills[1].path);
@@ -4896,7 +4903,7 @@ test "loadVisibleSkills discovers and reopens contained linked metadata" {
     defer alloc.free(home_root);
     const managed_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.pf/skills");
     defer alloc.free(managed_root);
-    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/linked-leaf" });
+    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "linked-leaf" });
     defer alloc.free(logical_path);
 
     var discovery = try loadVisibleSkills(alloc, workspace_root, home_root, managed_root, test_root_policy);
@@ -4952,7 +4959,7 @@ test "linked metadata reauthorizes a target changed after preflight" {
 
     const workspace_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/workspace");
     defer alloc.free(workspace_root);
-    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/linked-leaf" });
+    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "linked-leaf" });
     defer alloc.free(candidate_path);
     var candidate_dir = try io_mod.openDirAbsoluteNoFollow(candidate_path, .{});
     defer candidate_dir.close(io_mod.getIo());
@@ -4969,6 +4976,9 @@ test "linked metadata reauthorizes a target changed after preflight" {
 }
 
 test "linked metadata and resources stay on the opened candidate after rebinding" {
+    // Windows refuses to rename a directory that pf holds open, so the rebinding
+    // cannot be staged there.
+    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     const ReplaceCandidate = struct {
         dir: std.Io.Dir,
         failed: bool = false,
@@ -5026,7 +5036,7 @@ test "linked metadata and resources stay on the opened candidate after rebinding
 
     const workspace_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/workspace");
     defer alloc.free(workspace_root);
-    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/linked" });
+    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "linked" });
     defer alloc.free(candidate_path);
     var candidate_dir = try io_mod.openDirAbsoluteNoFollow(candidate_path, .{});
     defer candidate_dir.close(io_mod.getIo());
@@ -5079,7 +5089,7 @@ test "linked metadata outside authority is rejected before descriptor open" {
 
     const workspace_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/workspace");
     defer alloc.free(workspace_root);
-    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/linked-leaf" });
+    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "linked-leaf" });
     defer alloc.free(candidate_path);
     var candidate_dir = try io_mod.openDirAbsoluteNoFollow(candidate_path, .{});
     defer candidate_dir.close(io_mod.getIo());
@@ -5096,6 +5106,8 @@ test "linked metadata outside authority is rejected before descriptor open" {
 }
 
 test "linked metadata FIFO is rejected before descriptor open" {
+    // Creates a POSIX FIFO; Windows has no mkfifo.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const MarkOpen = struct {
         called: bool = false,
 
@@ -5139,7 +5151,7 @@ test "linked metadata FIFO is rejected before descriptor open" {
     defer alloc.free(fifo_path);
     var fifo_path_buf: [std.fs.max_path_bytes]u8 = undefined;
     const fifo_path_z = try std.fmt.bufPrintZ(&fifo_path_buf, "{s}", .{fifo_path});
-    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/fifo" });
+    const candidate_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "fifo" });
     defer alloc.free(candidate_path);
     var candidate_dir = try io_mod.openDirAbsoluteNoFollow(candidate_path, .{});
     defer candidate_dir.close(io_mod.getIo());
@@ -5178,6 +5190,8 @@ test "linked metadata FIFO is rejected before descriptor open" {
 }
 
 test "loadVisibleSkills discovers and reopens a contained linked workspace candidate" {
+    // Reopening linked skill candidates on Windows is a product gap, filed as US-033.
+    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5200,7 +5214,7 @@ test "loadVisibleSkills discovers and reopens a contained linked workspace candi
     defer alloc.free(home_root);
     const managed_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.pf/skills");
     defer alloc.free(managed_root);
-    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/linked-skill" });
+    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "linked-skill" });
     defer alloc.free(logical_path);
 
     var discovery = try loadVisibleSkills(alloc, workspace_root, home_root, managed_root, test_root_policy);
@@ -5258,7 +5272,7 @@ test "loadVisibleSkills diagnoses an unavailable linked workspace candidate" {
     defer alloc.free(home_root);
     const managed_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.pf/skills");
     defer alloc.free(managed_root);
-    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/missing-skill" });
+    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "missing-skill" });
     defer alloc.free(logical_path);
 
     var discovery = try loadVisibleSkills(alloc, workspace_root, home_root, managed_root, test_root_policy);
@@ -5334,7 +5348,7 @@ test "loadVisibleSkills diagnoses an escaping linked workspace candidate" {
     defer alloc.free(home_root);
     const managed_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.pf/skills");
     defer alloc.free(managed_root);
-    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/escaping-skill" });
+    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "escaping-skill" });
     defer alloc.free(logical_path);
 
     var discovery = try loadVisibleSkills(alloc, workspace_root, home_root, managed_root, test_root_policy);
@@ -5458,7 +5472,6 @@ test "skill discovery rejects a symlinked selected root" {
     defer tmp.cleanup();
 
     try writeTempFile(&tmp, "real-root/external/SKILL.md", "---\nname: external\ndescription: must not load\n---\nbody\n");
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     tmp.dir.symLink(std.testing.io, "real-root", "linked-root", .{ .is_directory = true }) catch |err| {
         if (err == error.AccessDenied or err == error.FileSystem) return error.SkipZigTest;
         return err;
@@ -5480,7 +5493,6 @@ test "skill discovery reports a broken symlinked selected root" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     tmp.dir.symLink(std.testing.io, "missing-root", "broken-root", .{ .is_directory = true }) catch |err| {
         if (err == error.AccessDenied or err == error.FileSystem) return error.SkipZigTest;
         return err;
@@ -5506,7 +5518,6 @@ test "skill discovery rejects symlinked ancestors inside an automatic root" {
     try writeTempFile(&tmp, "outside/skills/external/SKILL.md", "---\nname: external\ndescription: must not load\n---\nbody\n");
     try tmp.dir.createDirPath(io_mod.getIo(), "home/workspace");
     try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf/skills");
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     tmp.dir.symLink(std.testing.io, "../../outside", "home/workspace/.agents", .{ .is_directory = true }) catch |err| {
         if (err == error.AccessDenied or err == error.FileSystem) return error.SkipZigTest;
         return err;
@@ -5535,7 +5546,6 @@ test "skill discovery reports a symlinked automatic root whose target lacks the 
     try tmp.dir.createDirPath(io_mod.getIo(), "outside");
     try tmp.dir.createDirPath(io_mod.getIo(), "home/workspace");
     try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf/skills");
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     tmp.dir.symLink(std.testing.io, "../../outside", "home/workspace/.agents", .{ .is_directory = true }) catch |err| {
         if (err == error.AccessDenied or err == error.FileSystem) return error.SkipZigTest;
         return err;
@@ -5625,6 +5635,8 @@ test "loadVisibleSkills orders valid candidates diagnoses invalid metadata and r
 }
 
 test "loadVisibleSkills diagnoses a hostile no-frontmatter directory name" {
+    // Windows file names cannot contain control characters such as a newline.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5814,6 +5826,8 @@ test "externalSymlinkAuthorities returns empty when unset" {
 }
 
 test "loadVisibleSkills discovers linked metadata through external authority" {
+    // Reopening linked skill candidates on Windows is a product gap, filed as US-033.
+    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5857,6 +5871,8 @@ test "loadVisibleSkills discovers linked metadata through external authority" {
 }
 
 test "loadVisibleSkills discovers a linked candidate resolved via external symlink authority" {
+    // Reopening linked skill candidates on Windows is a product gap, filed as US-033.
+    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5990,7 +6006,7 @@ test "loadVisibleSkills still rejects external symlinks without an authority" {
     defer alloc.free(home_root);
     const managed_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "home/.pf/skills");
     defer alloc.free(managed_root);
-    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex/skills/escaping-skill" });
+    const logical_path = try std.fs.path.join(alloc, &.{ workspace_root, ".codex", "skills", "escaping-skill" });
     defer alloc.free(logical_path);
 
     const env = try TestEnviron.install(alloc);

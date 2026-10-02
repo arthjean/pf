@@ -89,7 +89,7 @@ test "session directory path rejects unsafe ids" {
 
     const dotted = try sessionDirPath(alloc, "/tmp/sessions", "session.v3");
     defer alloc.free(dotted);
-    try std.testing.expectEqualStrings("/tmp/sessions/session.v3", dotted);
+    try std.testing.expectEqualStrings("/tmp/sessions" ++ std.fs.path.sep_str ++ "session.v3", dotted);
     inline for (.{
         ".hidden-session",
         "session..branch",

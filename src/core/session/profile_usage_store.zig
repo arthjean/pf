@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const profile_paths = @import("../shared/profile_paths.zig");
@@ -360,9 +361,10 @@ pub const Store = struct {
                     return error.UsageCapacityExceeded;
                 if (next_length > max_file_bytes) return error.UsageCapacityExceeded;
                 _ = try checkedRecordCount(base_record_count, append_record_count);
-                try self.replaceUsageLocked(alloc, replacement.written());
+                // Windows cannot replace a file this process still holds open.
                 file.?.close(io_mod.getIo());
                 file = null;
+                try self.replaceUsageLocked(alloc, replacement.written());
                 append_committed = true;
             } else {
                 file.?.close(io_mod.getIo());
@@ -391,9 +393,9 @@ pub const Store = struct {
                     boundary,
                 );
                 try replacement.writer.writeAll(append_bytes.written());
-                try self.replaceUsageLocked(alloc, replacement.written());
                 file.?.close(io_mod.getIo());
                 file = null;
+                try self.replaceUsageLocked(alloc, replacement.written());
             } else {
                 try file.?.writePositionalAll(io_mod.getIo(), append_bytes.written(), boundary);
                 file.?.sync(io_mod.getIo()) catch return error.UsageWriteFailed;
@@ -738,10 +740,13 @@ pub const Store = struct {
     }
 
     fn compactLocked(self: *Store, alloc: Allocator, now_ms: i64) !void {
-        var file = (try self.openUsage(false, false)) orelse return;
-        defer file.close(io_mod.getIo());
-        const boundary = try file.length(io_mod.getIo());
-        const index = try self.ensureIndex(alloc, file, boundary);
+        // Windows cannot replace a file this process still holds open.
+        const index = index: {
+            var file = (try self.openUsage(false, false)) orelse return;
+            defer file.close(io_mod.getIo());
+            const boundary = try file.length(io_mod.getIo());
+            break :index try self.ensureIndex(alloc, file, boundary);
+        };
 
         var replacement: std.Io.Writer.Allocating = .init(alloc);
         defer replacement.deinit();
@@ -1487,18 +1492,20 @@ test "profile usage store leaves an incomplete tail intact when repair exceeds r
     try tmp.dir.createDir(
         io_mod.getIo(),
         ".pf",
-        std.Io.Dir.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var profile = try tmp.dir.openDir(io_mod.getIo(), ".pf", .{ .iterate = true });
     defer profile.close(io_mod.getIo());
-    profile.setPermissions(io_mod.getIo(), .fromMode(0o700)) catch
+    io_mod.applyPrivatePermissions(profile, io_mod.private_dir_permissions) catch
         return error.SkipZigTest;
 
     var contents: std.Io.Writer.Allocating = .init(alloc);
     defer contents.deinit();
     for (0..max_records) |_| try writeCoverage(&contents.writer, 1);
     try contents.writer.writeAll("{\"schema_version\":1");
+    // Windows needs read access to stat the handle for its length.
     var file = try profile.createFile(io_mod.getIo(), usage_file, .{
+        .read = true,
         .permissions = private_file_permissions,
     });
     try file.writeStreamingAll(io_mod.getIo(), contents.written());
@@ -1535,6 +1542,8 @@ test "profile usage store leaves an incomplete tail intact when repair exceeds r
 }
 
 test "profile usage store repairs an existing profile directory to private mode" {
+    // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1565,10 +1574,12 @@ test "profile usage store repairs an existing profile directory to private mode"
     );
 
     const stat = try profile.stat(io_mod.getIo());
-    try std.testing.expectEqual(@as(u32, 0o700), stat.permissions.toMode() & 0o777);
+    try io_mod.expectPrivateDir(stat);
 }
 
 test "profile usage reads reject an unsafe profile directory without repairing it" {
+    // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1622,11 +1633,11 @@ test "profile usage store decodes a large ledger with stable id indexing" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         ".pf",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var profile = try tmp.dir.openDir(io_mod.getIo(), ".pf", .{ .iterate = true });
     defer profile.close(io_mod.getIo());
-    profile.setPermissions(io_mod.getIo(), .fromMode(0o700)) catch
+    io_mod.applyPrivatePermissions(profile, io_mod.private_dir_permissions) catch
         return error.SkipZigTest;
 
     const record_count: usize = 4096;

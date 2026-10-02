@@ -1534,6 +1534,7 @@ fn listenerHasPendingConnection(listener: *const std.Io.net.Server) !bool {
 
 test "process-exit teardown skips the session DELETE that discard teardown sends" {
     const os_tag = @import("builtin").os.tag;
+    // Polls the listener with std.posix.poll, which does not compile on Windows.
     if (os_tag == .windows or os_tag == .wasi) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);

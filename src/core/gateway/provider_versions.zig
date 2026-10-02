@@ -186,7 +186,7 @@ test "provider version cache creates its profile from a fresh home" {
 }
 
 test "provider version cache rejects directories symlinks and hardlinks" {
-    if (comptime @import("builtin").os.tag == .windows or host_target.is_wasm) return error.SkipZigTest;
+    if (comptime host_target.is_wasm) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const Kind = enum { directory, symlink, hardlink };
     for ([_]Provider{ .codex, .grok }) |provider| {
@@ -199,13 +199,9 @@ test "provider version cache rejects directories symlinks and hardlinks" {
                 .data = "{\"version\":\"1.2.3\",\"checked_at_ms\":500}",
             });
             switch (kind) {
-                .directory => try tmp.dir.createDir(std.testing.io, name, .fromMode(0o700)),
+                .directory => try tmp.dir.createDir(std.testing.io, name, io_mod.private_dir_permissions),
                 .symlink => try tmp.dir.symLink(std.testing.io, "target", name, .{}),
-                .hardlink => {
-                    const name_z = try alloc.dupeZ(u8, name);
-                    defer alloc.free(name_z);
-                    try std.testing.expectEqual(@as(c_int, 0), std.c.linkat(tmp.dir.handle, "target", tmp.dir.handle, name_z, 0));
-                },
+                .hardlink => try io_mod.testHardLink(tmp.dir, "target", name),
             }
             try std.testing.expectError(error.InvalidProviderVersionCache, readCached(alloc, tmp.dir, provider));
         }

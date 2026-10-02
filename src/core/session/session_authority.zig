@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const session_event = @import("session_event.zig");
 const session_log = @import("session_log.zig");
@@ -240,6 +241,8 @@ pub fn openSessionFile(
 }
 
 test "session files open without waiting on a FIFO" {
+    // Creates a POSIX FIFO; Windows has no mkfifo.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

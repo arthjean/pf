@@ -1797,8 +1797,8 @@ test "secret classification covers normalized forms without truncation bypasses"
     @memcpy(description[description.len - " private key".len ..], " private key");
     const schema = try std.fmt.allocPrint(
         std.testing.allocator,
-        "{{\"type\":\"object\",\"properties\":{{\"value\":{{\"type\":\"string\",\"description\":\"{s}\"}}}}}}",
-        .{description},
+        "{{\"type\":\"object\",\"properties\":{{\"value\":{{\"type\":\"string\",\"description\":{f}}}}}}}",
+        .{std.json.fmt(description, .{})},
     );
     defer std.testing.allocator.free(schema);
     var form = try parseFormSchema(
@@ -2113,8 +2113,8 @@ test "legacy URL completion notification classification validates the full bound
     @memset(oversized_id, 'x');
     const oversized_json = try std.fmt.allocPrint(
         alloc,
-        "{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/elicitation/complete\",\"params\":{{\"elicitationId\":\"{s}\"}}}}",
-        .{oversized_id},
+        "{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/elicitation/complete\",\"params\":{{\"elicitationId\":{f}}}}}",
+        .{std.json.fmt(oversized_id, .{})},
     );
     defer alloc.free(oversized_json);
     var oversized = try std.json.parseFromSlice(std.json.Value, alloc, oversized_json, .{});

@@ -351,6 +351,9 @@ fn readRequest(
                 error.InvalidOAuthCallbackRequest,
             error.ReadFailed => switch (reader.err orelse return error.ReadFailed) {
                 error.ConnectionResetByPeer => return null,
+                // Zig reports every Windows receive failure, a reset
+                // included, as Unexpected.
+                error.Unexpected => if (comptime builtin.os.tag == .windows) return null else return error.Unexpected,
                 else => |read_err| return read_err,
             },
         };
@@ -598,16 +601,7 @@ const ResetPreconnectProbe = struct {
             var reset_stream = address.connect(io, .{ .mode = .stream }) catch
                 return self.finish(true);
             defer reset_stream.close(io);
-            const reset_on_close: std.posix.linger = .{
-                .onoff = 1,
-                .linger = 0,
-            };
-            std.posix.setsockopt(
-                reset_stream.socket.handle,
-                std.posix.SOL.SOCKET,
-                std.posix.SO.LINGER,
-                std.mem.asBytes(&reset_on_close),
-            ) catch return self.finish(true);
+            io_mod.testResetOnClose(reset_stream.socket.handle) catch return self.finish(true);
             self.finish(false);
             io_mod.sleep(self.hold_ms * std.time.ns_per_ms);
         }

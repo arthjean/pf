@@ -2755,12 +2755,14 @@ test "interactive command approval keeps activity projection out of permission r
     try std.testing.expect(std.mem.startsWith(
         u8,
         approval_command,
-        "# shell.run profile=user shell=",
+        test_user_profile_approval_prefix,
     ));
     try std.testing.expect(std.mem.endsWith(u8, approval_command, "\n" ++ raw_command));
 }
 
 test "terminal exec timeout and profile omission share user grants while clean stays isolated" {
+    // Windows has no login shell profile, so every profile is the legacy one.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -3236,8 +3238,8 @@ test "external file action identity is canonical across call IDs and distinguish
     );
     const absolute_arguments = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"denied\\n\"}}",
-        .{absolute_target},
+        "{{\"path\":{f},\"content\":\"denied\\n\"}}",
+        .{std.json.fmt(absolute_target, .{})},
     );
     const relative_arguments =
         "{\"content\":\"denied\\n\",\"path\":\"../external/denied/nested/file.txt\"}";
@@ -3804,6 +3806,42 @@ fn testInputWithClassifier(
     };
 }
 
+/// Windows has no login shell profile: a captured command carries the legacy
+/// environment, which admits a direct read-only plan before any shell lane
+/// and keeps the bare command as its permission identity.
+const test_login_profile = builtin.os.tag != .windows;
+
+/// Expects `source` where the default user profile forces the shell route.
+/// Without a login profile, a direct plan (`windows_direct`) runs direct.
+fn expectProfileShellSource(
+    outcome: command_admission.PermissionOutcome,
+    source: command_admission.ShellAuthorizationSource,
+    windows_direct: bool,
+) !void {
+    const authority = (outcome.execution_authority orelse return error.TestExpectedEqual).run_command;
+    if (!test_login_profile and windows_direct) {
+        try std.testing.expect(authority == .direct_only);
+        return;
+    }
+    try std.testing.expectEqual(source, authority.shell_allowed.source);
+}
+
+fn expectProfileCommandIdentity(identity: []const u8, command: []const u8) !void {
+    try std.testing.expectEqual(
+        test_login_profile,
+        command_environment.isExplicitPermissionCommandIdentity(identity),
+    );
+    try std.testing.expectEqualStrings(
+        command,
+        command_environment.commandFromPermissionIdentity(identity),
+    );
+}
+
+const test_user_profile_approval_prefix = if (test_login_profile)
+    "# shell.run profile=user shell="
+else
+    "# shell.run profile=omitted (legacy)\n";
+
 test "resolved skill calls retain name policy and ordinary execution authority" {
     const alloc = std.testing.allocator;
     var arena_state = std.heap.ArenaAllocator.init(alloc);
@@ -3877,13 +3915,7 @@ test "exact command approval remains valid across live authority revalidation" {
 
     try std.testing.expectEqual(@as(usize, 1), grants.len);
     try std.testing.expectEqualStrings("bash", grants[0].tool_name);
-    try std.testing.expect(command_environment.isExplicitPermissionCommandIdentity(
-        grants[0].target_path,
-    ));
-    try std.testing.expectEqualStrings(
-        "printf approved > marker.txt",
-        command_environment.commandFromPermissionIdentity(grants[0].target_path),
-    );
+    try expectProfileCommandIdentity(grants[0].target_path, "printf approved > marker.txt");
     try std.testing.expect(sessionGrantsAllowAll(grants, "bash", targets.items));
 }
 
@@ -3957,13 +3989,7 @@ test "interactive admission routes prompts through the supplied prompter" {
     const grant_offer = recording.last_grant_offer orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(@as(usize, 1), grant_offer.len);
     try std.testing.expectEqualStrings("bash", grant_offer[0].tool_name);
-    try std.testing.expect(command_environment.isExplicitPermissionCommandIdentity(
-        grant_offer[0].target_path,
-    ));
-    try std.testing.expectEqualStrings(
-        "touch generated.txt",
-        command_environment.commandFromPermissionIdentity(grant_offer[0].target_path),
-    );
+    try expectProfileCommandIdentity(grant_offer[0].target_path, "touch generated.txt");
     try std.testing.expectEqual(ToolPermissionDecision.once, outcome.decision);
     const authority = outcome.execution_authority.?.run_command;
     try std.testing.expectEqual(
@@ -4000,8 +4026,8 @@ test "interactive file admission passes its canonical grant offer to the prompte
     input.permission_prompter = recording.prompter();
     const arguments_json = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}/note.txt\",\"content\":\"hello\\n\"}}",
-        .{workspace},
+        "{{\"path\":{f},\"content\":\"hello\\n\"}}",
+        .{std.json.fmt(try std.fs.path.join(arena, &.{ workspace, "note.txt" }), .{})},
     );
 
     const outcome = try requestPermissionOutcome(
@@ -4615,8 +4641,8 @@ test "yolo file admission preserves canonical mutation authority" {
     const target = try std.fs.path.join(arena, &.{ workspace, "yolo.txt" });
     const arguments = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"ok\\n\"}}",
-        .{target},
+        "{{\"path\":{f},\"content\":\"ok\\n\"}}",
+        .{std.json.fmt(target, .{})},
     );
 
     const outcome = try requestPermissionOutcome(
@@ -4786,7 +4812,7 @@ test "live authority resolves a missing read target without changing ordinary ad
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace/src");
     const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace);
-    const expected = try std.fs.path.join(alloc, &.{ workspace, "src/missing.zig" });
+    const expected = try std.fs.path.join(alloc, &.{ workspace, "src", "missing.zig" });
     defer alloc.free(expected);
     const external_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(external_root);
@@ -4834,8 +4860,8 @@ test "live authority resolves a missing read target without changing ordinary ad
                 .name = "read_file",
                 .arguments_json = try std.fmt.allocPrint(
                     arena_state.allocator(),
-                    "{{\"path\":\"{s}\"}}",
-                    .{external_expected},
+                    "{{\"path\":{f}}}",
+                    .{std.json.fmt(external_expected, .{})},
                 ),
             },
         ),
@@ -4851,7 +4877,7 @@ test "live authority preserves a non-directory read failure for tool execution" 
     blocking_file.close(io_mod.getIo());
     const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace);
-    const expected = try std.fs.path.join(alloc, &.{ workspace, "not-a-dir/child.txt" });
+    const expected = try std.fs.path.join(alloc, &.{ workspace, "not-a-dir", "child.txt" });
     defer alloc.free(expected);
 
     var arena_state = std.heap.ArenaAllocator.init(alloc);
@@ -5310,10 +5336,7 @@ test "exhausted review transport preserves deterministic auto lanes" {
         &.{},
     );
     try std.testing.expectEqual(ToolPermissionDecision.once, safe.decision);
-    try std.testing.expectEqual(
-        command_admission.ShellAuthorizationSource.auto_mode,
-        safe.execution_authority.?.run_command.shell_allowed.source,
-    );
+    try expectProfileShellSource(safe, .auto_mode, true);
 
     const unresolved = try requestPermissionOutcome(
         input,
@@ -5355,7 +5378,7 @@ test "PowerShell commands in auto mode always go to the security review" {
     defer shell_selection.test_dialect = null;
 
     for ([_][]const u8{ "git status --short --branch", "ls", "Get-ChildItem" }, 1..) |command, calls| {
-        const arguments = try std.fmt.allocPrint(arena_state.allocator(), "{{\"action\":\"run\",\"command\":\"{s}\"}}", .{command});
+        const arguments = try std.fmt.allocPrint(arena_state.allocator(), "{{\"action\":\"run\",\"command\":{f}}}", .{std.json.fmt(command, .{})});
         const outcome = requestPermissionOutcome(
             input,
             arena_state.allocator(),
@@ -5400,11 +5423,10 @@ test "configured command authority skips automatic review" {
         .auto,
         &.{},
     );
-    try std.testing.expectEqual(
-        command_admission.ShellAuthorizationSource.auto_classifier,
-        direct.execution_authority.?.run_command.shell_allowed.source,
-    );
-    try std.testing.expectEqual(@as(usize, 1), fake.calls);
+    try expectProfileShellSource(direct, .auto_classifier, true);
+    // Without a login profile the direct plan skips the reviewer.
+    const direct_reviews: usize = if (test_login_profile) 1 else 0;
+    try std.testing.expectEqual(direct_reviews, fake.calls);
 
     var rules = [_]types.PermissionRule{.{
         .permission = @constCast("bash"),
@@ -5428,7 +5450,7 @@ test "configured command authority skips automatic review" {
         command_admission.ShellAuthorizationSource.configured_rule,
         configured.execution_authority.?.run_command.shell_allowed.source,
     );
-    try std.testing.expectEqual(@as(usize, 1), fake.calls);
+    try std.testing.expectEqual(direct_reviews, fake.calls);
     try std.testing.expectEqual(@as(usize, 0), recording.calls);
 
     const compound = try requestPermissionOutcome(
@@ -5446,11 +5468,13 @@ test "configured command authority skips automatic review" {
         command_admission.ShellAuthorizationSource.auto_classifier,
         compound.execution_authority.?.run_command.shell_allowed.source,
     );
-    try std.testing.expectEqual(@as(usize, 2), fake.calls);
+    try std.testing.expectEqual(direct_reviews + 1, fake.calls);
     try std.testing.expectEqual(@as(usize, 0), recording.calls);
 }
 
 test "automatic clean direct command bypasses the reviewer" {
+    // Windows has no login shell profile, so no clean profile environment.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     var worker: WorkerRuntime = .{};
@@ -5648,14 +5672,15 @@ test "known reversible auto commands bypass the reviewer" {
             FakeAutoClassifier.classify,
         ),
     );
-    for ([_][]const u8{
-        "node -v && npm -v",
-        "git status --short --branch",
-        "git fetch origin main",
-        "npm install 2>&1",
-        "npm run dev",
-        "zig build test",
-    }) |command| {
+    for ([_]struct { []const u8, bool }{
+        .{ "node -v && npm -v", false },
+        .{ "git status --short --branch", true },
+        .{ "git fetch origin main", false },
+        .{ "npm install 2>&1", false },
+        .{ "npm run dev", false },
+        .{ "zig build test", false },
+    }) |case| {
+        const command, const direct = case;
         const arguments = try std.fmt.allocPrint(
             arena_state.allocator(),
             "{{\"action\":\"run\",\"command\":{f}}}",
@@ -5669,10 +5694,7 @@ test "known reversible auto commands bypass the reviewer" {
             &.{},
         );
         try std.testing.expectEqual(ToolPermissionDecision.once, outcome.decision);
-        try std.testing.expectEqual(
-            command_admission.ShellAuthorizationSource.auto_mode,
-            outcome.execution_authority.?.run_command.shell_allowed.source,
-        );
+        try expectProfileShellSource(outcome, .auto_mode, direct);
     }
     try std.testing.expectEqual(@as(usize, 0), fake.calls);
 
@@ -6011,8 +6033,8 @@ test "external prepared file review carries frozen path and diff authority" {
     }
     const arguments_json = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"hello\\n\"}}",
-        .{target_path},
+        "{{\"path\":{f},\"content\":\"hello\\n\"}}",
+        .{std.json.fmt(target_path, .{})},
     );
     var review_turn = testReviewTurn();
     review_turn.trusted_root_context = "Write the requested external file.";
@@ -6087,8 +6109,8 @@ test "automatic workspace write uses reversible admission without reviewer" {
     const target_path = try std.fs.path.join(arena, &.{ workspace, "note.txt" });
     const arguments_json = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"hello\\n\"}}",
-        .{target_path},
+        "{{\"path\":{f},\"content\":\"hello\\n\"}}",
+        .{std.json.fmt(target_path, .{})},
     );
 
     const outcome = try requestPermissionOutcome(
@@ -6117,8 +6139,8 @@ test "automatic workspace write uses reversible admission without reviewer" {
     const edit_target = try std.fs.path.join(arena, &.{ workspace, "editable.txt" });
     const edit_arguments = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"old_string\":\"before\",\"new_string\":\"after\"}}",
-        .{edit_target},
+        "{{\"path\":{f},\"old_string\":\"before\",\"new_string\":\"after\"}}",
+        .{std.json.fmt(edit_target, .{})},
     );
     const edit_outcome = try requestPermissionOutcome(
         input,
@@ -6188,8 +6210,8 @@ test "automatic added-root write bypasses reviewer while untrusted external writ
         const target_path = try std.fs.path.join(arena, &.{ case.root, "note.txt" });
         const arguments_json = try std.fmt.allocPrint(
             arena,
-            "{{\"path\":\"{s}\",\"content\":\"hello\\n\"}}",
-            .{target_path},
+            "{{\"path\":{f},\"content\":\"hello\\n\"}}",
+            .{std.json.fmt(target_path, .{})},
         );
         const outcome = try requestPermissionOutcome(
             input,
@@ -6245,8 +6267,8 @@ test "automatic trusted-root write keeps persistence targets on reviewer path" {
         const target_path = try std.fs.path.join(arena, &.{ workspace, relative_target });
         const arguments_json = try std.fmt.allocPrint(
             arena,
-            "{{\"path\":\"{s}\",\"content\":\"test\\n\"}}",
-            .{target_path},
+            "{{\"path\":{f},\"content\":\"test\\n\"}}",
+            .{std.json.fmt(target_path, .{})},
         );
         const outcome = try requestPermissionOutcome(
             input,
@@ -6302,8 +6324,8 @@ test "automatic trusted-root overwrite preserves configured read disclosure revi
     const target_path = try std.fs.path.join(arena, &.{ workspace, "secret.txt" });
     const arguments_json = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"after\\n\"}}",
-        .{target_path},
+        "{{\"path\":{f},\"content\":\"after\\n\"}}",
+        .{std.json.fmt(target_path, .{})},
     );
 
     const outcome = try requestPermissionOutcome(

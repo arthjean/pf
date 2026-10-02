@@ -5192,6 +5192,8 @@ test "conversation writer removes an unfinished turn before a torn final record"
 }
 
 test "conversation writer initialization leaves file ownership with caller on failure" {
+    // Probes descriptor state with fcntl, which Windows does not have.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const file = try tmp.dir.createFile(std.testing.io, "events.jsonl", .{ .read = true });

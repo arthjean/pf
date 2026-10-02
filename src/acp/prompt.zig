@@ -1408,10 +1408,21 @@ fn localFileTargetPath(alloc: Allocator, uri_text: []const u8) Allocator.Error!?
         decoded_storage[write_index] = byte;
         write_index += 1;
     }
-    const decoded_path = decoded_storage[0..write_index];
+    var decoded_path = decoded_storage[0..write_index];
+    // A Windows file URI names the drive after a slash: file:///C:/dir.
+    if (std_builtin.os.tag == .windows and decoded_path.len >= 3 and
+        decoded_path[0] == '/' and std.ascii.isAlphabetic(decoded_path[1]) and
+        decoded_path[2] == ':')
+    {
+        decoded_path = decoded_path[1..];
+    }
     if (!std.fs.path.isAbsolute(decoded_path)) return null;
 
-    var components = std.mem.splitScalar(u8, decoded_path, '/');
+    var components = std.mem.splitAny(
+        u8,
+        decoded_path,
+        if (std_builtin.os.tag == .windows) "/\\" else "/",
+    );
     while (components.next()) |component| {
         if (std.mem.eql(u8, component, "..")) return null;
     }
@@ -3345,15 +3356,23 @@ test "parsePromptInput preserves resource text and accepts only local absolute f
     defer alloc.free(root);
     const expected_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "Pf Project/src/main.zig");
     defer alloc.free(expected_path);
-    const local_uri = try std.fmt.allocPrint(alloc, "file://{s}/Pf%20Project/src/main.zig", .{root});
+    // A Windows file URI names the drive after a third slash: file:///C:/dir.
+    const uri_root = if (comptime @import("builtin").os.tag == .windows) blk: {
+        const forward = try alloc.dupe(u8, root);
+        std.mem.replaceScalar(u8, forward, '\\', '/');
+        break :blk forward;
+    } else try alloc.dupe(u8, root);
+    defer alloc.free(uri_root);
+    const uri_prefix = if (comptime @import("builtin").os.tag == .windows) "file:///" else "file://";
+    const local_uri = try std.fmt.allocPrint(alloc, "{s}{s}/Pf%20Project/src/main.zig", .{ uri_prefix, uri_root });
     defer alloc.free(local_uri);
     const remote_uri = "https://example.test/reference.txt";
     const params = try std.fmt.allocPrint(
         alloc,
         "{{\"sessionId\":\"s1\",\"prompt\":[" ++
-            "{{\"type\":\"resource\",\"resource\":{{\"uri\":\"{s}\",\"text\":\"local body\"}}}}," ++
-            "{{\"type\":\"resource\",\"resource\":{{\"uri\":\"{s}\",\"text\":\"remote body\"}}}}]}}",
-        .{ local_uri, remote_uri },
+            "{{\"type\":\"resource\",\"resource\":{{\"uri\":{f},\"text\":\"local body\"}}}}," ++
+            "{{\"type\":\"resource\",\"resource\":{{\"uri\":{f},\"text\":\"remote body\"}}}}]}}",
+        .{ std.json.fmt(local_uri, .{}), std.json.fmt(remote_uri, .{}) },
     );
     defer alloc.free(params);
 
@@ -3392,8 +3411,8 @@ test "parsePromptInput rejects unsafe file URI targeting without losing embedded
     for (uris) |uri| {
         const params = try std.fmt.allocPrint(
             alloc,
-            "{{\"sessionId\":\"s1\",\"prompt\":[{{\"type\":\"resource\",\"resource\":{{\"uri\":\"{s}\",\"text\":\"embedded text\"}}}}]}}",
-            .{uri},
+            "{{\"sessionId\":\"s1\",\"prompt\":[{{\"type\":\"resource\",\"resource\":{{\"uri\":{f},\"text\":\"embedded text\"}}}}]}}",
+            .{std.json.fmt(uri, .{})},
         );
         defer alloc.free(params);
 
@@ -3449,7 +3468,10 @@ test "localFileTargetPath canonicalizes a local symlink target" {
     defer alloc.free(alias_path);
     const expected = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "real.txt");
     defer alloc.free(expected);
-    const uri = try std.fmt.allocPrint(alloc, "file://{s}", .{alias_path});
+    // A Windows file URI is file:///C:/dir/file.
+    if (comptime @import("builtin").os.tag == .windows) std.mem.replaceScalar(u8, alias_path, '\\', '/');
+    const uri_prefix = if (comptime @import("builtin").os.tag == .windows) "file:///" else "file://";
+    const uri = try std.fmt.allocPrint(alloc, "{s}{s}", .{ uri_prefix, alias_path });
     defer alloc.free(uri);
 
     const actual = (try localFileTargetPath(alloc, uri)) orelse
@@ -4354,7 +4376,6 @@ fn testPermissionRuleSet(alloc: Allocator, permission: []const u8, pattern: []co
 }
 
 fn createSymlinkOrSkip(dir: std.Io.Dir, target_path: []const u8, link_path: []const u8) !void {
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     dir.symLink(std.testing.io, target_path, link_path, .{ .is_directory = false }) catch |err| {
         if (err == error.AccessDenied or std.mem.eql(u8, @errorName(err), "Permission" ++ "Denied")) {
             return error.SkipZigTest;
@@ -4546,8 +4567,15 @@ test "ACP default user commands require configured authority or review" {
         .name = "shell",
         .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\"}",
     }, .ask, &.{}, &.{}));
-    try std.testing.expectEqual(ToolPermissionDecision.permission_required, direct.decision);
-    try std.testing.expect(direct.execution_authority == null);
+    if (comptime std_builtin.os.tag == .windows) {
+        // Windows has no login shell profile: the legacy environment admits
+        // the direct plan, as it does on Linux and macOS.
+        try std.testing.expectEqual(ToolPermissionDecision.once, direct.decision);
+        try std.testing.expect(direct.execution_authority.?.run_command == .direct_only);
+    } else {
+        try std.testing.expectEqual(ToolPermissionDecision.permission_required, direct.decision);
+        try std.testing.expect(direct.execution_authority == null);
+    }
 
     const blocked = (try requestToolPermissionOutcome(&ctx, arena, .{
         .id = "blocked",
@@ -4626,11 +4654,18 @@ test "ACP auto mode uses automatic review clear and caution without prompting" {
     };
     var direct_review = TestReviewTurn.init("Inspect the workspace.", direct_call);
     const direct = try requestToolPermissionOutcomeWithRequest(&ctx, arena, direct_call, direct_review.context(), .auto, &.{}, null, null, &.{}, null);
-    try std.testing.expectEqual(
-        command_admission.ShellAuthorizationSource.auto_classifier,
-        direct.execution_authority.?.run_command.shell_allowed.source,
-    );
-    try std.testing.expectEqual(@as(usize, 1), fake.calls);
+    // Windows has no login shell profile: the legacy environment admits the
+    // direct plan without review, as it does on Linux and macOS.
+    const direct_reviews: usize = if (std_builtin.os.tag == .windows) 0 else 1;
+    if (comptime std_builtin.os.tag == .windows) {
+        try std.testing.expect(direct.execution_authority.?.run_command == .direct_only);
+    } else {
+        try std.testing.expectEqual(
+            command_admission.ShellAuthorizationSource.auto_classifier,
+            direct.execution_authority.?.run_command.shell_allowed.source,
+        );
+    }
+    try std.testing.expectEqual(direct_reviews, fake.calls);
 
     const accepted_call: ToolCall = .{
         .id = "accepted",
@@ -4646,7 +4681,7 @@ test "ACP auto mode uses automatic review clear and caution without prompting" {
             authority.source,
         ),
     }
-    try std.testing.expectEqual(@as(usize, 2), fake.calls);
+    try std.testing.expectEqual(direct_reviews + 1, fake.calls);
     try std.testing.expectEqualStrings(
         "Create accepted.txt.",
         fake.root_text,
@@ -4663,7 +4698,7 @@ test "ACP auto mode uses automatic review clear and caution without prompting" {
     try std.testing.expectEqual(ToolPermissionDecision.deny, blocked.decision);
     try std.testing.expectEqual(types.ToolPermissionDenialReason.review_caution, blocked.denial_reason.?);
     try std.testing.expect(blocked.execution_authority == null);
-    try std.testing.expectEqual(@as(usize, 3), fake.calls);
+    try std.testing.expectEqual(direct_reviews + 2, fake.calls);
     const blocked_classifier = blocked.auto_review_result orelse return error.TestExpectedEqual;
     try std.testing.expectEqual(permission_auto_classifier.Decision.caution, blocked_classifier.decision);
     try std.testing.expectEqualStrings("test reviewer rationale", blocked_classifier.rationale);
@@ -4722,8 +4757,8 @@ test "ACP auto mode automatic review clears or cautions prepared external file m
     const target_path = try std.fs.path.join(arena, &.{ external, "desktop-test.txt" });
     const arguments_json = try std.fmt.allocPrint(
         arena,
-        "{{\"path\":\"{s}\",\"content\":\"hello\\n\"}}",
-        .{target_path},
+        "{{\"path\":{f},\"content\":\"hello\\n\"}}",
+        .{std.json.fmt(target_path, .{})},
     );
     const accepted_call: ToolCall = .{
         .id = "external-write",

@@ -986,6 +986,8 @@ test "natural completion detaches only processes that left the command session" 
 }
 
 test "natural completion stops attached processes and keeps detached daemons" {
+    // Signals a POSIX process tree; Windows reaps process trees through Job Objects.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const FakeEffects = struct {
         var sent: [16]ProcessId = undefined;
         var sent_count: usize = 0;
@@ -1056,6 +1058,8 @@ test "natural completion stops attached processes and keeps detached daemons" {
 }
 
 test "natural completion keeps an unreadable process attached and reports it" {
+    // Signals a POSIX process tree; Windows reaps process trees through Job Objects.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const FakeEffects = struct {
         var sent_count: usize = 0;
 

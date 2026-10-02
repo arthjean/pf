@@ -2959,6 +2959,7 @@ test "per-server recovery serialization observes the operation deadline" {
 }
 
 test "guarded stdio subscription startup releases catalog locks before transport commit" {
+    // Spawns a POSIX `sh` fixture in its own process group; Windows stdio servers run in Job Objects.
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
 
     const child = try std.process.spawn(std.testing.io, .{
@@ -3056,6 +3057,7 @@ test "guarded stdio subscription startup releases catalog locks before transport
 }
 
 test "runtime shutdown releases catalog locks before subscription cancellation write" {
+    // Spawns a POSIX `sh` fixture in its own process group; Windows stdio servers run in Job Objects.
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
@@ -4787,6 +4789,7 @@ test "legacy URL waiter publication is allocator-safe and retirement wakes it" {
 }
 
 test "runtime retirement cancels a committed stdio tool call before waiting for its lease" {
+    // Spawns a POSIX `sh` fixture in its own process group; Windows stdio servers run in Job Objects.
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
@@ -5263,8 +5266,8 @@ test "modern request builders share required request metadata" {
     const alloc = std.testing.allocator;
     const metadata = try std.fmt.allocPrint(
         alloc,
-        "\"_meta\":{{\"io.modelcontextprotocol/protocolVersion\":\"{s}\",\"io.modelcontextprotocol/clientInfo\":{{\"name\":\"pf\",\"version\":\"{s}\"}},\"io.modelcontextprotocol/clientCapabilities\":{{}}}}",
-        .{ modern_protocol_version, build_options.app_version },
+        "\"_meta\":{{\"io.modelcontextprotocol/protocolVersion\":{f},\"io.modelcontextprotocol/clientInfo\":{{\"name\":\"pf\",\"version\":{f}}},\"io.modelcontextprotocol/clientCapabilities\":{{}}}}",
+        .{ std.json.fmt(modern_protocol_version, .{}), std.json.fmt(build_options.app_version, .{}) },
     );
     defer alloc.free(metadata);
 
@@ -5448,10 +5451,7 @@ fn expectResourceText(result: ResourceReadResult, expected: []const u8) !void {
 
 fn expectTestProcessExited(pid: io_mod.ProcessId) !void {
     for (0..200) |_| {
-        std.posix.kill(io_mod.posixPid(pid), @enumFromInt(0)) catch |err| switch (err) {
-            error.ProcessNotFound => return,
-            else => {},
-        };
+        if (io_mod.testProcessGone(pid)) return;
         if (builtin.os.tag == .linux and testProcessIsZombie(pid)) return;
         io_mod.sleep(10 * std.time.ns_per_ms);
     }
@@ -5664,6 +5664,8 @@ test "server identity projection preserves independently optional modern fields"
 
 test "modern MCP calls delegate unsupported schema assertions to the server" {
     const alloc = std.testing.allocator;
+    // The patterns match dots with brackets, not backslashes: MSYS sh on
+    // Windows unescapes backslashes in its quoted command-line arguments.
     const shell_server =
         \\while IFS= read -r line; do
         \\  case "$line" in
@@ -5671,7 +5673,7 @@ test "modern MCP calls delegate unsupported schema assertions to the server" {
         \\      printf '%s\n' '{"jsonrpc":"2.0","id":0,"result":{"resultType":"complete","supportedVersions":["2026-07-28"],"capabilities":{"tools":{}}}}'
         \\      ;;
         \\    *'"method":"tools/list"'*)
-        \\      printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","ttlMs":60000,"tools":[{"name":"local","inputSchema":{"type":"object","properties":{"email":{"type":"string"}},"required":["email"]}},{"name":"provider_pattern","inputSchema":{"type":"object","properties":{"email":{"type":"string","pattern":"^(?!\\.)(?!.*\\.\\.)[A-Za-z0-9_+.-]+@[A-Za-z0-9.-]+$"}},"required":["email"]},"outputSchema":{"type":"object","properties":{"email":{"type":"string","pattern":"^(?!\\.)(?!.*\\.\\.)[A-Za-z0-9_+.-]+@[A-Za-z0-9.-]+$"}},"required":["email"]}}]}}'
+        \\      printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","ttlMs":60000,"tools":[{"name":"local","inputSchema":{"type":"object","properties":{"email":{"type":"string"}},"required":["email"]}},{"name":"provider_pattern","inputSchema":{"type":"object","properties":{"email":{"type":"string","pattern":"^(?![.])(?!.*[.][.])[A-Za-z0-9_+.-]+@[A-Za-z0-9.-]+$"}},"required":["email"]},"outputSchema":{"type":"object","properties":{"email":{"type":"string","pattern":"^(?![.])(?!.*[.][.])[A-Za-z0-9_+.-]+@[A-Za-z0-9.-]+$"}},"required":["email"]}}]}}'
         \\      ;;
         \\    *'"method":"tools/call"'*'"email":"person@example.com"'*)
         \\      printf '%s\n' '{"jsonrpc":"2.0","id":3,"result":{"resultType":"complete","content":[{"type":"text","text":"accepted"}],"structuredContent":{"email":"person@example.com"}}}'

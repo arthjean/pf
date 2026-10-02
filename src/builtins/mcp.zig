@@ -1233,6 +1233,8 @@ fn tmpPath(alloc: Allocator, root: []const u8, name: []const u8) ![]u8 {
 }
 
 test "saving MCP config replaces the file durably" {
+    // Seeds POSIX mode bits and replaces a file this test holds open, which
+    // Windows refuses; Windows durable replace is covered in io.zig.
     if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
@@ -1273,7 +1275,7 @@ test "saving MCP config replaces the file durably" {
     try std.testing.expect(std.mem.find(u8, written, "stale") == null);
 
     const stat = try pf_dir.statFile(io_mod.getIo(), "mcp.json", .{ .follow_symlinks = false });
-    try std.testing.expectEqual(@as(u32, 0o600), stat.permissions.toMode() & 0o777);
+    try io_mod.expectPrivateFile(stat);
 
     var it = pf_dir.iterate();
     var entries: usize = 0;
@@ -1442,8 +1444,8 @@ test "workspace MCP missing environment variable is actionable and secret free" 
     defer alloc.free(workspace_root);
     const settings = try std.fmt.allocPrint(
         alloc,
-        "{{\"workspaces\":{{\"{s}\":{{\"enableAllProjectMcpServers\":true}}}}}}",
-        .{workspace_root},
+        "{{\"workspaces\":{{{f}:{{\"enableAllProjectMcpServers\":true}}}}}}",
+        .{std.json.fmt(workspace_root, .{})},
     );
     defer alloc.free(settings);
     try writeTempFile(&tmp, "home/.pf/settings.json", settings);
@@ -1813,7 +1815,6 @@ test "built-in MCP command rejects invalid remote add forms without mutation" {
 }
 
 test "saving MCP config refuses a symlinked target" {
-    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1838,7 +1839,6 @@ test "saving MCP config refuses a symlinked target" {
 }
 
 test "built-in MCP command reports a failed save instead of a missing server" {
-    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = ListFixture{ .text = "" };
     var tmp = std.testing.tmpDir(.{});
@@ -1861,7 +1861,6 @@ test "built-in MCP command reports a failed save instead of a missing server" {
 }
 
 test "adding an MCP server creates the profile directory privately" {
-    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = ListFixture{ .text = "" };
     var tmp = std.testing.tmpDir(.{});
@@ -1875,9 +1874,9 @@ test "adding an MCP server creates the profile directory privately" {
     try expectLine(result, "Saved MCP server 'fs'.", true);
 
     const dir_stat = try tmp.dir.statFile(io_mod.getIo(), "home/.pf", .{ .follow_symlinks = false });
-    try std.testing.expectEqual(@as(u32, 0o700), dir_stat.permissions.toMode() & 0o777);
+    try io_mod.expectPrivateDir(dir_stat);
     const file_stat = try tmp.dir.statFile(io_mod.getIo(), "home/.pf/mcp.json", .{ .follow_symlinks = false });
-    try std.testing.expectEqual(@as(u32, 0o600), file_stat.permissions.toMode() & 0o777);
+    try io_mod.expectPrivateFile(file_stat);
 }
 
 test "built-in MCP command preserves usage and missing-home notices" {

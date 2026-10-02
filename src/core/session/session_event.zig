@@ -3359,7 +3359,7 @@ test "conversation cancellation provenance preserves ordinary frame bytes" {
     );
     for ([_]u8{ 1, 2, 3 }) |version| {
         for (std.enums.values(session.InterruptedTerminalReason)) |reason| {
-            const old = try std.fmt.allocPrint(alloc, "{{\"schema_version\":{d},\"seq\":1,\"timestamp_ms\":1,\"event\":{{\"interrupted\":{{\"reason\":\"{s}\"}}}}}}\n", .{ version, @tagName(reason) });
+            const old = try std.fmt.allocPrint(alloc, "{{\"schema_version\":{d},\"seq\":1,\"timestamp_ms\":1,\"event\":{{\"interrupted\":{{\"reason\":{f}}}}}}}\n", .{ version, std.json.fmt(@tagName(reason), .{}) });
             defer alloc.free(old);
             var decoded = try decodeConversationFrame(alloc, old);
             defer decoded.deinit();
@@ -3498,8 +3498,8 @@ test "review feedback conversation metadata rejects invalid provenance and unkno
     for (cases) |case| {
         const frame = try std.fmt.allocPrint(
             alloc,
-            "{{\"schema_version\":2,\"seq\":1,\"timestamp_ms\":1,\"event\":{{\"tool_result\":{{\"call_id\":\"call-review\",\"tool_name\":\"shell\",\"status\":\"{s}\",\"artifact_ref\":\"result.txt\",\"stored_bytes\":0,\"completeness\":\"complete\",\"provider_native\":{},\"review_feedback\":{s}}}}}}}\n",
-            .{ case.status, case.native, case.marker },
+            "{{\"schema_version\":2,\"seq\":1,\"timestamp_ms\":1,\"event\":{{\"tool_result\":{{\"call_id\":\"call-review\",\"tool_name\":\"shell\",\"status\":{f},\"artifact_ref\":\"result.txt\",\"stored_bytes\":0,\"completeness\":\"complete\",\"provider_native\":{},\"review_feedback\":{s}}}}}}}\n",
+            .{ std.json.fmt(case.status, .{}), case.native, case.marker },
         );
         defer alloc.free(frame);
         try std.testing.expectError(error.InvalidConversationFrame, decodeConversationFrame(alloc, frame));
@@ -3633,7 +3633,7 @@ test "conversation frame rejects a wrongly typed diff content handle" {
 test "conversation frame rejects an oversized diff content handle" {
     const alloc = std.testing.allocator;
     const oversized = "diff-0123456789abcdef-0123456789abcdef.json" ++ ("x" ** 300);
-    const frame = try std.fmt.allocPrint(alloc, "{{\"schema_version\":3,\"seq\":1,\"timestamp_ms\":1,\"event\":{{\"tool_result\":{{\"call_id\":\"call-edit\",\"tool_name\":\"edit_file\",\"status\":\"success\",\"artifact_ref\":\"result.txt\",\"stored_bytes\":0,\"completeness\":\"complete\",\"committed_file_presentation\":{{\"path\":\"src/a.zig\",\"kind\":\"edited\",\"lines\":[],\"additions\":1,\"deletions\":1,\"truncated\":false,\"previous_content\":null,\"after_content\":null,\"lifecycle_id\":null,\"content_handle\":\"{s}\"}}}}}}}}}}\n", .{oversized});
+    const frame = try std.fmt.allocPrint(alloc, "{{\"schema_version\":3,\"seq\":1,\"timestamp_ms\":1,\"event\":{{\"tool_result\":{{\"call_id\":\"call-edit\",\"tool_name\":\"edit_file\",\"status\":\"success\",\"artifact_ref\":\"result.txt\",\"stored_bytes\":0,\"completeness\":\"complete\",\"committed_file_presentation\":{{\"path\":\"src/a.zig\",\"kind\":\"edited\",\"lines\":[],\"additions\":1,\"deletions\":1,\"truncated\":false,\"previous_content\":null,\"after_content\":null,\"lifecycle_id\":null,\"content_handle\":{f}}}}}}}}}}}\n", .{std.json.fmt(oversized, .{})});
     defer alloc.free(frame);
     try std.testing.expectError(error.InvalidConversationFrame, decodeConversationFrame(alloc, frame));
 }

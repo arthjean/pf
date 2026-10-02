@@ -16,7 +16,14 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { PF_BIN, HAS_API_KEY, REPO_ROOT, runPf, providerVersionTestEnv } from "../evals/eval-helpers";
+import {
+  PF_BIN,
+  HAS_API_KEY,
+  REPO_ROOT,
+  runPf,
+  mirrorTestHome,
+  providerVersionTestEnv,
+} from "../evals/eval-helpers";
 import {
   AUTO_EXA_SERIALIZED_TOOL_NAMES,
   customProviderGuidanceState,
@@ -62,7 +69,6 @@ const TIMEOUT = 30_000;
 const LIVE_TIMEOUT = 120_000;
 const TERMINAL_HOST_EXIT_TIMEOUT_MS = 20_000;
 const SEEDED_GATEWAY_TOKEN = "seeded-access-token";
-const TERMINAL_FIXTURE_SHELL = terminalFixtureShell();
 const MCP_STDIO_FIXTURE = join(
   import.meta.dirname,
   "fixtures",
@@ -195,6 +201,16 @@ function partialEofResponse(text: string): Response {
     })}\n\n`,
     { headers: { "content-type": "text/event-stream" } },
   );
+}
+
+function restartEnv(
+  root: ReturnType<typeof createIsolatedRoot>,
+  gateway: ReturnType<typeof startFakeGateway>,
+) {
+  const overrides = fakeGatewayEnv(root, gateway);
+  const env: Record<string, string | undefined> = { ...process.env, ...overrides, NO_COLOR: "1" };
+  mirrorTestHome(env, overrides);
+  return env;
 }
 
 function fakeGatewayEnv(
@@ -679,6 +695,7 @@ class AcpClient {
         inheritedEnv[key] = value;
       }
     }
+    mirrorTestHome(inheritedEnv, opts?.omitHome ? { ...opts?.env, HOME: undefined } : opts?.env);
     const proc = nodeSpawn(PF_BIN, args, {
       env: providerVersionTestEnv({
         ...inheritedEnv,
@@ -1787,7 +1804,8 @@ describe("acp: model-independent", () => {
     TIMEOUT,
   );
 
-  test(
+  // Windows has no FIFOs.
+  test.skipIf(process.platform === "win32")(
     "read_file rejects a FIFO without waiting for a writer",
     async () => {
       const root = createIsolatedRoot("pf-acp-read-file-fifo-");
@@ -2169,7 +2187,7 @@ describe("acp: model-independent", () => {
       ]);
       const proc = nodeSpawn(PF_BIN, ["acp"], {
         cwd: root.workspace,
-        env: { ...process.env, ...fakeGatewayEnv(root, gateway), NO_COLOR: "1" },
+        env: restartEnv(root, gateway),
         stdio: ["pipe", "pipe", "pipe"],
       });
       try {
@@ -2295,7 +2313,7 @@ describe("acp: model-independent", () => {
       ]);
       const proc = nodeSpawn(PF_BIN, ["acp"], {
         cwd: root.workspace,
-        env: { ...process.env, ...fakeGatewayEnv(root, gateway), NO_COLOR: "1" },
+        env: restartEnv(root, gateway),
         stdio: ["pipe", "pipe", "pipe"],
       });
       try {
@@ -2398,7 +2416,8 @@ describe("acp: model-independent", () => {
     90_000,
   );
 
-  test(
+  // The terminal tool is not available on Windows yet.
+  test.skipIf(process.platform === "win32")(
     "ACP executes the shared managed shell TTY path",
     async () => {
       const root = createShortIsolatedRoot("pf-acp-terminal-");
@@ -2411,7 +2430,7 @@ describe("acp: model-independent", () => {
             command: "printf ACP_PUBLIC_SHELL_TTY",
             shell: {
               kind: "executable",
-              path: TERMINAL_FIXTURE_SHELL,
+              path: terminalFixtureShell(),
               clean_start: true,
             },
             tty: true,
@@ -7299,6 +7318,16 @@ describe("acp: model-independent", () => {
   test(
     "session list stays available and session create reports store unavailable without HOME",
     async () => {
+      if (process.platform === "win32") {
+        // Windows stops pf at startup when no profile home exists, before ACP starts.
+        const result = await runPf(["acp"], {
+          env: { HOME: undefined, AI_GATEWAY_API_KEY: "e2e-placeholder", VERCEL_OIDC_TOKEN: "" },
+        });
+        expect(result.code).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toBe("pf cannot find your profile directory: set USERPROFILE.\n");
+        return;
+      }
       client = await AcpClient.create({
         omitHome: true,
         env: {
@@ -8019,7 +8048,8 @@ describe("acp: model-independent", () => {
         );
 
         const trace = readFileSync(tracePath, "utf8");
-        expect(trace).toContain(malformedDirectory);
+        // The trace escapes the path as a JSON string, which leaves a POSIX path unchanged.
+        expect(trace).toContain(JSON.stringify(malformedDirectory).slice(1, -1));
         expect(trace).toContain("cause=duplicate_recognized_key");
         expect(trace).not.toContain(malformedBody);
         expect(client.stderr).toBe("");

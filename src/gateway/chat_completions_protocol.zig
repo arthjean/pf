@@ -1122,7 +1122,7 @@ test "chat completions reasoning fields survive a completed response" {
         var reducer = try Reducer.init(alloc, test_request(), .{});
         defer reducer.deinit();
         for ([_][]const u8{ "think ", "carefully" }) |fragment| {
-            const chunk = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{{\"{s}\":\"{s}\"}}}}]}}", .{ field, fragment });
+            const chunk = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{{{f}:{f}}}}}]}}", .{ std.json.fmt(field, .{}), std.json.fmt(fragment, .{}) });
             defer alloc.free(chunk);
             try test_accept(&reducer, chunk);
         }
@@ -2093,7 +2093,7 @@ test "chat completions accepts matching empty terminal usage choices" {
         defer reducer.deinit();
         try test_accept(&reducer, if (with_tools) test_call else test_text);
         try test_accept(&reducer, if (with_tools) test_tools_finish else test_stop);
-        const trailer = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{{\"role\":\"assistant\",\"content\":\"\"}},\"finish_reason\":\"{s}\"}}],\"usage\":{{\"prompt_tokens\":16,\"completion_tokens\":6,\"total_tokens\":22}}}}", .{if (with_tools) "tool_calls" else "stop"});
+        const trailer = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{{\"role\":\"assistant\",\"content\":\"\"}},\"finish_reason\":{f}}}],\"usage\":{{\"prompt_tokens\":16,\"completion_tokens\":6,\"total_tokens\":22}}}}", .{std.json.fmt(if (with_tools) "tool_calls" else "stop", .{})});
         defer alloc.free(trailer);
         try std.testing.expect((try reducer.accept(trailer, false)).content == null);
         try test_accept(&reducer, "[DONE]");
@@ -2120,7 +2120,7 @@ test "chat completions terminal usage cannot introduce content tools or a differ
         var reducer = try Reducer.init(alloc, test_tool_request(), .{});
         defer reducer.deinit();
         try test_accept(&reducer, test_stop);
-        const trailer = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{s},\"finish_reason\":\"{s}\"}}],\"usage\":{{\"prompt_tokens\":16,\"completion_tokens\":6,\"total_tokens\":22}}}}", .{ case.delta, case.reason });
+        const trailer = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{s},\"finish_reason\":{f}}}],\"usage\":{{\"prompt_tokens\":16,\"completion_tokens\":6,\"total_tokens\":22}}}}", .{ case.delta, std.json.fmt(case.reason, .{}) });
         defer alloc.free(trailer);
         try std.testing.expectError(error.InconsistentFinishReason, reducer.accept(trailer, false));
         try std.testing.expectError(error.StreamClosed, reducer.finish(false));
@@ -2214,7 +2214,7 @@ test "chat completions terminal evidence and finish reasons are strict" {
         var reducer = try Reducer.init(alloc, test_tool_request(), .{});
         defer reducer.deinit();
         try test_accept(&reducer, test_call);
-        const terminal = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{{}},\"finish_reason\":\"{s}\"}}]}}", .{case.reason});
+        const terminal = try std.fmt.allocPrint(alloc, "{{\"choices\":[{{\"index\":0,\"delta\":{{}},\"finish_reason\":{f}}}]}}", .{std.json.fmt(case.reason, .{})});
         defer alloc.free(terminal);
         try std.testing.expectError(case.failure, test_finish(&reducer, terminal));
     }
@@ -2438,7 +2438,7 @@ test "chat completions accepts echoed models up to the request model limit" {
     defer alloc.free(body);
     var reducer = try Reducer.init(alloc, request, .{});
     defer reducer.deinit();
-    const chunk = try std.fmt.allocPrint(alloc, "{{\"model\":\"{s}\",\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"ok\"}},\"finish_reason\":\"stop\"}}]}}", .{request.model});
+    const chunk = try std.fmt.allocPrint(alloc, "{{\"model\":{f},\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"ok\"}},\"finish_reason\":\"stop\"}}]}}", .{std.json.fmt(request.model, .{})});
     defer alloc.free(chunk);
     try test_accept(&reducer, chunk);
     try test_accept(&reducer, "[DONE]");

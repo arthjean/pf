@@ -10,6 +10,7 @@
 //! The file is disposable: a missing, corrupt, or older-version index is
 //! rebuilt from the session directories, which remain the only authority.
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const child_state = @import("../subagent/child_state.zig");
@@ -865,7 +866,7 @@ test "actionable catalog lists and caches legacy sessions without event logs" {
     const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace);
     // Oldest persisted format: a schema v2 snapshot with no event log.
-    const manifest = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":\"legacy-old\",\"created_at_ms\":1,\"updated_at_ms\":2,\"workspace_root\":\"{s}\",\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{workspace});
+    const manifest = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":\"legacy-old\",\"created_at_ms\":1,\"updated_at_ms\":2,\"workspace_root\":{f},\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{std.json.fmt(workspace, .{})});
     defer alloc.free(manifest);
     var file = try tmp.dir.createFile(std.testing.io, "home/.pf/sessions/legacy-old/session.json", .{});
     try file.writeStreamingAll(std.testing.io, manifest);
@@ -910,7 +911,7 @@ test "a summary outside the row contract stays listed without disabling the inde
         try tmp.dir.createDirPath(std.testing.io, dir_path);
         const path = try std.fmt.allocPrint(alloc, "{s}/session.json", .{dir_path});
         defer alloc.free(path);
-        const manifest = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":\"{s}\",\"created_at_ms\":{d},\"updated_at_ms\":{d},\"workspace_root\":\"{s}\",\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{ snapshot.id, snapshot.created_at_ms, snapshot.updated_at_ms, workspace });
+        const manifest = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":{f},\"created_at_ms\":{d},\"updated_at_ms\":{d},\"workspace_root\":{f},\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{ std.json.fmt(snapshot.id, .{}), snapshot.created_at_ms, snapshot.updated_at_ms, std.json.fmt(workspace, .{}) });
         defer alloc.free(manifest);
         try tmp.dir.writeFile(std.testing.io, .{ .sub_path = path, .data = manifest });
     }
@@ -952,7 +953,7 @@ test "actionable catalog lists an interrupted legacy upgrade without caching it"
     defer alloc.free(home);
     const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace);
-    const snapshot = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":\"fenced\",\"created_at_ms\":1,\"updated_at_ms\":2,\"workspace_root\":\"{s}\",\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{workspace});
+    const snapshot = try std.fmt.allocPrint(alloc, "{{\"schema_version\":2,\"id\":\"fenced\",\"created_at_ms\":1,\"updated_at_ms\":2,\"workspace_root\":{f},\"conversation_language\":\"en\",\"history_len\":1,\"history\":[{{\"role\":\"user\",\"content\":\"saved\"}}],\"total_input_tokens\":0,\"total_output_tokens\":0}}\n", .{std.json.fmt(workspace, .{})});
     defer alloc.free(snapshot);
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/fenced/session.legacy.json", .data = snapshot });
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/fenced/authority.pending.json", .data = "pending" });
@@ -1000,8 +1001,8 @@ test "actionable catalog lists an unverifiable child marker without caching it" 
         .preferences = .{ .model = @constCast("test"), .effort = .auto, .fast_mode = false },
     });
     writable.deinit(alloc);
-    try tmp.dir.createDir(std.testing.io, "home/.pf/sessions/unverified/subagent", .fromMode(0o700));
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/unverified/subagent/control.json", .data = "not a control record", .flags = .{ .permissions = .fromMode(0o600) } });
+    try tmp.dir.createDir(std.testing.io, "home/.pf/sessions/unverified/subagent", io_mod.private_dir_permissions);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "home/.pf/sessions/unverified/subagent/control.json", .data = "not a control record", .flags = .{ .permissions = io_mod.private_file_permissions } });
 
     var writer = (try Writer.init(store)).?;
     defer writer.deinit();
@@ -1021,7 +1022,9 @@ test "actionable catalog lists an unverifiable child marker without caching it" 
 extern "c" fn mkfifo(path: [*:0]const u8, mode: std.c.mode_t) c_int;
 
 test "catalog cache ignores a FIFO without blocking" {
-    if (comptime @import("builtin").os.tag == .windows or @import("builtin").os.tag == .wasi) return error.SkipZigTest;
+    // Creates a POSIX FIFO; Windows has no mkfifo.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime @import("builtin").os.tag == .wasi) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1200,9 +1203,11 @@ test "catalog fingerprint detects event appends and child directory permissions"
     try events.writePositionalAll(std.testing.io, "more\n", 3);
     const appended = (try fingerprint(tmp.dir, "session")).?;
     try std.testing.expect(!std.mem.eql(u8, &first, &appended));
+    // Windows has no directory mode bits for the fingerprint to observe.
+    if (comptime @import("builtin").os.tag == .windows) return;
     var child = try tmp.dir.openDir(std.testing.io, "session/subagent", .{ .iterate = true });
     defer child.close(std.testing.io);
-    try child.setPermissions(std.testing.io, .fromMode(0o700));
+    try child.setPermissions(std.testing.io, io_mod.private_dir_permissions);
     const private = (try fingerprint(tmp.dir, "session")).?;
     try child.setPermissions(std.testing.io, .fromMode(0o755));
     const changed = (try fingerprint(tmp.dir, "session")).?;

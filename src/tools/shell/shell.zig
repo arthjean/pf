@@ -1994,7 +1994,7 @@ test "shell request correction bounds feedback and preserves input bytes" {
     const request = parsed.value.object.get("error").?.object.get("retry_with").?.object.get("request").?.object;
     try std.testing.expectEqualStrings(command, request.get("command").?.string);
 
-    const long_key = try std.fmt.allocPrint(alloc, "{{\"command\":\"true\",\"{s}\":null}}", .{key});
+    const long_key = try std.fmt.allocPrint(alloc, "{{\"command\":\"true\",{f}:null}}", .{std.json.fmt(key, .{})});
     defer alloc.free(long_key);
     const bounded = try request_correction(alloc, long_key, true);
     defer alloc.free(bounded);
@@ -2602,6 +2602,10 @@ test "running shell snapshot leaves continuation intent to the caller" {
 }
 
 test "registered shell empty observation waits through one managed execution" {
+    // command_replay_store's EphemeralStore is unavailable on Windows
+    // (EphemeralReplayUnavailable), so an unsaved session has no replay
+    // handle for truncated output.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     if (comptime @import("builtin").os.tag == .wasi) return;
     const alloc = std.testing.allocator;
     var runtime = managed_execution.Runtime.init(alloc);
@@ -2685,8 +2689,8 @@ test "registered shell empty observation waits through one managed execution" {
         return error.TestExpectedEqual;
     const interact_arguments = try std.fmt.allocPrint(
         alloc,
-        "{{\"action\":\"interact\",\"session_id\":\"{s}\",\"yield_time_ms\":1000}}",
-        .{execution_id.string},
+        "{{\"action\":\"interact\",\"session_id\":{f},\"yield_time_ms\":1000}}",
+        .{std.json.fmt(execution_id.string, .{})},
     );
     defer alloc.free(interact_arguments);
 

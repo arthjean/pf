@@ -547,9 +547,10 @@ fn resolveSavedDirectory(
             var arena_state = std.heap.ArenaAllocator.init(alloc);
             defer arena_state.deinit();
             const arena = arena_state.allocator();
+            // The filesystem root contains every path: `/`, or the drive root on Windows.
             const identity = pathing.resolveCreateTargetFromNearestExisting(
                 arena,
-                "/",
+                std.fs.path.parsePath(normalized).root,
                 normalized,
             ) catch |resolve_err| switch (resolve_err) {
                 error.OutOfMemory => return error.OutOfMemory,
@@ -890,7 +891,7 @@ test "workspace access deactivates an observed root when its ancestor becomes un
         unavailable = .{};
         try std.testing.expect(!access.entries[0].available);
         try std.testing.expect(!access.scope(primary).contains(shared));
-        try tmp.dir.deleteFile(std.testing.io, "parent");
+        if (loop) try io_mod.testDeleteDirSymLink(tmp.dir, "parent") else try tmp.dir.deleteFile(std.testing.io, "parent");
         try tmp.dir.rename("held", tmp.dir, "parent", std.testing.io);
         var restored = (try access.stageAvailabilityRefresh(alloc, primary)) orelse return error.TestExpectedRefresh;
         defer restored.deinit(alloc);
@@ -975,7 +976,7 @@ test "workspace access rejects an availability refresh that splits past capacity
 
     try tmp.dir.createDir(std.testing.io, "real-a/shared", .default_dir);
     try tmp.dir.createDir(std.testing.io, "real-b/shared", .default_dir);
-    try tmp.dir.deleteFile(std.testing.io, "link-b");
+    try io_mod.testDeleteDirSymLink(tmp.dir, "link-b");
     try tmp.dir.symLink(std.testing.io, "real-b", "link-b", .{ .is_directory = true });
 
     try std.testing.expectError(
@@ -1047,7 +1048,7 @@ test "workspace access preserves observed source identity across retarget and la
     try std.testing.expectEqualStrings(source, access.saved_sources[0].source);
     try std.testing.expectEqualStrings(first, access.saved_sources[0].identity);
 
-    try tmp.dir.deleteFile(std.testing.io, "saved-link");
+    try io_mod.testDeleteDirSymLink(tmp.dir, "saved-link");
     try tmp.dir.symLink(std.testing.io, "second", "saved-link", .{ .is_directory = true });
 
     var cloned = try access.clone(alloc);
@@ -1080,7 +1081,7 @@ test "workspace access removes a disappeared saved source by its spelling" {
 
     var access = try WorkspaceAccess.init(alloc, primary, &.{source}, &.{}, false);
     defer access.deinit(alloc);
-    try tmp.dir.deleteFile(std.testing.io, "saved-link");
+    try io_mod.testDeleteDirSymLink(tmp.dir, "saved-link");
 
     var removed = try access.stageRemove(alloc, primary, source);
     defer removed.deinit(alloc);

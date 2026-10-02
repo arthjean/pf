@@ -348,7 +348,12 @@ pub const TerminalState = struct {
                 -1 => .{ .hung_up = true },
                 else => .{},
             },
-            .windows => return windows_console.poll(self.input, timeout_ms),
+            .windows => {
+                // An unbound terminal has no input, as POSIX poll reports no
+                // POLLIN for an invalid descriptor.
+                if (self.input.handle == std.os.windows.INVALID_HANDLE_VALUE) return .{};
+                return windows_console.poll(self.input, timeout_ms);
+            },
             else => {},
         }
         var fds = [_]std.posix.pollfd{.{

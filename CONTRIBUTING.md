@@ -37,15 +37,21 @@ zig build run
 
 ### Windows
 
-The Windows port is in progress. The native build succeeds, and the interactive terminal UI runs in a console with virtual terminal support, such as Windows Terminal or the VS Code terminal. Hosted terminal sessions (the `terminal` tool) are not supported on Windows yet. To work on it:
+pf builds and runs natively on Windows x86_64, and the interactive terminal UI runs in a console with virtual terminal support, such as Windows Terminal or the VS Code terminal. The README's Windows section lists what is not ported yet. To work on it:
 
 * install Zig `0.16.0` for Windows x86_64 and put `zig.exe` on `PATH`
 
 * build natively from PowerShell or Git Bash with `zig build`; the target is `x86_64-windows-gnu`, and Linux and macOS still build from the same checkout with `zig build -Dtarget=x86_64-linux-gnu` and `zig build -Dtarget=aarch64-macos`
 
-* drive `./zig-out/bin/pf.exe` through a pseudo console with `zig build conpty-driver`, which installs `zig-out/bin/conpty-driver.exe`; its options and script commands are documented at the top of `tests/e2e/fixtures/windows-conpty-driver.zig`
+* run the unit tests natively with `zig build test`; a test that cannot run on Windows starts with `if (comptime builtin.os.tag == .windows) return error.SkipZigTest;` and a comment that states why
 
-* run the Linux unit tests inside WSL on the same checkout with a Linux Zig `0.16.0`: `zig build test`
+* run the Windows end-to-end subset from `tests/e2e` with `bun windows-subset.ts` after `zig build` and `zig build conpty-driver`; it runs the files listed in `WINDOWS_E2E_FILES` with a throwaway profile, and the rest of `tests/e2e` needs tmux or POSIX fixtures. pf loads skills from every ancestor of a workspace, so the runner stops when a directory above `%TEMP%` holds one, such as `%USERPROFILE%\.claude\skills`; set `TEMP` and `TMP` to a directory outside your profile, for example `C:\pf-e2e-tmp`
+
+* drive `./zig-out/bin/pf.exe` through a pseudo console with `zig build conpty-driver`, which installs `zig-out/bin/conpty-driver.exe`; its options and script commands are documented at the top of `tests/e2e/fixtures/windows-conpty-driver.zig`, and `tests/e2e/windows-tui-smoke.test.ts` shows it in a test
+
+* pf reads its profile from `USERPROFILE` before `HOME` on Windows, so a test that isolates its home must set both
+
+* run the Linux unit tests inside WSL on a copy of the checkout in the WSL filesystem with a Linux Zig `0.16.0`: `zig build test`
 
 * run `bash ./scripts/check-public-surface.sh` through Git Bash
 
@@ -63,7 +69,7 @@ Keep the local development loop focused: run the narrowest test that covers the 
 
 Once the focused checks pass, create a clean checkpoint commit, push the non-`main` feature branch, and open a draft PR immediately. The **Full CI** workflow runs the complete deterministic suite on native Linux x86_64, Linux aarch64, macOS x86_64, and macOS aarch64 runners. The native matrix builds, tests, and smoke-tests ReleaseSafe on every platform; formatting and the public-surface audit run in those ReleaseSafe jobs. Four duration-balanced, isolated ReleaseSafe E2E shards per platform use checked-in weights to assign every Bun test file once; files inside each shard run sequentially in separate Bun processes so terminal fixtures and process state cannot leak between files. A failed file receives one bounded retry after tmux is reset.
 
-Standard PR CI reports ReleaseSafe Build & Test and deterministic E2E results. Do not mark the draft PR ready until all four Full CI jobs and the final ship gate have succeeded for the exact current commit. Each platform aggregate requires its ReleaseSafe native check and all four ReleaseSafe E2E shards. A result from an older commit does not count. Live model evals are separate from this gate because they require credentials and are not deterministic.
+Standard PR CI reports ReleaseSafe Build & Test and deterministic E2E results. Do not mark the draft PR ready until all five Full CI jobs and the final ship gate have succeeded for the exact current commit. Each Linux and macOS aggregate requires its ReleaseSafe native check and all four ReleaseSafe E2E shards; the Windows aggregate requires the Windows job, which also runs the Windows E2E subset. A result from an older commit does not count. Live model evals are separate from this gate because they require credentials and are not deterministic.
 
 Changes to `build.zig` or `scripts/pgso/` also run the native macOS arm64 PGSO candidate workflow. That lane produces retained size, behavior, and performance evidence but does not alter any release artifact or update channel. Its pinned toolchain, local reproduction command, corpus exclusions, and failure rules are documented in [`scripts/pgso/README.md`](scripts/pgso/README.md).
 
@@ -590,5 +596,5 @@ Minimum checklist:
 1. Run `zig fmt --check src/` and the focused tests for the changed path.
 2. Run `zig build`, then exercise the change with `./zig-out/bin/pf`.
 3. Push the feature branch and open a draft PR immediately.
-4. Require all four **Full CI** jobs and the final ship gate to pass for the exact current commit before marking the PR ready.
+4. Require all five **Full CI** jobs and the final ship gate to pass for the exact current commit before marking the PR ready.
 5. Update `README.md` if user-facing behavior changed.

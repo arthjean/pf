@@ -236,7 +236,7 @@ pub fn openDirAbsoluteNoFollow(path: []const u8, options: std.Io.Dir.OpenOptions
         if (std.mem.eql(u8, component.name, ".") or std.mem.eql(u8, component.name, "..")) {
             return error.InvalidPath;
         }
-        const next_dir = try dir.openDir(getIo(), component.name, .{ .follow_symlinks = false });
+        const next_dir = try openChildDirNoFollow(dir, component.name, .{});
         dir.close(getIo());
         dir = next_dir;
         component = next_component;
@@ -244,11 +244,24 @@ pub fn openDirAbsoluteNoFollow(path: []const u8, options: std.Io.Dir.OpenOptions
     if (std.mem.eql(u8, component.name, ".") or std.mem.eql(u8, component.name, "..")) {
         return error.InvalidPath;
     }
-    var final_options = options;
-    final_options.follow_symlinks = false;
-    const result = try dir.openDir(getIo(), component.name, final_options);
+    const result = try openChildDirNoFollow(dir, component.name, options);
     dir.close(getIo());
     return result;
+}
+
+/// Opens the directory `name` below `dir` without following a link. A
+/// no-follow open on Windows returns the link or junction itself instead of
+/// failing, so it is rejected with the error POSIX `O_NOFOLLOW` reports.
+fn openChildDirNoFollow(dir: std.Io.Dir, name: []const u8, options: std.Io.Dir.OpenOptions) !std.Io.Dir {
+    var no_follow = options;
+    no_follow.follow_symlinks = false;
+    const child = try dir.openDir(getIo(), name, no_follow);
+    if (comptime is_windows) {
+        errdefer child.close(getIo());
+        const stat = try child.stat(getIo());
+        if (stat.kind == .sym_link) return error.SymLinkLoop;
+    }
+    return child;
 }
 
 test "Darwin process I/O replaces only processSpawn with stable storage" {
@@ -818,6 +831,22 @@ pub fn currentProcessId() ProcessId {
 pub fn childProcessId(id: std.process.Child.Id) ProcessId {
     if (comptime builtin.os.tag == .windows) return @import("win32.zig").GetProcessId(id);
     return @intCast(id);
+}
+
+/// Returns whether no running process has id `pid`. A POSIX zombie still
+/// counts as running. Test use only.
+pub fn testProcessGone(pid: ProcessId) bool {
+    if (comptime builtin.os.tag == .windows) {
+        const win32 = @import("win32.zig");
+        const handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, .FALSE, pid) orelse
+            return std.os.windows.GetLastError() == .INVALID_PARAMETER;
+        defer std.os.windows.CloseHandle(handle);
+        var exit_code: std.os.windows.DWORD = 0;
+        if (!win32.GetExitCodeProcess(handle, &exit_code).toBool()) return false;
+        return exit_code != win32.STILL_ACTIVE;
+    }
+    std.posix.kill(posixPid(pid), @enumFromInt(0)) catch |err| return err == error.ProcessNotFound;
+    return false;
 }
 
 /// Converts a process id for a POSIX system call. POSIX only.
@@ -1487,6 +1516,9 @@ fn windowsRealpathAlloc(alloc: std.mem.Allocator, dir: std.Io.Dir, sub_path: []c
         error.BadPathName => error.BadPathName,
         error.SymLinkLoop => error.SymLinkLoop,
         error.NotDir => error.NotDir,
+        // Zig 0.16 reports a link that does not resolve, such as a loop, as
+        // an unexpected NTSTATUS.
+        error.Unexpected => if (windowsPathHasUnresolvedLink(dir, sub_path)) error.SymLinkLoop else error.Unexpected,
         else => error.Unexpected,
     };
     defer file.close(getIo());
@@ -1494,6 +1526,18 @@ fn windowsRealpathAlloc(alloc: std.mem.Allocator, dir: std.Io.Dir, sub_path: []c
         error.OutOfMemory => error.OutOfMemory,
         else => error.Unexpected,
     };
+}
+
+/// Reports whether the deepest component of `sub_path` that can be opened
+/// without following links is itself a link, so the path fails on a link
+/// that does not resolve rather than on a missing or invalid component.
+fn windowsPathHasUnresolvedLink(dir: std.Io.Dir, sub_path: []const u8) bool {
+    var current: ?[]const u8 = sub_path;
+    while (current) |path| : (current = std.fs.path.dirname(path)) {
+        const stat = dir.statFile(getIo(), path, .{ .follow_symlinks = false }) catch continue;
+        return stat.kind == .sym_link;
+    }
+    return false;
 }
 
 /// Returns `GetFinalPathNameByHandleW` output for an open handle with links
@@ -1633,7 +1677,7 @@ pub fn dirRealpathAlloc(alloc: std.mem.Allocator, dir: std.Io.Dir, sub_path: []c
 
 /// Asserts that stat evidence describes a private file: mode 0600 on POSIX,
 /// one regular file on every platform.
-fn expectPrivateFile(stat: std.Io.File.Stat) !void {
+pub fn expectPrivateFile(stat: std.Io.File.Stat) !void {
     try std.testing.expectEqual(std.Io.File.Kind.file, stat.kind);
     try std.testing.expectEqual(@as(@TypeOf(stat.nlink), 1), stat.nlink);
     if (comptime !is_windows) {
@@ -1643,7 +1687,7 @@ fn expectPrivateFile(stat: std.Io.File.Stat) !void {
 
 /// Asserts that stat evidence describes a private directory: mode 0700 on
 /// POSIX.
-fn expectPrivateDir(stat: std.Io.File.Stat) !void {
+pub fn expectPrivateDir(stat: std.Io.File.Stat) !void {
     try std.testing.expectEqual(std.Io.File.Kind.directory, stat.kind);
     if (comptime !is_windows) {
         try std.testing.expectEqual(@as(std.posix.mode_t, 0o700), stat.permissions.toMode() & 0o777);
@@ -1670,6 +1714,67 @@ pub fn testHardLink(dir: std.Io.Dir, target: []const u8, alias: []const u8) !voi
         return;
     }
     try std.testing.expectEqual(@as(c_int, 0), std.c.linkat(dir.handle, @ptrCast(target), dir.handle, @ptrCast(alias), 0));
+}
+
+/// Creates the symlink `link_path` below `dir` pointing at `target_path`.
+/// Windows links are typed, so a link to an existing directory is created as
+/// a directory link, as Git does; POSIX links are untyped. Test use only.
+pub fn testSymLink(dir: std.Io.Dir, target_path: []const u8, link_path: []const u8) !void {
+    const is_directory = if (comptime is_windows) is_directory: {
+        const alloc = std.testing.allocator;
+        const parent = std.fs.path.dirname(link_path) orelse ".";
+        const resolved = if (std.fs.path.isAbsolute(target_path))
+            try alloc.dupe(u8, target_path)
+        else
+            try std.fs.path.join(alloc, &.{ parent, target_path });
+        defer alloc.free(resolved);
+        const stat = dir.statFile(getIo(), resolved, .{}) catch break :is_directory false;
+        break :is_directory stat.kind == .directory;
+    } else false;
+    return dir.symLink(getIo(), target_path, link_path, .{ .is_directory = is_directory });
+}
+
+/// Removes the directory symlink `sub_path` below `dir` without following it.
+/// Windows removes a directory link as a directory. Test use only.
+pub fn testDeleteDirSymLink(dir: std.Io.Dir, sub_path: []const u8) !void {
+    if (comptime is_windows) return dir.deleteDir(getIo(), sub_path);
+    return dir.deleteFile(getIo(), sub_path);
+}
+
+/// Sets a socket option on `handle`. `std.posix.setsockopt` does not
+/// compile on Windows. Test use only.
+pub fn testSetSocketOption(handle: std.Io.net.Socket.Handle, level: i32, name: u32, value: []const u8) !void {
+    if (comptime is_windows) {
+        const win32 = @import("win32.zig");
+        if (win32.setsockopt(handle, level, @intCast(name), value.ptr, @intCast(value.len)) != 0)
+            return error.SocketOptionFailed;
+        return;
+    }
+    try std.posix.setsockopt(handle, level, name, value);
+}
+
+/// Makes closing `handle` reset the connection (linger on, zero timeout).
+/// Test use only.
+pub fn testResetOnClose(handle: std.Io.net.Socket.Handle) !void {
+    if (comptime is_windows) {
+        // Zig sockets are AFD handles that Winsock options cannot reach, so
+        // an abortive disconnect sends the reset before the close instead.
+        const windows = std.os.windows;
+        const info: windows.AFD.PARTIAL_DISCONNECT_INFO = .{
+            .DisconnectMode = .{ .ABORTIVE = true },
+            .Timeout = -1,
+        };
+        const result = try getIo().operate(.{ .device_io_control = .{
+            .file = .{ .handle = handle, .flags = .{ .nonblocking = false } },
+            .code = windows.IOCTL.AFD.PARTIAL_DISCONNECT,
+            .in = std.mem.asBytes(&info),
+        } });
+        if (result.device_io_control.u.Status != .SUCCESS) return error.SocketOptionFailed;
+        return;
+    }
+    const Linger = if (is_windows) std.os.windows.ws2_32.linger else std.posix.linger;
+    const linger: Linger = .{ .onoff = 1, .linger = 0 };
+    try testSetSocketOption(handle, std.posix.SOL.SOCKET, std.posix.SO.LINGER, std.mem.asBytes(&linger));
 }
 
 fn writeTempFile(dir: std.Io.Dir, name: []const u8, content: []const u8) !void {

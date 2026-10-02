@@ -128,7 +128,7 @@ test "skill locations preserve exact roots and reject stale namespaces" {
     const locations: Locations = .{ .namespace = 19, .roots = &.{ "/first", "/second" } };
     const exact = try locations.resolve(alloc, "skill:0000000000000013:1/review");
     defer alloc.free(exact);
-    try std.testing.expectEqualStrings("/second/review", exact);
+    try std.testing.expectEqualStrings("/second" ++ std.fs.path.sep_str ++ "review", exact);
     try std.testing.expectError(error.StaleSkillLocation, locations.resolve(alloc, "skill:0000000000000012:1/review"));
     try std.testing.expectError(error.InvalidSkillLocation, locations.resolve(alloc, "skill:0000000000000013:2/review"));
     try std.testing.expectError(error.InvalidSkillLocation, locations.resolve(alloc, "skill:0000000000000013:0/../review"));
@@ -140,7 +140,7 @@ test "skill locations decode escaped path characters without permitting traversa
     const locations: Locations = .{ .namespace = 1, .roots = &.{"/root"} };
     const path = try locations.resolve(alloc, "skill:0000000000000001:0/review%26more");
     defer alloc.free(path);
-    try std.testing.expectEqualStrings("/root/review&more", path);
+    try std.testing.expectEqualStrings("/root" ++ std.fs.path.sep_str ++ "review&more", path);
     try std.testing.expectError(error.InvalidSkillLocation, locations.resolve(alloc, "skill:0000000000000001:0/%2e%2e"));
     try std.testing.expectError(error.InvalidSkillLocation, locations.resolve(alloc, "skill:0000000000000001:0/review%2fother"));
 }

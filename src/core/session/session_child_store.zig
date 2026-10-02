@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const config_runtime = @import("../config/config_runtime.zig");
 const io_mod = @import("../shared/io.zig");
 
@@ -856,6 +857,18 @@ pub const SessionChildCapability = struct {
         if (self.impl.mode != .writable) return error.SessionChildReadOnly;
         try self.impl.resolveIndeterminate(kind);
         const route_dir = (try self.impl.route(kind, true)).?;
+        if (comptime builtin.os.tag == .windows) {
+            // An exclusive create on Windows follows a dangling symlink and
+            // creates its target, so reject any existing entry first.
+            if (route_dir.dir.statFile(io_mod.getIo(), name, .{ .follow_symlinks = false })) |existing| {
+                try verifyPrivateStat(existing);
+                return error.PathAlreadyExists;
+            } else |err| switch (err) {
+                error.FileNotFound => {},
+                error.NotDir, error.SymLinkLoop => return error.SessionPathUnsafe,
+                else => return err,
+            }
+        }
         var file = io_mod.createPrivateFile(route_dir.dir, name, .{
             .read = true,
             .truncate = false,
@@ -1411,14 +1424,7 @@ test "managed child capability rejects invalid names and unsafe routes" {
 
     var linked = try capability.createExclusiveFile(alloc, .tool_results, "linked.txt");
     linked.deinit();
-    var source_buf: [128]u8 = undefined;
-    const source = try std.fmt.bufPrintZ(&source_buf, "tool-results/linked.txt", .{});
-    var target_buf: [128]u8 = undefined;
-    const target = try std.fmt.bufPrintZ(&target_buf, "tool-results/linked-again.txt", .{});
-    try std.testing.expectEqual(
-        @as(c_int, 0),
-        std.c.linkat(session.dir.handle, source, session.dir.handle, target, 0),
-    );
+    try io_mod.testHardLink(session.dir, "tool-results/linked.txt", "tool-results/linked-again.txt");
     try std.testing.expectError(
         error.SessionPathUnsafe,
         capability.stat(.tool_results, "linked.txt"),
@@ -1434,7 +1440,7 @@ test "managed child capability rejects invalid names and unsafe routes" {
     try session.dir.createDir(
         io_mod.getIo(),
         "tool-results/wrong-kind",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     try std.testing.expectError(
         error.SessionPathUnsafe,
@@ -1462,11 +1468,11 @@ test "managed child capability rejects invalid names and unsafe routes" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "outside",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     var wrong_kind = try session.dir.createFile(io_mod.getIo(), "artifacts", .{
         .truncate = true,
-        .permissions = std.Io.File.Permissions.fromMode(0o600),
+        .permissions = io_mod.private_file_permissions,
     });
     wrong_kind.close(io_mod.getIo());
     try std.testing.expectError(
@@ -1523,6 +1529,8 @@ test "read-only capability clone owns independent retained routes" {
 }
 
 test "retained route handle contains pathname swaps" {
+    // Windows refuses to rename a directory that pf holds open, so the swap cannot happen.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1547,7 +1555,7 @@ test "retained route handle contains pathname swaps" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "outside",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     try session.dir.rename(
         "tool-results",
@@ -1676,7 +1684,7 @@ test "subagent control capability rejects a symlinked route" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "outside",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     try session.dir.symLink(
         io_mod.getIo(),
@@ -1713,7 +1721,8 @@ test "terminal capabilities are private route restricted and reject symlinks" {
         .writable,
         .{},
     );
-    defer state.deinit();
+    var state_open = true;
+    defer if (state_open) state.deinit();
     var entry = try state.atomicReplace(
         alloc,
         .terminal_state,
@@ -1740,10 +1749,13 @@ test "terminal capabilities are private route restricted and reject symlinks" {
         "terminal/state/record.json",
         .{ .follow_symlinks = false },
     );
-    try std.testing.expectEqual(@as(std.posix.mode_t, 0o700), terminal_stat.permissions.toMode() & 0o777);
-    try std.testing.expectEqual(@as(std.posix.mode_t, 0o700), state_stat.permissions.toMode() & 0o777);
-    try std.testing.expectEqual(@as(std.posix.mode_t, 0o600), record_stat.permissions.toMode() & 0o777);
+    try io_mod.expectPrivateDir(terminal_stat);
+    try io_mod.expectPrivateDir(state_stat);
+    try io_mod.expectPrivateFile(record_stat);
 
+    // Windows refuses to rename a directory that holds open handles.
+    state.deinit();
+    state_open = false;
     try session.dir.rename(
         "terminal",
         session.dir,
@@ -1753,7 +1765,7 @@ test "terminal capabilities are private route restricted and reject symlinks" {
     try tmp.dir.createDir(
         io_mod.getIo(),
         "outside-terminal",
-        std.Io.File.Permissions.fromMode(0o700),
+        io_mod.private_dir_permissions,
     );
     try session.dir.symLink(
         io_mod.getIo(),

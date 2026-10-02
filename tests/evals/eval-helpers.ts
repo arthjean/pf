@@ -12,8 +12,23 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-export const PF_BIN = resolve(import.meta.dirname, "../../zig-out/bin/pf");
+export const PF_BIN = resolve(import.meta.dirname, "../../zig-out/bin", process.platform === "win32" ? "pf.exe" : "pf");
 export const REPO_ROOT = resolve(import.meta.dirname, "../..");
+
+/**
+ * pf reads the profile from USERPROFILE before HOME on Windows, so when
+ * `overrides` sets or unsets HOME, `env` gets the same USERPROFILE. libuv
+ * restores a missing USERPROFILE from the parent, so an unset home is passed
+ * as an empty one.
+ */
+export function mirrorTestHome(
+  env: Record<string, string | undefined>,
+  overrides: Record<string, string | undefined> | undefined,
+): void {
+  if (process.platform === "win32" && overrides && "HOME" in overrides) {
+    env.USERPROFILE = env.HOME ?? "";
+  }
+}
 
 export function providerVersionTestEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
   const result = { ...env };
@@ -167,6 +182,7 @@ export function buildEvalProcessEnv(
     ...process.env,
     NO_COLOR: "1",
     HOME: home,
+    ...(process.platform === "win32" ? { USERPROFILE: home } : {}),
     PATH: process.env.PATH ?? "",
     PF_MODEL: model,
   };
@@ -520,6 +536,7 @@ export async function runPf(
         env[key] = value;
       }
     }
+    mirrorTestHome(env, opts.env);
     const child = nodeSpawn(PF_BIN, args, {
       env: providerVersionTestEnv(env),
       cwd: cwd ?? REPO_ROOT,

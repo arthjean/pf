@@ -2104,6 +2104,26 @@ fn waitForBoundedDeadline(deadline: std.Io.Clock.Timestamp) anyerror!void {
     try deadline.wait(io_mod.getIo());
 }
 
+/// Unblocks the request thread waiting on `stream`. On Windows the socket is
+/// an AFD handle whose graceful shutdown neither completes a pending receive
+/// nor returns while unsent request bytes wait, so it disconnects abortively.
+fn interruptConnectedStream(stream: std.Io.net.Stream) void {
+    if (comptime builtin.os.tag == .windows) {
+        const windows = std.os.windows;
+        const info: windows.AFD.PARTIAL_DISCONNECT_INFO = .{
+            .DisconnectMode = .{ .ABORTIVE = true },
+            .Timeout = -1,
+        };
+        _ = io_mod.getIo().operate(.{ .device_io_control = .{
+            .file = .{ .handle = stream.socket.handle, .flags = .{ .nonblocking = false } },
+            .code = windows.IOCTL.AFD.PARTIAL_DISCONNECT,
+            .in = std.mem.asBytes(&info),
+        } }) catch {};
+        return;
+    }
+    stream.shutdown(io_mod.getIo(), .both) catch {};
+}
+
 const GatewayCancelWatcher = struct {
     fn run(
         done: *std.atomic.Value(bool),
@@ -2117,7 +2137,7 @@ const GatewayCancelWatcher = struct {
         while (!done.load(.seq_cst)) {
             if (cancel_flag.load(.seq_cst)) {
                 if (connected_watch == null or connected_watch.?.win(.cancelled)) {
-                    stream.shutdown(io_mod.getIo(), .both) catch {};
+                    interruptConnectedStream(stream);
                 }
                 return;
             }
@@ -2125,31 +2145,31 @@ const GatewayCancelWatcher = struct {
             if (system_resumed != null and suspendGapDetected(previous, current)) {
                 if (cancel_flag.load(.seq_cst)) {
                     if (connected_watch == null or connected_watch.?.win(.cancelled)) {
-                        stream.shutdown(io_mod.getIo(), .both) catch {};
+                        interruptConnectedStream(stream);
                     }
                     return;
                 }
                 if (connected_watch == null or connected_watch.?.win(.system_resumed)) {
                     system_resumed.?.store(true, .seq_cst);
-                    stream.shutdown(io_mod.getIo(), .both) catch {};
+                    interruptConnectedStream(stream);
                 }
                 return;
             }
             if (deadline) |limit| {
                 const now = std.Io.Clock.Timestamp.now(io_mod.getIo(), .awake);
                 if (!std.Io.Clock.Timestamp.compare(now, .lt, limit)) {
-                    stream.shutdown(io_mod.getIo(), .both) catch {};
+                    interruptConnectedStream(stream);
                     return;
                 }
             }
             if (connected_watch) |watch| {
                 const now = std.Io.Clock.Timestamp.now(io_mod.getIo(), .awake);
                 if (watch.response_head_expired(now) and watch.win_response_head_timeout()) {
-                    stream.shutdown(io_mod.getIo(), .both) catch {};
+                    interruptConnectedStream(stream);
                     return;
                 }
                 if (watch.stream_stall_expired(now) and watch.win_stall_timeout()) {
-                    stream.shutdown(io_mod.getIo(), .both) catch {};
+                    interruptConnectedStream(stream);
                     return;
                 }
                 if (watch.phase.load(.seq_cst) == .completed) return;
@@ -6796,16 +6816,7 @@ const LoopbackGatewayFixture = struct {
 
         switch (self.mode) {
             .reset_on_accept => {
-                const reset_on_close: std.posix.linger = .{
-                    .onoff = 1,
-                    .linger = 0,
-                };
-                try std.posix.setsockopt(
-                    stream.socket.handle,
-                    std.posix.SOL.SOCKET,
-                    std.posix.SO.LINGER,
-                    std.mem.asBytes(&reset_on_close),
-                );
+                try io_mod.testResetOnClose(stream.socket.handle);
                 self.markStage();
             },
             .tls_handshake_stall => {
@@ -6814,7 +6825,7 @@ const LoopbackGatewayFixture = struct {
             },
             .request_send_stall => {
                 const receive_buffer: c_int = 1024;
-                std.posix.setsockopt(
+                io_mod.testSetSocketOption(
                     stream.socket.handle,
                     std.posix.SOL.SOCKET,
                     std.posix.SO.RCVBUF,
@@ -6985,13 +6996,7 @@ const LoopbackGatewayFixture = struct {
                 var one: [1]u8 = undefined;
                 var reader = stream.reader(zio, &one);
                 _ = reader.interface.takeByte() catch {};
-                const rst: std.posix.linger = .{ .onoff = 1, .linger = 0 };
-                try std.posix.setsockopt(
-                    stream.socket.handle,
-                    std.posix.SOL.SOCKET,
-                    std.posix.SO.LINGER,
-                    std.mem.asBytes(&rst),
-                );
+                try io_mod.testResetOnClose(stream.socket.handle);
                 self.markStage();
             },
             .reset_after_head_read => {
@@ -7009,13 +7014,7 @@ const LoopbackGatewayFixture = struct {
                     if (std.mem.endsWith(u8, header_buf[0..header_len], "\r\n\r\n")) break;
                 }
                 sleepBlocking(200);
-                const rst: std.posix.linger = .{ .onoff = 1, .linger = 0 };
-                try std.posix.setsockopt(
-                    stream.socket.handle,
-                    std.posix.SOL.SOCKET,
-                    std.posix.SO.LINGER,
-                    std.mem.asBytes(&rst),
-                );
+                try io_mod.testResetOnClose(stream.socket.handle);
                 self.markStage();
             },
             .slow_terminal_chunk => {

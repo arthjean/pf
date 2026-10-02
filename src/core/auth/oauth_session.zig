@@ -1246,6 +1246,8 @@ test "OAuth migration preserves and updates the file when Keychain publication f
 }
 
 test "OAuth refresh preflight honors file authority after Keychain migration fails" {
+    // Makes the file read-only with POSIX mode 0400, which has no Windows equivalent here.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1253,7 +1255,7 @@ test "OAuth refresh preflight honors file authority after Keychain migration fai
     var file = try tmp.dir.openFile(std.testing.io, auth_file_name, .{});
     defer file.close(std.testing.io);
     try file.setPermissions(std.testing.io, std.Io.File.Permissions.fromMode(0o400));
-    defer file.setPermissions(std.testing.io, std.Io.File.Permissions.fromMode(0o600)) catch {};
+    defer file.setPermissions(std.testing.io, io_mod.private_file_permissions) catch {};
     var fake = FakeOAuthKeychain{ .alloc = alloc, .fail_store = true };
     defer fake.deinit();
     var mutation = try testKeychainMutation(tmp.dir, fake.backend());
@@ -1397,7 +1399,7 @@ test "oauth session loading propagates allocation failures" {
     defer tmp.cleanup();
 
     var file = try tmp.dir.createFile(std.testing.io, auth_file_name, .{
-        .permissions = std.Io.File.Permissions.fromMode(0o600),
+        .permissions = io_mod.private_file_permissions,
     });
     try file.writeStreamingAll(
         std.testing.io,
@@ -1413,22 +1415,24 @@ test "oauth session loading propagates allocation failures" {
 }
 
 test "OAuth mutation loads report auth file open failures" {
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.symLink(std.testing.io, "missing-auth-target", auth_file_name, .{ .is_directory = false });
 
-    try std.testing.expectError(
-        error.CredentialStorageUnavailable,
-        loadFromDir(std.testing.allocator, &tmp.dir),
-    );
+    // A no-follow open on Windows returns the link itself, which the private
+    // file check then rejects; both platforms refuse to load the session.
+    const expected = if (comptime @import("builtin").os.tag == .windows)
+        error.InsecureAuthFile
+    else
+        error.CredentialStorageUnavailable;
+    try std.testing.expectError(expected, loadFromDir(std.testing.allocator, &tmp.dir));
 }
 
 test "OAuth mutation distinguishes an invalid session from an absent session" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     var file = try tmp.dir.createFile(std.testing.io, auth_file_name, .{
-        .permissions = std.Io.File.Permissions.fromMode(0o600),
+        .permissions = io_mod.private_file_permissions,
     });
     try file.writeStreamingAll(std.testing.io, "{\"version\":2}\n");
     file.close(std.testing.io);

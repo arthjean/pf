@@ -1095,6 +1095,8 @@ test "app entry writes exact resume handoff after interactive teardown" {
 }
 
 test "app entry bounds graceful-exit SIGINT suppression to handoff lifetime" {
+    // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var original_action: std.posix.Sigaction = undefined;
     const test_action: std.posix.Sigaction = .{

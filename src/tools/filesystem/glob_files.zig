@@ -335,6 +335,13 @@ fn joinRelativeSearchPath(arena: Allocator, root_relative: []const u8, child_rel
     if (std.mem.eql(u8, root_relative, ".") or root_relative.len == 0) {
         return arena.dupe(u8, child_relative);
     }
+    // Tool output names workspace files with `/` on every platform; a root
+    // outside the workspace keeps its native absolute form.
+    if (comptime builtin.os.tag == .windows) {
+        if (!std.fs.path.isAbsolute(root_relative)) {
+            return std.fmt.allocPrint(arena, "{s}/{s}", .{ root_relative, child_relative });
+        }
+    }
     return std.fs.path.join(arena, &.{ root_relative, child_relative });
 }
 
@@ -750,6 +757,7 @@ test "glob_files resolver error for missing path returns failure result" {
 }
 
 test "glob_files permission denied directory returns structured recovery" {
+    // Denies access with POSIX mode 0; Windows directories have no mode bits.
     if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const root = try std.fmt.allocPrint(alloc, "/tmp/pf-glob-files-access-{d}", .{io_mod.nanoTimestamp()});
@@ -763,7 +771,7 @@ test "glob_files permission denied directory returns structured recovery" {
     try std.Io.Dir.cwd().createDirPath(io_mod.getIo(), blocked);
 
     std.Io.Dir.cwd().setFilePermissions(io_mod.getIo(), blocked, std.Io.File.Permissions.fromMode(0), .{}) catch return error.SkipZigTest;
-    defer std.Io.Dir.cwd().setFilePermissions(io_mod.getIo(), blocked, std.Io.File.Permissions.fromMode(0o700), .{}) catch {};
+    defer std.Io.Dir.cwd().setFilePermissions(io_mod.getIo(), blocked, io_mod.private_dir_permissions, .{}) catch {};
 
     var result = try dispatchGlobFiles(alloc, workspace, "**/*.zig", blocked);
     defer result.deinit(alloc);

@@ -177,6 +177,11 @@ pub const top_level_specs = [_]TopLevelSpec{
         .usage = "doctor [--json]",
         .summary = "Run local health and preflight checks",
         .options = &.{json_option},
+        .details = &.{
+            "The shell check reports the shell that runs commands. On Windows, these environment variables choose it:",
+            "  PF_WINDOWS_SHELL  auto (default), bash, or powershell",
+            "  PF_GIT_BASH_PATH  Absolute path of the Git Bash bash.exe to use",
+        },
     },
     .{
         .kind = .teams,

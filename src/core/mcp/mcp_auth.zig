@@ -3049,6 +3049,8 @@ test "interactive callback treats unavailable IPv6 as optional" {
 }
 
 test "pinned callback sockets create close-on-exec atomically where supported" {
+    // Checks POSIX socket flags; the Windows MCP OAuth callback listener is US-029.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const linux = callbackSocketCreation(.linux);
     try std.testing.expect((linux.flags & std.posix.SOCK.CLOEXEC) != 0);
     try std.testing.expect(!linux.needs_cloexec_fallback);

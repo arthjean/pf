@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const glob_pattern = @import("../../core/workspace/glob_pattern.zig");
 const grep_search = @import("../../core/workspace/grep_search.zig");
 const io_mod = @import("../../core/shared/io.zig");
@@ -935,8 +936,13 @@ test "grep_files access denial returns structured recovery" {
     const root = try std.fmt.allocPrint(alloc, "/tmp/pf-grep-files-access-{d}", .{io_mod.nanoTimestamp()});
     defer alloc.free(root);
     defer std.Io.Dir.cwd().deleteTree(io_mod.getIo(), root) catch {};
-    try std.Io.Dir.cwd().createDirPath(io_mod.getIo(), root);
-    const workspace = try io_mod.realpathAlloc(alloc, root);
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    // Windows has no /tmp, so the workspace lives in the test directory there.
+    const workspace = if (comptime builtin.os.tag == .windows) try workspaceRoot(alloc, tmp) else blk: {
+        try std.Io.Dir.cwd().createDirPath(io_mod.getIo(), root);
+        break :blk try io_mod.realpathAlloc(alloc, root);
+    };
     defer alloc.free(workspace);
     const path = try std.fs.path.join(alloc, &.{ workspace, "file.txt" });
     defer alloc.free(path);
@@ -948,10 +954,13 @@ test "grep_files access denial returns structured recovery" {
 
     const body = try grepFilesFailureWithOps(alloc, workspace, path, null, .{ .stat_root = accessDeniedStatRoot });
     defer alloc.free(body);
+    // The body escapes the path as a JSON string, which leaves a POSIX path unchanged.
+    const quoted_path = try std.fmt.allocPrint(alloc, "{f}", .{std.json.fmt(path, .{})});
+    defer alloc.free(quoted_path);
 
     try std.testing.expect(tool_result_errors.isToolExecutionFailedOutput(body));
     try std.testing.expect(std.mem.find(u8, body, "\"tool_name\":\"grep_files\"") != null);
-    try std.testing.expect(std.mem.find(u8, body, path) != null);
+    try std.testing.expect(std.mem.find(u8, body, quoted_path[1 .. quoted_path.len - 1]) != null);
     try std.testing.expect(std.mem.find(u8, body, "AccessDenied") != null);
     try std.testing.expect(std.mem.find(u8, body, "symlink") != null);
 }

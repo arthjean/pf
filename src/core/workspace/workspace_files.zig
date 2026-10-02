@@ -821,8 +821,6 @@ test "workspace directory provider honors its cap and cancellation" {
 }
 
 test "workspace file provider recursive fallback does not recurse symlink directories" {
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
-
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
@@ -878,7 +876,7 @@ test "workspace file provider falls back when git is skipped" {
 }
 
 test "workspace file provider treats empty successful git result as authoritative" {
-    if (comptime @import("builtin").os.tag == .windows or @import("builtin").os.tag == .wasi) return error.SkipZigTest;
+    if (comptime @import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -954,7 +952,7 @@ test "workspace file provider does not recurse after a selected Git executable f
 }
 
 test "workspace file provider git result contains tracked files only" {
-    if (comptime @import("builtin").os.tag == .windows or @import("builtin").os.tag == .wasi) return error.SkipZigTest;
+    if (comptime @import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -983,7 +981,7 @@ test "workspace file provider git result contains tracked files only" {
 }
 
 test "workspace directory provider uses Git ignores without collapsing nested empty directories" {
-    if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
+    if (comptime builtin.os.tag == .wasi) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1029,6 +1027,7 @@ test "workspace file provider cancellable fallback stops before traversal" {
 }
 
 test "workspace file provider cancellation terminates an active child" {
+    // The fixture child is `/bin/sleep`, which Windows does not have.
     if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
 
     var stop_requested = std.atomic.Value(bool).init(false);

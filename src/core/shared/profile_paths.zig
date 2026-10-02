@@ -94,72 +94,85 @@ pub fn recordingsDir(alloc: Allocator, home: []const u8) ![]u8 {
     return std.fs.path.join(alloc, &.{ home, root_dir_name, recordings_dir_name });
 }
 
+/// Returns `path` with each `/` after the fake home replaced by the native
+/// separator, matching what `std.fs.path.join` produces.
+fn nativeTestPath(comptime path: []const u8) []const u8 {
+    const native = comptime native: {
+        var bytes: [path.len]u8 = path[0..path.len].*;
+        for (bytes["/tmp/fake-home".len..]) |*byte| {
+            if (byte.* == '/') byte.* = std.fs.path.sep;
+        }
+        break :native bytes;
+    };
+    return &native;
+}
+
 test "profile path helpers preserve current default locations" {
     const alloc = std.testing.allocator;
 
     const root = try rootDir(alloc, "/tmp/fake-home");
     defer alloc.free(root);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf", root);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf"), root);
 
     const settings = try settingsPath(alloc, "/tmp/fake-home");
     defer alloc.free(settings);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/settings.json", settings);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/settings.json"), settings);
 
     const mcp = try mcpConfigPath(alloc, "/tmp/fake-home");
     defer alloc.free(mcp);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/mcp.json", mcp);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/mcp.json"), mcp);
 
     const mcp_credentials_dir = try mcpCredentialsDir(alloc, "/tmp/fake-home");
     defer alloc.free(mcp_credentials_dir);
     try std.testing.expectEqualStrings(
-        "/tmp/fake-home/.pf/mcp-credentials",
+        nativeTestPath("/tmp/fake-home/.pf/mcp-credentials"),
         mcp_credentials_dir,
     );
 
     const mcp_credentials = try mcpCredentialsPath(alloc, "/tmp/fake-home");
     defer alloc.free(mcp_credentials);
     try std.testing.expectEqualStrings(
-        "/tmp/fake-home/.pf/mcp-credentials/credentials.json",
+        nativeTestPath("/tmp/fake-home/.pf/mcp-credentials/credentials.json"),
         mcp_credentials,
     );
 
     const skills = try managedSkillsDir(alloc, "/tmp/fake-home");
     defer alloc.free(skills);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/skills", skills);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/skills"), skills);
 
     const auth = try authPath(alloc, "/tmp/fake-home");
     defer alloc.free(auth);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/auth.json", auth);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/auth.json"), auth);
 
     const chatgpt_auth = try chatgptAuthPath(alloc, "/tmp/fake-home");
     defer alloc.free(chatgpt_auth);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/chatgpt-auth.json", chatgpt_auth);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/chatgpt-auth.json"), chatgpt_auth);
 
     const api_key = try apiKeyPath(alloc, "/tmp/fake-home");
     defer alloc.free(api_key);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/api-key", api_key);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/api-key"), api_key);
 
     const sessions = try sessionsDir(alloc, "/tmp/fake-home");
     defer alloc.free(sessions);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/sessions", sessions);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/sessions"), sessions);
 
     const history = try promptHistoryPath(alloc, "/tmp/fake-home");
     defer alloc.free(history);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/history.jsonl", history);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/history.jsonl"), history);
 
     const backups = try backupsDir(alloc, "/tmp/fake-home");
     defer alloc.free(backups);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/backups", backups);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/backups"), backups);
 
     const logs = try logsDir(alloc, "/tmp/fake-home");
     defer alloc.free(logs);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/logs", logs);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/logs"), logs);
 
     const trace = try traceLogPath(alloc, "/tmp/fake-home");
     defer alloc.free(trace);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/logs/trace.log", trace);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/logs/trace.log"), trace);
 
     const recordings = try recordingsDir(alloc, "/tmp/fake-home");
     defer alloc.free(recordings);
-    try std.testing.expectEqualStrings("/tmp/fake-home/.pf/recordings", recordings);
+    try std.testing.expectEqualStrings(nativeTestPath("/tmp/fake-home/.pf/recordings"), recordings);
 }

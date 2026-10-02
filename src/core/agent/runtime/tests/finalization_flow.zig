@@ -1630,7 +1630,7 @@ test "common Stop interruption keeps only completed calls from a partially attem
     {
         const file = try dir.dir.createFile(std.testing.io, "events.jsonl", .{
             .read = true,
-            .permissions = .fromMode(0o600),
+            .permissions = io_mod.private_file_permissions,
         });
         var writer = try session_log.ConversationWriter.init(alloc, file);
         defer writer.deinit();

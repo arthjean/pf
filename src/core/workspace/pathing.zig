@@ -200,7 +200,28 @@ pub fn descriptorDevice(handle: std.Io.File.Handle) FileIdentityError!u64 {
                 }
             }
         },
+        .windows => windowsVolumeSerial(handle),
         else => 0,
+    };
+}
+
+/// The serial number of the volume that holds `handle`, which identifies the
+/// device on Windows the way `st_dev` does on POSIX.
+fn windowsVolumeSerial(handle: std.Io.File.Handle) FileIdentityError!u64 {
+    const windows = std.os.windows;
+    var io_status: windows.IO_STATUS_BLOCK = undefined;
+    var volume: windows.FILE.FS_VOLUME_INFORMATION = undefined;
+    return switch (windows.ntdll.NtQueryVolumeInformationFile(
+        handle,
+        &io_status,
+        &volume,
+        @sizeOf(windows.FILE.FS_VOLUME_INFORMATION),
+        .Volume,
+    )) {
+        // The overflow reports only the omitted variable-length label.
+        .SUCCESS, .BUFFER_OVERFLOW => volume.VolumeSerialNumber,
+        .INSUFFICIENT_RESOURCES, .NO_MEMORY => error.SystemResources,
+        else => error.Unexpected,
     };
 }
 
@@ -252,6 +273,21 @@ pub fn directoryEntryDevice(
                     else => return error.Unexpected,
                 }
             }
+        },
+        .windows => blk: {
+            // The entry itself, not a link target, names the volume.
+            const io = io_mod.getIo();
+            const entry = dir.openFile(io, component, .{
+                .follow_symlinks = false,
+                .allow_directory = true,
+            }) catch |err| return switch (err) {
+                error.SystemResources => error.SystemResources,
+                error.ProcessFdQuotaExceeded => error.ProcessFdQuotaExceeded,
+                error.SystemFdQuotaExceeded => error.SystemFdQuotaExceeded,
+                else => error.Unexpected,
+            };
+            defer entry.close(io);
+            break :blk windowsVolumeSerial(entry.handle);
         },
         else => 0,
     };
@@ -1398,8 +1434,6 @@ fn writeTestFile(dir: std.Io.Dir, path: []const u8, content: []const u8) !void {
 }
 
 fn createTestSymlinkOrSkip(dir: std.Io.Dir, target_path: []const u8, link_path: []const u8, is_directory: bool) !void {
-    const builtin = @import("builtin");
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     dir.symLink(io_mod.getIo(), target_path, link_path, .{ .is_directory = is_directory }) catch |err| {
         if (err == error.AccessDenied or std.mem.eql(u8, @errorName(err), "Permission" ++ "Denied")) {
             return error.SkipZigTest;
@@ -1553,9 +1587,6 @@ test "bounded resolver rejects component scratch overflow" {
 }
 
 test "bounded resolver resolves contained intermediate symlinks and preserves final symlink entry" {
-    const builtin = @import("builtin");
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
-
     const alloc = std.testing.allocator;
     var arena_state = std.heap.ArenaAllocator.init(alloc);
     defer arena_state.deinit();
@@ -1649,9 +1680,6 @@ test "bounded resolver resolves contained intermediate symlinks and preserves fi
 }
 
 test "bounded resolver reports intermediate symlink loops" {
-    const builtin = @import("builtin");
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
-
     const alloc = std.testing.allocator;
 
     var tmp = std.testing.tmpDir(.{});
@@ -1827,15 +1855,17 @@ test "literal path resolution preserves filename spaces while raw entry trims" {
     const alloc = arena.allocator();
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = " name ", .data = "literal" });
+    // Win32 path normalization strips trailing spaces, so Windows keeps only the leading one.
+    const spaced_name = if (comptime is_windows) " name" else " name ";
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = spaced_name, .data = "literal" });
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "name", .data = "raw" });
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const literal = try resolve_workspace_or_external_literal_path(alloc, root, " name ");
+    const literal = try resolve_workspace_or_external_literal_path(alloc, root, spaced_name);
     defer alloc.free(literal);
-    const raw = try resolveWorkspaceOrExternalPath(alloc, root, " name ");
+    const raw = try resolveWorkspaceOrExternalPath(alloc, root, spaced_name);
     defer alloc.free(raw);
-    const expected = try std.fs.path.join(alloc, &.{ root, " name " });
+    const expected = try std.fs.path.join(alloc, &.{ root, spaced_name });
     defer alloc.free(expected);
     try std.testing.expectEqualStrings(expected, literal);
     try std.testing.expectEqualStrings("name", std.fs.path.basename(raw));
@@ -1999,13 +2029,15 @@ test "external resolver handles exact home root and normalized home escapes" {
         home,
         .existing,
     );
-    const filesystem_root = try resolveWorkspaceOrExternalPathWithHome(arena, workspace, "~", "/", .existing);
+    // The filesystem root is `/`, or the workspace drive root on Windows.
+    const root_home = std.fs.path.parsePath(workspace).root;
+    const filesystem_root = try resolveWorkspaceOrExternalPathWithHome(arena, workspace, "~", root_home, .existing);
 
     try std.testing.expectEqualStrings(home, exact_home);
     try std.testing.expectEqualStrings(home, slash_home);
     try std.testing.expectEqualStrings(external_file, escaped_home);
     try std.testing.expectEqualStrings(home_file, redundant_separator);
-    try std.testing.expectEqualStrings("/", filesystem_root);
+    try std.testing.expectEqualStrings(root_home, filesystem_root);
 }
 
 test "external resolver rejects invalid home inputs and unsupported tilde forms" {
@@ -2045,6 +2077,8 @@ test "external resolver rejects invalid home inputs and unsupported tilde forms"
         " \t\r\n ",
     };
     for (invalid_paths) |input_path| {
+        // `\` separates path components on Windows, so `~\file.txt` is home-relative there.
+        if (comptime is_windows) if (std.mem.eql(u8, input_path, "~\\file.txt")) continue;
         try std.testing.expectError(
             error.InvalidPath,
             resolveWorkspaceOrExternalPathWithHome(alloc, "/tmp/workspace", input_path, "/tmp/home", .existing),
@@ -2159,12 +2193,13 @@ test "external resolver normalizes aliases without shell expansion" {
     defer tmp.cleanup();
 
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace/$HOME");
-    try tmp.dir.createDirPath(io_mod.getIo(), "workspace/*");
+    // Windows reserves `*` in file names, so the literal star case is POSIX only.
+    if (comptime !is_windows) try tmp.dir.createDirPath(io_mod.getIo(), "workspace/*");
     try tmp.dir.createDirPath(io_mod.getIo(), "home");
     try tmp.dir.createDirPath(io_mod.getIo(), "external");
     try writeTestFile(tmp.dir, "workspace/inside.txt", "inside");
     try writeTestFile(tmp.dir, "workspace/$HOME/literal.txt", "literal-home");
-    try writeTestFile(tmp.dir, "workspace/*/literal.txt", "literal-star");
+    if (comptime !is_windows) try writeTestFile(tmp.dir, "workspace/*/literal.txt", "literal-star");
     try writeTestFile(tmp.dir, "home/home.txt", "home");
     try writeTestFile(tmp.dir, "external/outside.txt", "outside");
 
@@ -2175,7 +2210,6 @@ test "external resolver normalizes aliases without shell expansion" {
     const home_with_separator = try std.fmt.allocPrint(arena, "{s}/", .{home});
     const inside = try io_mod.dirRealpathAlloc(arena, tmp.dir, "workspace/inside.txt");
     const literal_home = try io_mod.dirRealpathAlloc(arena, tmp.dir, "workspace/$HOME/literal.txt");
-    const literal_star = try io_mod.dirRealpathAlloc(arena, tmp.dir, "workspace/*/literal.txt");
     const home_file = try io_mod.dirRealpathAlloc(arena, tmp.dir, "home/home.txt");
     const external_file = try io_mod.dirRealpathAlloc(arena, tmp.dir, "external/outside.txt");
 
@@ -2195,10 +2229,13 @@ test "external resolver normalizes aliases without shell expansion" {
         literal_home,
         try resolveWorkspaceOrExternalPathWithHome(arena, workspace, "$HOME/literal.txt", home, .existing),
     );
-    try std.testing.expectEqualStrings(
-        literal_star,
-        try resolveWorkspaceOrExternalPathWithHome(arena, workspace, "*/literal.txt", home, .existing),
-    );
+    if (comptime !is_windows) {
+        const literal_star = try io_mod.dirRealpathAlloc(arena, tmp.dir, "workspace/*/literal.txt");
+        try std.testing.expectEqualStrings(
+            literal_star,
+            try resolveWorkspaceOrExternalPathWithHome(arena, workspace, "*/literal.txt", home, .existing),
+        );
+    }
 }
 
 test "external resolver accepts deep lexical traversal to filesystem root" {
@@ -2210,14 +2247,17 @@ test "external resolver accepts deep lexical traversal to filesystem root" {
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
+    // Windows resolves the traversal to the drive root of the absolute workspace.
+    const workspace = if (comptime is_windows) "C:\\tmp\\pf\\deep\\workspace" else "/tmp/pf/deep/workspace";
+    const filesystem_root = if (comptime is_windows) "C:\\" else "/";
     const resolved = try resolveWorkspaceOrExternalPathWithHome(
         arena,
-        "/tmp/pf/deep/workspace",
+        workspace,
         input.items,
         null,
         .existing,
     );
-    try std.testing.expectEqualStrings("/", resolved);
+    try std.testing.expectEqualStrings(filesystem_root, resolved);
 }
 
 test "external resolver canonicalizes a symlinked home root" {
@@ -2484,9 +2524,6 @@ test "resolveWorkspacePathEntryCreate uses nearest existing parent for missing n
 }
 
 test "resolveWorkspacePathEntryExisting preserves the final symlink entry" {
-    const builtin = @import("builtin");
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
-
     const alloc = std.testing.allocator;
     var arena_state = std.heap.ArenaAllocator.init(alloc);
     defer arena_state.deinit();
