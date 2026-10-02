@@ -1,8 +1,8 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
+  # Manual dispatch only until the first release. An automatic trigger returns
+  # only through the go-live checklist (US-018 in tasks/prd-pf-distribution.md).
   workflow_dispatch:
     inputs:
       validate_only:
