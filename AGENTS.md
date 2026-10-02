@@ -339,7 +339,7 @@ Startup latency benchmarks live in `benchmarks/` and run in CI via `.github/work
 ./benchmarks/startup.sh --quick    # quick run (20 iterations)
 ```
 
-The CI workflow builds a ReleaseSafe binary, measures six CLI paths with hyperfine, and enforces per-command latency budgets. PRs that exceed a budget fail the check. On `main`, results are uploaded to Vercel Blob for historical tracking.
+The CI workflow builds a ReleaseSafe binary, measures six CLI paths with hyperfine, and enforces per-command latency budgets. PRs that exceed a budget fail the check. Startup results stay in the job log, and the workflow uploads its terminal performance, long-turn memory, and libpf latency results as GitHub Actions artifacts; it uploads nothing to external storage.
 
 The startup benchmark uses `PF_BENCH=1`, an environment variable that runs through arg parsing and CLI dispatch, then exits before TTY initialization. This lives in `src/core/app/app_entry_runtime.zig`.
 
@@ -383,6 +383,8 @@ Do not document intended behavior as if it already exists.
 ## Releasing
 
 Releases use a two-workflow pipeline. The maintainer controls the changelog voice and format.
+
+pf publishes no release yet. `release.yml`, `dev-release.yml`, and `publish-libpf.yml` run only on manual dispatch, and an automatic trigger returns only through the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). The steps below describe the target process, not one that runs today: merging a version bump starts no release.
 
 ### Automated flow (preferred)
 

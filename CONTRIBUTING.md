@@ -500,15 +500,17 @@ Check in the golden file and wire a regression test that re-runs `pf replay` in 
 
 ## Releases
 
-Releases are triggered automatically when the version in `src/main.zig` changes on `main`:
+pf publishes no release yet, and publishes none until Arthur runs the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). Until then, `release.yml`, `dev-release.yml`, and `publish-libpf.yml` run only on manual dispatch, so a push to `main` starts none of them, and an automatic trigger returns only through that checklist.
+
+The target process, once the go-live checklist restores it:
 
 1. Edit `pub const version = "X.Y.Z";` in `src/main.zig`
 2. Merge to `main`
-3. The release workflow checks if `vX.Y.Z` tag exists; if not, it builds four platform binaries, creates the git tag, and publishes a GitHub Release with the binaries attached
+3. The release workflow checks if `vX.Y.Z` tag exists; if not, it builds the platform binaries, creates the git tag, and publishes a GitHub Release with the binaries attached
 
-The install script and `pf upgrade` fetch binaries from `paneflow.dev/agent/releases`, backed by the public Vercel Blob CDN. No authentication or external CLI tools are required. The release workflow also publishes binaries to the CDN and updates `latest.txt` automatically.
+pf has no release host yet. `pf upgrade` reports that no release channel is available and that pf must be rebuilt from source, and no install script is published. The inherited upload steps target storage that pf does not own; the distribution PRD replaces them with pf's own host before the first release.
 
-After CI passes for a push to `main`, the dev release workflow publishes commit-addressed binaries and then updates `dev.json`. Dogfooders opt in with `pf upgrade --channel dev`; the choice is stored in their user settings and applies to manual upgrades, automatic upgrades, and the `ctrl+g` handoff. `pf upgrade --channel stable` returns to tagged releases. Dev publishing does not create tags or GitHub Releases.
+The dev release workflow publishes commit-addressed binaries and then updates `dev.json`. Its jobs only run after a successful CI run on `main`, so a manual dispatch builds nothing until the distribution PRD reworks it. `pf upgrade --channel dev` and `pf upgrade --channel stable` store the chosen channel in user settings for manual upgrades, automatic upgrades, and the `ctrl+g` handoff; neither channel has a published build yet. Dev publishing does not create tags or GitHub Releases.
 
 Release notes are public product copy. Describe user-visible behavior, always spell the product `pf`, and omit contributor attribution, tracker references, repository or website work, delivery infrastructure, CI and test details, branch history, and implementation-only refactors. Use commits and pull requests as research evidence only. Changelog formatting and release-marker rules live in `AGENTS.md`.
 
@@ -519,7 +521,7 @@ Do not create tags manually. The workflow owns tag creation.
 Run **Actions > Release** on `main` with `validate_only` enabled. This builds
 all four release targets, runs macOS arm64 PGSO qualification, and uses the
 existing `apple-signing` approval to notarize both macOS targets. It does not
-create a tag, publish a GitHub Release, upload to the CDN, or change a channel.
+create a tag, publish a GitHub Release, upload release files, or change a channel.
 
 The arm64 validation retains both 4 KiB and 16 KiB signature variants of the
 same PGSO payload for comparison. Intel retains 4 KiB signatures. Download the
