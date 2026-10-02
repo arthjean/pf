@@ -1,0 +1,33 @@
+{
+  "prd": {"file": "tasks/prd-pf-distribution.md", "title": "pf Distribution and Verified Self-Update", "created_at": "2026-10-02", "status": "IN_PROGRESS"},
+  "epics": [
+    {"id": "EP-001", "title": "Public CI baseline", "status": "BLOCKED", "priority": "P0", "stories_total": 3, "stories_done": 0},
+    {"id": "EP-002", "title": "Signed release artifacts", "status": "TODO", "priority": "P0", "stories_total": 6, "stories_done": 0},
+    {"id": "EP-003", "title": "Verified self-update", "status": "TODO", "priority": "P0", "stories_total": 5, "stories_done": 0},
+    {"id": "EP-004", "title": "Release tooling and documentation", "status": "TODO", "priority": "P1", "stories_total": 4, "stories_done": 0},
+    {"id": "EP-005", "title": "Dev channel and JavaScript SDK", "status": "TODO", "priority": "P2", "stories_total": 3, "stories_done": 0}
+  ],
+  "stories": [
+    {"id": "US-001", "title": "Gate distribution workflows to manual dispatch", "epic": "EP-001", "status": "IN_REVIEW", "priority": "P0", "size": "XS", "blocked_by": [], "started_at": "2026-10-02", "completed_at": null, "reviewed_at": null},
+    {"id": "US-002", "title": "Describe the actual CI and release state in contributor docs", "epic": "EP-001", "status": "IN_REVIEW", "priority": "P0", "size": "S", "blocked_by": ["US-001"], "started_at": "2026-10-02", "completed_at": null, "reviewed_at": null},
+    {"id": "US-003", "title": "Obtain a green Full CI run on the public repository", "epic": "EP-001", "status": "BLOCKED", "priority": "P0", "size": "S", "blocked_by": ["US-001"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-004", "title": "Validate assumption: R2 serves releases.paneflow.dev with per-object cache control", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "S", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-005", "title": "Sign and notarize macOS binaries with the Paneflow developer identity", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-006", "title": "Build and sign pf.exe in the release workflow", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-007", "title": "Sign every release archive with a pf minisign key", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-005", "US-006"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-008", "title": "Publish to R2 and GitHub Releases behind an explicit dispatch", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-004", "US-007"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-009", "title": "Attest build provenance for release archives", "epic": "EP-002", "status": "TODO", "priority": "P1", "size": "XS", "blocked_by": ["US-008"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-010", "title": "Verify minisign signatures in pf", "epic": "EP-003", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-007"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-011", "title": "Fetch upgrades only from the release host", "epic": "EP-003", "status": "TODO", "priority": "P0", "size": "S", "blocked_by": ["US-004", "US-010"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-012", "title": "Extract release archives in-process", "epic": "EP-003", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": [], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-013", "title": "Replace the running binary on Windows", "epic": "EP-003", "status": "TODO", "priority": "P0", "size": "L", "blocked_by": ["US-011", "US-012"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-014", "title": "Prove the upgrade path end to end with signed fixtures", "epic": "EP-003", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-011", "US-012", "US-013"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-015", "title": "Make the AI changelog draft optional", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": [], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-016", "title": "Backfill R2 from GitHub Releases", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": ["US-008"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-017", "title": "Document the release pipeline", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": ["US-008", "US-013"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-018", "title": "Write the go-live checklist for the first release", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": ["US-009", "US-014", "US-015", "US-016", "US-017"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-019", "title": "Prepare signed dev builds for R2 with retention", "epic": "EP-005", "status": "TODO", "priority": "P2", "size": "M", "blocked_by": ["US-008", "US-013"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-020", "title": "Validate assumption: libpf ships as a pf product", "epic": "EP-005", "status": "TODO", "priority": "P2", "size": "S", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-021", "title": "Repair or retire the SDK examples", "epic": "EP-005", "status": "TODO", "priority": "P2", "size": "S", "blocked_by": ["US-020"], "started_at": null, "completed_at": null, "reviewed_at": null}
+  ]
+}
