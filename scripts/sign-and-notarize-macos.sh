@@ -4,9 +4,7 @@ set -euo pipefail
 
 umask 077
 
-signing_identity="Developer ID Application: Vercel, Inc (JW6Y669B67)"
-signing_identifier="com.vercel.fx"
-signing_team_id="JW6Y669B67"
+signing_identifier="dev.paneflow.agent"
 
 openssl_bin="${PF_SIGNING_OPENSSL_BIN:-/usr/bin/openssl}"
 security_bin="${PF_SIGNING_SECURITY_BIN:-/usr/bin/security}"
@@ -33,6 +31,7 @@ if [[ "${signing_page_size}" == 16384 && "${binary_archs}" != arm64 ]]; then
     exit 1
 fi
 for required_name in \
+    APPLE_TEAM_ID \
     APPLE_DEVELOPER_ID_P12_BASE64 \
     APPLE_DEVELOPER_ID_P12_PASSWORD \
     APPLE_NOTARY_KEY_P8_BASE64 \
@@ -43,6 +42,11 @@ for required_name in \
         exit 1
     fi
 done
+signing_team_id="${APPLE_TEAM_ID}"
+if [[ ! "${signing_team_id}" =~ ^[A-Z0-9]{10}$ ]]; then
+    echo "APPLE_TEAM_ID must be a 10-character Apple team identifier" >&2
+    exit 1
+fi
 
 runner_temp="${RUNNER_TEMP:-/private/tmp}"
 signing_temp_dir="$(mktemp -d "${runner_temp}/pf-signing.XXXXXX")"
@@ -91,8 +95,25 @@ if ! signing_identities="$(
 )"; then
     fail_stage "signing identity lookup"
 fi
-if [[ "${signing_identities}" != *"${signing_identity}"* ]]; then
-    echo "Developer ID signing identity is unavailable" >&2
+# The certificate names its team in parentheses; sign only with the one whose
+# team is APPLE_TEAM_ID.
+developer_id_pattern='"(Developer ID Application: .* \(([A-Z0-9]{10})\))"'
+signing_identity=""
+certificate_teams=()
+while IFS= read -r identity_line; do
+    if [[ "${identity_line}" =~ ${developer_id_pattern} ]]; then
+        certificate_teams+=("${BASH_REMATCH[2]}")
+        if [[ "${BASH_REMATCH[2]}" == "${signing_team_id}" ]]; then
+            signing_identity="${BASH_REMATCH[1]}"
+        fi
+    fi
+done <<<"${signing_identities}"
+if [[ -z "${signing_identity}" ]]; then
+    if [[ ${#certificate_teams[@]} -eq 0 ]]; then
+        echo "Developer ID signing identity is unavailable" >&2
+    else
+        echo "Developer ID certificate team ${certificate_teams[*]} does not match APPLE_TEAM_ID ${signing_team_id}" >&2
+    fi
     exit 1
 fi
 

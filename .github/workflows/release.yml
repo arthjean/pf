@@ -3,12 +3,14 @@ name: Release
 on:
   # Manual dispatch only until the first release. An automatic trigger returns
   # only through the go-live checklist (US-018 in tasks/prd-pf-distribution.md).
+  # Publishing also needs validate_only disabled and an approval of the
+  # release environment; the default run signs and verifies without publishing.
   workflow_dispatch:
     inputs:
       validate_only:
-        description: Build all platforms and compare arm64 signing pages without publishing
+        description: Build, sign, verify, and attest every platform, and dry-run the publication
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -116,6 +118,7 @@ jobs:
 
       - name: Sign and notarize
         env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
           APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
@@ -187,6 +190,7 @@ jobs:
       - name: Sign and notarize stable release candidate
         env:
           VALIDATE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.validate_only }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
           APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
@@ -242,13 +246,74 @@ jobs:
             ${{ runner.temp }}/pf-macos-aarch64.tar.gz.sha256
           if-no-files-found: error
 
-  release:
-    needs: [check-version, build-linux, build-macos-x86_64, sign-macos-arm64]
-    if: needs.check-version.outputs.publish == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.validate_only)
+  build-windows:
+    needs: check-version
+    if: needs.check-version.outputs.needed == 'true'
+    name: Build windows-x86_64
+    runs-on: windows-2025
+    environment: windows-signing
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: "0.16.0"
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-windows-gnu -Dupdate-channel=stable
+
+      # Azure Artifact Signing account strivex-signing, certificate profile
+      # StriveX-Release. The script verifies with signtool verify /pa and
+      # requires O=Strivex in the signer subject.
+      - name: Sign
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          AZURE_TRUSTED_SIGNING_CERT_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE }}
+        run: ./scripts/sign-windows.ps1 -InputFile zig-out/bin/pf.exe
+
+      - name: Smoke test signed binary
+        shell: bash
+        run: |
+          ./zig-out/bin/pf.exe help >/dev/null
+          ./zig-out/bin/pf.exe status --json >/dev/null
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP 'pf-package-windows-x86_64'
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          Copy-Item -LiteralPath zig-out/bin/pf.exe, LICENSE, THIRD_PARTY_NOTICES.md -Destination $packageDir
+          Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath pf-windows-x86_64.zip
+          $hash = (Get-FileHash -LiteralPath pf-windows-x86_64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText((Join-Path $PWD 'pf-windows-x86_64.zip.sha256'), "$hash  pf-windows-x86_64.zip`n")
+          $size = (Get-Item -LiteralPath zig-out/bin/pf.exe).Length
+          "Windows signed executable: $($size.ToString('N0')) bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pf-windows-x86_64
+          path: |
+            pf-windows-x86_64.zip
+            pf-windows-x86_64.zip.sha256
+          if-no-files-found: error
+
+  sign-release:
+    needs: [check-version, build-linux, build-macos-x86_64, sign-macos-arm64, build-windows]
+    if: needs.check-version.outputs.needed == 'true'
+    name: Sign and attest archives
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      contents: write
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -257,6 +322,72 @@ jobs:
         with:
           pattern: pf-*
           merge-multiple: true
+          path: release
+
+      - name: Install minisign
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+      - name: Sign and verify archives with minisign
+        id: minisign
+        env:
+          PF_MINISIGN_SECRET_KEY: ${{ secrets.PF_MINISIGN_SECRET_KEY }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: scripts/sign-release-archives.sh "$VERSION" stable release/pf-*.tar.gz release/pf-*.zip
+
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/pf-*.tar.gz
+            release/pf-*.zip
+            release/pf-*.minisig
+
+      - name: Dry-run the publication
+        if: github.event_name == 'workflow_dispatch' && inputs.validate_only
+        env:
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          set -o pipefail
+          scripts/publish-release.sh --dry-run "$VERSION" release | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload signed release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-signed
+          path: release/
+          if-no-files-found: error
+
+      - name: Name the failed step
+        if: failure()
+        env:
+          MINISIGN_OUTCOME: ${{ steps.minisign.outcome }}
+          ATTEST_OUTCOME: ${{ steps.attest.outcome }}
+        run: |
+          if [[ "$MINISIGN_OUTCOME" == failure ]]; then
+            echo "### Failed step: Sign and verify archives with minisign. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "$ATTEST_OUTCOME" == failure ]]; then
+            echo "### Failed step: Attest build provenance. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  release:
+    needs: [check-version, sign-release]
+    if: needs.check-version.outputs.publish == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.validate_only)
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download signed release
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-signed
+          path: release
 
       - name: Create git tag
         env:
@@ -277,52 +408,19 @@ jobs:
           fi
           echo "Extracted release notes ($LINES lines)"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          tag_name: ${{ needs.check-version.outputs.version }}
-          body_path: /tmp/release-notes.md
-          files: |
-            pf-*.tar.gz
-            pf-*.tar.gz.sha256
-
-      - name: Publish to CDN
-        env:
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
-          VERSION: ${{ needs.check-version.outputs.version }}
+      - name: Install rclone
         run: |
-          set -euo pipefail
-          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          CDN_BASE="cli"
+          sudo apt-get update
+          sudo apt-get install -y rclone
 
-          for FILE in pf-*.tar.gz pf-*.tar.gz.sha256; do
-            [ -f "$FILE" ] || continue
-            CONTENT_TYPE="application/octet-stream"
-            [[ "$FILE" == *.sha256 ]] && CONTENT_TYPE="text/plain"
-            [[ "$FILE" == *.tar.gz ]] && [[ "$FILE" != *.sha256 ]] && CONTENT_TYPE="application/gzip"
-
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              -X PUT "https://blob.vercel-storage.com/${CDN_BASE}/${VERSION}/${FILE}" \
-              -H "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
-              -H "x-api-version: 7" \
-              -H "x-content-type: ${CONTENT_TYPE}" \
-              -H "x-add-random-suffix: 0" \
-              -H "x-cache-control-max-age: 31536000" \
-              --data-binary "@${FILE}")
-            echo "Uploaded ${FILE} -> ${CDN_BASE}/${VERSION}/${FILE} ($HTTP_CODE)"
-            if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-              echo "::error::Failed to upload ${FILE} to CDN ($HTTP_CODE)"
-              exit 1
-            fi
-          done
-
-          echo -n "$VERSION" > /tmp/latest.txt
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X PUT "https://blob.vercel-storage.com/${CDN_BASE}/latest.txt" \
-            -H "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
-            -H "x-api-version: 7" \
-            -H "x-content-type: text/plain" \
-            -H "x-add-random-suffix: 0" \
-            -H "x-cache-control-max-age: 60" \
-            --data-binary "@/tmp/latest.txt")
-          echo "Updated latest.txt to $VERSION ($HTTP_CODE)"
+      # The R2 token is an environment secret of release, scoped to Object
+      # Read & Write on the pf release bucket only.
+      - name: Publish to GitHub Releases and R2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: scripts/publish-release.sh "$VERSION" release /tmp/release-notes.md

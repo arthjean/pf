@@ -99,15 +99,20 @@ def main() -> None:
     repo = pathlib.Path(__file__).resolve().parents[1]
     samples = 5_000
     binaries = {"control": args.control.resolve(), "candidate": args.candidate.resolve()}
+    teams: dict[str, str | None] = {}
     for label, path in binaries.items():
         if not path.is_file() or path.stat().st_size > 16 * 1024 * 1024:
             raise ValueError(f"invalid {label} binary")
         subprocess.run(["codesign", "--verify", "--strict", "--check-notarization", "-R=notarized", str(path)], check=True, timeout=60)
         details = subprocess.run(["codesign", "--display", "--verbose=4", str(path)], capture_output=True, text=True, check=True, timeout=30).stderr
         page = 4096 if label == "control" else 16384
-        for required in ("Identifier=com.vercel.fx", "TeamIdentifier=JW6Y669B67", f"Page size={page}", "flags=0x10000(runtime)", "Timestamp="):
+        team = re.search(r"TeamIdentifier=([A-Z0-9]{10})\b", details)
+        teams[label] = team.group(1) if team else None
+        for required in ("Identifier=dev.paneflow.agent", "TeamIdentifier=", f"Page size={page}", "flags=0x10000(runtime)", "Timestamp="):
             if required not in details:
                 raise ValueError(f"unexpected {label} signature: missing {required}")
+    if None in teams.values() or teams["control"] != teams["candidate"]:
+        raise ValueError("control and candidate must be signed by the same Apple team")
     manifest = compare_payloads(binaries["control"].read_bytes(), binaries["candidate"].read_bytes())
     args.output.mkdir(parents=True, exist_ok=False)
     manifest.update({

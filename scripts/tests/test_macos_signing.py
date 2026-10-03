@@ -22,9 +22,11 @@ PGSO_WORKFLOW_PATH = (
 )
 DEV_RELEASE_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "dev-release.yml"
 PGSO_SETUP_ACTION_PATH = REPO_ROOT / ".github" / "actions" / "setup-pgso" / "action.yml"
-SIGNING_IDENTITY = "Developer ID Application: Vercel, Inc (JW6Y669B67)"
+TEAM_ID = "ABCDE12345"
+SIGNING_IDENTITY = f"Developer ID Application: Strivex ({TEAM_ID})"
 TEST_CDHASH = "0123456789abcdef0123456789abcdef01234567"
 SECRET_NAMES = (
+    "APPLE_TEAM_ID",
     "APPLE_DEVELOPER_ID_P12_BASE64",
     "APPLE_DEVELOPER_ID_P12_PASSWORD",
     "APPLE_NOTARY_KEY_P8_BASE64",
@@ -105,7 +107,8 @@ if args and args[0] == "set-key-partition-list":
         print("error: The specified item could not be found in the keychain.", file=sys.stderr)
         raise SystemExit(1)
 if args and args[0] == "find-identity":
-    print('  1) HASH "{SIGNING_IDENTITY}"')
+    identity = os.environ.get("PF_SIGNING_TEST_CERTIFICATE", "{SIGNING_IDENTITY}")
+    print(f'  1) HASH "{{identity}}"')
     print("     1 valid identities found")
 ''',
         )
@@ -127,8 +130,8 @@ if "--force" in args:
     binary = pathlib.Path(args[-1])
     binary.write_bytes(binary.read_bytes() + b"signed\\n")
 if "--display" in args:
-    identifier = os.environ.get("PF_SIGNING_TEST_IDENTIFIER", "com.vercel.fx")
-    team_id = os.environ.get("PF_SIGNING_TEST_TEAM_ID", "JW6Y669B67")
+    identifier = os.environ.get("PF_SIGNING_TEST_IDENTIFIER", "dev.paneflow.agent")
+    team_id = os.environ.get("PF_SIGNING_TEST_TEAM_ID", "{TEAM_ID}")
     print(f"Identifier={{identifier}}", file=sys.stderr)
     print(f"TeamIdentifier={{team_id}}", file=sys.stderr)
     print("CDHash={TEST_CDHASH}", file=sys.stderr)
@@ -208,6 +211,7 @@ else:
             {
                 "RUNNER_TEMP": str(runner_temp),
                 "PF_SIGNING_TEST_LOG": str(event_log),
+                "APPLE_TEAM_ID": TEAM_ID,
                 "APPLE_DEVELOPER_ID_P12_BASE64": base64.b64encode(
                     b"p12-private-material"
                 ).decode(),
@@ -301,7 +305,8 @@ else:
             self.assertIn("security import", events)
             self.assertIn("security delete-keychain", events)
             self.assertIn("codesign --force", events)
-            self.assertIn("--identifier com.vercel.fx", events)
+            self.assertIn("--identifier dev.paneflow.agent", events)
+            self.assertIn(f"--sign {SIGNING_IDENTITY} ", events)
             self.assertIn("--options runtime", events)
             self.assertIn("--timestamp", events)
             self.assertIn("xcrun notarytool submit", events)
@@ -457,6 +462,44 @@ else:
             output = result.stdout + result.stderr
             self.assertNotEqual(0, result.returncode, output)
             self.assertIn("wrong team identifier", output)
+            self.assertEqual([], list(runner_temp.iterdir()))
+
+    def test_rejects_a_certificate_from_another_team_before_signing(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
+            root = pathlib.Path(tmp)
+
+            result, binary, runner_temp, event_log = self.run_script(
+                root,
+                {
+                    "PF_SIGNING_TEST_CERTIFICATE":
+                        "Developer ID Application: Someone Else (ZYXWV98765)"
+                },
+            )
+
+            output = result.stdout + result.stderr
+            self.assertNotEqual(0, result.returncode, output)
+            self.assertIn(
+                "Developer ID certificate team ZYXWV98765 does not match "
+                f"APPLE_TEAM_ID {TEAM_ID}",
+                output,
+            )
+            self.assertNotIn("codesign --force", event_log.read_text())
+            self.assertEqual(b"unsigned\n", binary.read_bytes())
+            self.assertEqual([], list(runner_temp.iterdir()))
+
+    def test_rejects_a_malformed_team_id_before_importing_credentials(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-macos-signing-test-") as tmp:
+            root = pathlib.Path(tmp)
+
+            result, _, runner_temp, event_log = self.run_script(
+                root, {"APPLE_TEAM_ID": "not-a-team"}
+            )
+
+            output = result.stdout + result.stderr
+            self.assertNotEqual(0, result.returncode, output)
+            self.assertIn("APPLE_TEAM_ID must be a 10-character", output)
+            events = event_log.read_text() if event_log.exists() else ""
+            self.assertNotIn("security import", events)
             self.assertEqual([], list(runner_temp.iterdir()))
 
     def test_rejects_a_signature_with_the_wrong_identifier(self) -> None:
@@ -622,12 +665,13 @@ class MacosSigningWorkflowTests(unittest.TestCase):
         self.assertNotIn("secrets:", arm64_caller)
         self.assertNotIn("package_release", arm64_caller)
         sign_release = release.split("  sign-macos-arm64:\n", 1)[1].split(
-            "\n  release:\n", 1
+            "\n  build-windows:\n", 1
         )[0]
         self.assertIn("needs: [check-version, build-macos-arm64]", sign_release)
         self.assertIn("environment: apple-signing", sign_release)
         self.assertIn(
-            "needs: [check-version, build-linux, build-macos-x86_64, sign-macos-arm64]",
+            "needs: [check-version, build-linux, build-macos-x86_64, "
+            "sign-macos-arm64, build-windows]",
             release,
         )
         workflow_call = pgso.split("  workflow_dispatch:\n", 1)[0]

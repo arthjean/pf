@@ -41,6 +41,8 @@ RETARGETS = [
     # Product identity sent to third parties points at the product site.
     (r"(?<=[+\" ])https://github\.com/vercel-labs/fx(?=[\"')])", "https://paneflow.dev/agent"),
     (r"You are fx, a local coding CLI assistant", "You are Paneflow Agent (pf), a local coding CLI assistant"),
+    # pf signs macOS binaries under its own identifier.
+    (r"com\.vercel\.fx", "dev.paneflow.agent"),
     # A renamed Zig package needs its own fingerprint.
     (r"\.fingerprint = 0x2ca027d00bcd652c", ".fingerprint = 0xca37af64c5d0d74e"),
     # Digests pinned over text that the rename changes.
@@ -65,8 +67,6 @@ PROTECTED = [
     r"the fx Slack app",
     # Repository names parsed from those fixtures.
     r"\"fx\", [A-Za-z_.?]*repo_name\)",
-    # Vercel's macOS signing identity.
-    r"com\.vercel\.fx",
     # Package lock integrity hashes.
     r"sha(?:1|256|384|512)-[A-Za-z0-9+/]+=*",
 ]

@@ -508,7 +508,7 @@ The target process, once the go-live checklist restores it:
 2. Merge to `main`
 3. The release workflow checks if `vX.Y.Z` tag exists; if not, it builds the platform binaries, creates the git tag, and publishes a GitHub Release with the binaries attached
 
-pf has no release host yet. `pf upgrade` reports that no release channel is available and that pf must be rebuilt from source, and no install script is published. The inherited upload steps target storage that pf does not own; the distribution PRD replaces them with pf's own host before the first release.
+pf has no release host yet. `pf upgrade` reports that no release channel is available and that pf must be rebuilt from source, and no install script is published. `release.yml` publishes to GitHub Releases and pf's R2 bucket only when dispatched with `validate_only` disabled and approved in the `release` environment; `dev-release.yml` and `cdn-backfill.yml` still carry inherited upload steps that target storage pf does not own, which the distribution PRD replaces before the first release.
 
 The dev release workflow publishes commit-addressed binaries and then updates `dev.json`. Its jobs only run after a successful CI run on `main`, so a manual dispatch builds nothing until the distribution PRD reworks it. `pf upgrade --channel dev` and `pf upgrade --channel stable` store the chosen channel in user settings for manual upgrades, automatic upgrades, and the `ctrl+g` handoff; neither channel has a published build yet. Dev publishing does not create tags or GitHub Releases.
 
@@ -518,10 +518,17 @@ Do not create tags manually. The workflow owns tag creation.
 
 ### Validate release artifacts without publishing
 
-Run **Actions > Release** on `main` with `validate_only` enabled. This builds
-all four release targets, runs macOS arm64 PGSO qualification, and uses the
-existing `apple-signing` approval to notarize both macOS targets. It does not
-create a tag, publish a GitHub Release, upload release files, or change a channel.
+Run **Actions > Release** on `main` with the default inputs; `validate_only`
+is enabled by default. This builds all five release targets, runs macOS arm64
+PGSO qualification, notarizes both macOS targets under the `apple-signing`
+approval, and signs `pf.exe` with Azure Artifact Signing under the
+`windows-signing` approval. Under the `release` approval it then signs every
+archive with the pf minisign key, verifies each signature against the active
+key in `src/core/upgrade/release_keys.zig`, attests build provenance, and runs
+`scripts/publish-release.sh --dry-run`, which lists every destination and
+header without writing. It does not create a tag, publish a GitHub Release,
+upload release files, or change a channel. The signed archives stay available
+as the `release-signed` workflow artifact.
 
 The arm64 validation retains both 4 KiB and 16 KiB signature variants of the
 same PGSO payload for comparison. Intel retains 4 KiB signatures. Download the
