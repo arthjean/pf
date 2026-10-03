@@ -13,8 +13,12 @@
  * workspaces live under the temporary directory. When an ancestor of TEMP
  * holds a skill root, such as `%USERPROFILE%\.claude\skills`, the subset
  * stops before running: set TEMP and TMP to a directory outside it.
+ *
+ * pf canonicalizes workspace paths to their long form, so the subset expands
+ * an 8.3 short TEMP, such as the RUNNER~1 profile on GitHub runners, and
+ * passes the long form to every file.
  */
-import { appendFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PF_BIN } from "./e2e-helpers";
@@ -62,21 +66,22 @@ if (import.meta.main) {
     console.error(`pf binary not found at ${PF_BIN}. Run 'zig build' first.`);
     process.exit(1);
   }
-  const skillRoot = ancestorSkillRoot(tmpdir());
+  const temp = realpathSync.native(tmpdir());
+  const skillRoot = ancestorSkillRoot(temp);
   if (skillRoot !== null) {
     console.error(
-      `pf would load the skill root ${skillRoot}, above the temporary directory ${tmpdir()}, in every test workspace. Set TEMP and TMP to a directory outside it.`,
+      `pf would load the skill root ${skillRoot}, above the temporary directory ${temp}, in every test workspace. Set TEMP and TMP to a directory outside it.`,
     );
     process.exit(1);
   }
   const failed: string[] = [];
   for (const file of WINDOWS_E2E_FILES) {
-    const profile = mkdtempSync(join(tmpdir(), "pf-windows-e2e-profile-"));
+    const profile = mkdtempSync(join(temp, "pf-windows-e2e-profile-"));
     try {
       console.log(`\n=== ${file}`);
       const result = Bun.spawnSync(["bun", "test", "--max-concurrency", "1", `./${file}`], {
         cwd: import.meta.dir,
-        env: { ...process.env, HOME: profile, USERPROFILE: profile },
+        env: { ...process.env, HOME: profile, USERPROFILE: profile, TEMP: temp, TMP: temp },
         stdout: "inherit",
         stderr: "inherit",
       });
