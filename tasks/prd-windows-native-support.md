@@ -562,6 +562,8 @@ Give every change a deterministic Windows verification signal and document what 
 - [ ] Given a failing Windows step, when the job reports, then the failing step and test file are named in the job summary.
 - [ ] Given the existing four Full CI runners, when the Windows job is added, then their configuration and shard weights are unchanged.
 
+**Evidence (EP-005 review, 2026-10-03):** Full CI run [37112614414](https://github.com/arthjean/pf/actions/runs/37112614414) on `389c31c` in the public repository passed all five `Full suite (...)` jobs, including `Full suite (windows-x86_64)`. The failure probe run [37112616285](https://github.com/arthjean/pf/actions/runs/37112616285) on a throwaway branch failed at `Run Windows E2E subset` and named `windows-tui-smoke.test.ts`.
+
 #### US-027: Document Windows support
 **Description:** As a Windows user, I want the README and CONTRIBUTING to state exactly what works on Windows and how to configure it so that I can install from source and choose my shell.
 

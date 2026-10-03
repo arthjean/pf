@@ -41,10 +41,10 @@
     {
       "id": "EP-005",
       "title": "Windows quality signal",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 4
+      "stories_done": 5
     },
     {
       "id": "EP-006",
@@ -420,7 +420,7 @@
       "id": "US-026",
       "title": "Add a Windows CI job",
       "epic": "EP-005",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
@@ -428,8 +428,8 @@
         "US-025"
       ],
       "started_at": "2026-10-02",
-      "completed_at": null,
-      "reviewed_at": "2026-10-02"
+      "completed_at": "2026-10-03",
+      "reviewed_at": "2026-10-03"
     },
     {
       "id": "US-027",
