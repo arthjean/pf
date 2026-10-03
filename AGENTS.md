@@ -20,7 +20,7 @@ If you cannot run the binary in your environment, say so explicitly and ask the 
 
 When running pf for verification, **always use the freshly-built binary at** **`./zig-out/bin/pf`** from this checkout. Never run `pf` from `PATH`, never rely on whatever is at `~/.pf/bin/pf`, and never assume an installed copy reflects your change.
 
-* The user may have an older `pf` on their PATH (e.g. installed via `pf upgrade` or the CDN install script). Running that one will not exercise your edits.
+* The user may have an older `pf` on their PATH (e.g. an older build copied there). Running that one will not exercise your edits.
 
 * `zig build` writes to `zig-out/bin/pf`. That is the only binary that contains your latest change.
 
