@@ -36,6 +36,7 @@ fi
 # Private state goes through the io.zig API, which owns every mode conversion.
 # Top-level test blocks may still assert POSIX modes directly.
 mode_conversions="$({
+  # shellcheck disable=SC2016 # The single quotes hold an awk program.
   git ls-files -z -- 'src/*.zig' ':(exclude)src/core/shared/io.zig' |
     xargs -0 awk '
       FNR == 1 { in_test = 0 }
