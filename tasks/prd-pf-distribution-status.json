@@ -1,16 +1,16 @@
 {
   "prd": {"file": "tasks/prd-pf-distribution.md", "title": "pf Distribution and Verified Self-Update", "created_at": "2026-10-02", "status": "IN_PROGRESS"},
   "epics": [
-    {"id": "EP-001", "title": "Public CI baseline", "status": "IN_REVIEW", "priority": "P0", "stories_total": 3, "stories_done": 0},
+    {"id": "EP-001", "title": "Public CI baseline", "status": "DONE", "priority": "P0", "stories_total": 3, "stories_done": 3},
     {"id": "EP-002", "title": "Signed release artifacts", "status": "TODO", "priority": "P0", "stories_total": 6, "stories_done": 0},
     {"id": "EP-003", "title": "Verified self-update", "status": "TODO", "priority": "P0", "stories_total": 5, "stories_done": 0},
     {"id": "EP-004", "title": "Release tooling and documentation", "status": "TODO", "priority": "P1", "stories_total": 4, "stories_done": 0},
     {"id": "EP-005", "title": "Dev channel and JavaScript SDK", "status": "TODO", "priority": "P2", "stories_total": 3, "stories_done": 0}
   ],
   "stories": [
-    {"id": "US-001", "title": "Gate distribution workflows to manual dispatch", "epic": "EP-001", "status": "IN_REVIEW", "priority": "P0", "size": "XS", "blocked_by": [], "started_at": "2026-10-02", "completed_at": null, "reviewed_at": null},
-    {"id": "US-002", "title": "Describe the actual CI and release state in contributor docs", "epic": "EP-001", "status": "IN_REVIEW", "priority": "P0", "size": "S", "blocked_by": ["US-001"], "started_at": "2026-10-02", "completed_at": null, "reviewed_at": null},
-    {"id": "US-003", "title": "Obtain a green Full CI run on the public repository", "epic": "EP-001", "status": "IN_REVIEW", "priority": "P0", "size": "S", "blocked_by": ["US-001"], "started_at": "2026-10-03", "completed_at": null, "reviewed_at": null},
+    {"id": "US-001", "title": "Gate distribution workflows to manual dispatch", "epic": "EP-001", "status": "DONE", "priority": "P0", "size": "XS", "blocked_by": [], "started_at": "2026-10-02", "completed_at": "2026-10-03", "reviewed_at": "2026-10-03"},
+    {"id": "US-002", "title": "Describe the actual CI and release state in contributor docs", "epic": "EP-001", "status": "DONE", "priority": "P0", "size": "S", "blocked_by": ["US-001"], "started_at": "2026-10-02", "completed_at": "2026-10-03", "reviewed_at": "2026-10-03"},
+    {"id": "US-003", "title": "Obtain a green Full CI run on the public repository", "epic": "EP-001", "status": "DONE", "priority": "P0", "size": "S", "blocked_by": ["US-001"], "started_at": "2026-10-03", "completed_at": "2026-10-03", "reviewed_at": "2026-10-03"},
     {"id": "US-004", "title": "Validate assumption: R2 serves releases.paneflow.dev with per-object cache control", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "S", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},
     {"id": "US-005", "title": "Sign and notarize macOS binaries with the Paneflow developer identity", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},
     {"id": "US-006", "title": "Build and sign pf.exe in the release workflow", "epic": "EP-002", "status": "TODO", "priority": "P0", "size": "M", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},

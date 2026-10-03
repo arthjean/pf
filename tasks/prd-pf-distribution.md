@@ -175,6 +175,8 @@ Make the public push run only verification workflows, and state the real CI and 
 
 **Evidence (2026-10-03):** `main` was fast-forwarded to `501e74d` and the push started only `CI` and `Benchmarks`, both green ([CI 37123328390](https://github.com/arthjean/pf/actions/runs/37123328390)); the first push at `389c31c` exposed a Shellcheck SC2016 failure in `scripts/check-public-surface.sh`, fixed by `501e74d`. Full CI passed all five `Full suite (...)` jobs on `389c31c` ([37112614414](https://github.com/arthjean/pf/actions/runs/37112614414)) and on `501e74d` ([37121908724](https://github.com/arthjean/pf/actions/runs/37121908724)). A default dispatch of `release.yml` without secrets ([37120705079](https://github.com/arthjean/pf/actions/runs/37120705079)) failed at both macOS signing steps and skipped the `release` job; no tag or GitHub Release exists. The failure probe ([37112616285](https://github.com/arthjean/pf/actions/runs/37112616285)) failed at `Run Windows E2E subset` naming `windows-tui-smoke.test.ts`, and its branch was deleted. The EP-005 review recorded run 37112614414 as US-026 evidence.
 
+**Evidence (EP-001 review, 2026-10-03):** The repository is public with no tag, GitHub Release, repository secret, or environment secret. The `CI` run on `main` at `501e74d` skipped the 12 model-backed ACP tests and passed. `python3 scripts/rebrand.py check` failed on the fx history in this PRD and the Windows PRD, so both PRDs joined its skip list; `AGENTS.md` no longer cites a `pf upgrade` or CDN install as a way pf reaches `PATH`.
+
 ---
 
 ### EP-002: Signed release artifacts (Release 1)
