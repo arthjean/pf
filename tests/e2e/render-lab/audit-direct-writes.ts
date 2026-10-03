@@ -220,6 +220,8 @@ function detectPrimitive(
     if (name && (isStdioHandle(name) || /^(?:stdout|stderr|stdout_file|stderr_file)$/.test(name))) {
       return "stdio_write";
     }
+    // TerminalState.output holds the interactive stdout that init acquires.
+    if (path === "src/ui/shell_runtime.zig" && receiver === "self.output") return "stdio_write";
   }
   return null;
 }
