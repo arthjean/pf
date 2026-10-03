@@ -173,6 +173,8 @@ Make the public push run only verification workflows, and state the real CI and 
 - [ ] Given a deliberately failing commit on a throwaway branch, when the Windows job fails, then its job summary names the failing step and test file, and the branch is deleted afterward.
 - [ ] Given the green run, when `/review-epic tasks/prd-windows-native-support.md EP-005` runs, then US-026 has the run as its evidence.
 
+**Evidence (2026-10-03):** `main` was fast-forwarded to `501e74d` and the push started only `CI` and `Benchmarks`, both green ([CI 37123328390](https://github.com/arthjean/pf/actions/runs/37123328390)); the first push at `389c31c` exposed a Shellcheck SC2016 failure in `scripts/check-public-surface.sh`, fixed by `501e74d`. Full CI passed all five `Full suite (...)` jobs on `389c31c` ([37112614414](https://github.com/arthjean/pf/actions/runs/37112614414)) and on `501e74d` ([37121908724](https://github.com/arthjean/pf/actions/runs/37121908724)). A default dispatch of `release.yml` without secrets ([37120705079](https://github.com/arthjean/pf/actions/runs/37120705079)) failed at both macOS signing steps and skipped the `release` job; no tag or GitHub Release exists. The failure probe ([37112616285](https://github.com/arthjean/pf/actions/runs/37112616285)) failed at `Run Windows E2E subset` naming `windows-tui-smoke.test.ts`, and its branch was deleted. The EP-005 review recorded run 37112614414 as US-026 evidence.
+
 ---
 
 ### EP-002: Signed release artifacts (Release 1)
