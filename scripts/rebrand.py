@@ -31,6 +31,9 @@ SKIP_FILES = {
     "NOTICE",
     "UPSTREAM.md",
     "scripts/rebrand.py",
+    # PRDs plan pf's divergence from fx and name it on purpose.
+    "tasks/prd-pf-distribution.md",
+    "tasks/prd-windows-native-support.md",
 }
 
 # Rewrites that retarget a value instead of renaming it. They run first.
