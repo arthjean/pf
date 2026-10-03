@@ -74,6 +74,10 @@ fn windowsProcessSpawn(
     return original.processSpawn(userdata, resolved_options);
 }
 
+/// Absolute path of the platform null device. A bare `/dev/null` on Windows
+/// resolves to a regular file on the current drive.
+pub const null_device_path = if (is_windows) "\\\\.\\NUL" else "/dev/null";
+
 /// Extensions pf launches by bare name on Windows, in search order.
 const windows_executable_extensions = [_][]const u8{ ".exe", ".com", ".cmd", ".bat" };
 

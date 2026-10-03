@@ -5119,7 +5119,7 @@ test "many small output chunks checkpoint only at store boundaries" {
     defer session.deinitUnlaunched();
     var sink = try std.Io.Dir.openFileAbsolute(
         std.testing.io,
-        "/dev/null",
+        io_mod.null_device_path,
         .{ .mode = .write_only },
     );
     defer sink.close(std.testing.io);
@@ -5569,7 +5569,7 @@ test "shutdownSessionsOnly signals live sessions and leaves them allocated" {
     // A real handle, so releasing it is observable rather than vacuous.
     session.liveness_file = try std.Io.Dir.createFileAbsolute(
         io_mod.getIo(),
-        "/dev/null",
+        io_mod.null_device_path,
         .{ .truncate = false },
     );
 

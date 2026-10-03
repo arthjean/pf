@@ -4046,7 +4046,7 @@ test "session reset traces and clears active paste state" {
     defer debug_trace.resetForTest();
     try debug_trace.configureForTestWithScopes(alloc, trace_path, "input");
 
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
     var app = App{
@@ -4086,7 +4086,7 @@ test "session reset traces and clears active paste state" {
 
 test "fresh session resize preflight keeps a pending draft until geometry settles" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4120,7 +4120,7 @@ test "fresh session resize preflight keeps a pending draft until geometry settle
 
 test "partial session handoff resize cancels the pending transition without exiting" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4170,7 +4170,7 @@ test "partial session handoff resize cancels the pending transition without exit
 
 test "deferred session transition replays later input only after the fresh session installs" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4205,7 +4205,7 @@ test "deferred session transition replays later input only after the fresh sessi
 
 test "deferred session input stops replay after quit" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4239,7 +4239,7 @@ test "deferred session input stops replay after quit" {
 
 test "active native turn cancels before resize-deferred session handoff" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4275,7 +4275,7 @@ test "active native turn cancels before resize-deferred session handoff" {
 
 test "deferred paste settles before input from the next delivery epoch" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4309,7 +4309,7 @@ test "deferred paste settles before input from the next delivery epoch" {
 
 test "stalled fresh-session handoff replays Ctrl+C after timeout" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4360,7 +4360,7 @@ test "stalled fresh-session handoff replays Ctrl+C after timeout" {
 
 test "replayed new command retains the worker hold through a second deferred transition" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4403,7 +4403,7 @@ test "replayed new command retains the worker hold through a second deferred tra
 
 test "quit exits after a timed-out handoff without a completed input epoch" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
     var app = App{
         .alloc = alloc,
@@ -4455,7 +4455,7 @@ test "terminal help styling respects terminal capability and color opt-outs" {
 }
 
 test "follow up prompt card top margin is renderer-owned" {
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
     var app = App{
@@ -4491,7 +4491,7 @@ test "follow up prompt card top margin is renderer-owned" {
 }
 
 test "follow up prompt card does not over-pad when assistant ends with blank row" {
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
     var app = App{
@@ -4527,7 +4527,7 @@ test "diff block writes are classified" {
     const c_alloc = std.heap.c_allocator;
     const diff_mod = @import("core/output/diff.zig");
 
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
     var app = App{
@@ -4571,7 +4571,7 @@ test "deferred resumed diff builds once and degrades to its preview" {
     const c_alloc = std.heap.c_allocator;
     const diff_mod = @import("core/output/diff.zig");
 
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
     var app = App{
@@ -4625,7 +4625,7 @@ test "deferred resumed diff builds once and degrades to its preview" {
 }
 
 test "prompt card wraps image badges in OSC 8 hyperlinks" {
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
     var app = App{
@@ -4660,7 +4660,7 @@ test "prompt card wraps image badges in OSC 8 hyperlinks" {
 }
 
 test "/version command writes version to transcript" {
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(io_mod.getIo());
 
     var app = App{

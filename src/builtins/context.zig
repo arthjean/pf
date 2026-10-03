@@ -2955,7 +2955,15 @@ test "git worktree reports dirty for obvious metadata and tracked-file changes" 
         try writeTestFile(tmp.dir, "tracked/.git/HEAD", "ref: refs/heads/main\n");
         try writeTestFile(tmp.dir, "tracked/tracked.txt", "tracked\n");
         try writeSinglePathGitIndex(tmp.dir, "tracked/.git/index", "tracked/tracked.txt", "tracked.txt");
+        const indexed = try tmp.dir.statFile(io_mod.getIo(), "tracked/tracked.txt", .{});
         try writeTestFile(tmp.dir, "tracked/tracked.txt", "changed\n");
+        // The size is unchanged, so only the mtime proves the change, and a
+        // coarse file system clock can repeat the indexed one.
+        var changed = try tmp.dir.openFile(io_mod.getIo(), "tracked/tracked.txt", .{ .mode = .write_only });
+        defer changed.close(io_mod.getIo());
+        try changed.setTimestamps(io_mod.getIo(), .{
+            .modify_timestamp = .{ .new = .{ .nanoseconds = indexed.mtime.nanoseconds + std.time.ns_per_s } },
+        });
         const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "tracked");
         defer alloc.free(workspace);
         const info = try collectGitInfo(arena_state.allocator(), workspace);

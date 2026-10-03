@@ -3692,7 +3692,7 @@ fn initCoordinatorProjectionTestApp(
 
 test "file picker real frame receipt promotes only visible rows and preserves prepared identity" {
     const alloc = std.testing.allocator;
-    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, "/dev/null", .{ .mode = .write_only });
+    var sink = try std.Io.Dir.openFileAbsolute(std.testing.io, io_mod.null_device_path, .{ .mode = .write_only });
     defer sink.close(std.testing.io);
     var app = try initCoordinatorProjectionTestApp(alloc, sink);
     defer app.deinit();
