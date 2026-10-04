@@ -11,7 +11,9 @@ and has been modified since. Notable modifications:
 
 - The product, command, configuration paths, environment variables, and
   identifiers are renamed from fx to pf (Paneflow Agent).
-- Manual and automatic upgrades from fx release channels are disabled.
+- Manual and automatic upgrades install only from pf's own signed release
+  channel, which publishes no release yet, and never from fx release
+  channels.
 - The release workflow signs macOS and Windows binaries with Paneflow's own
   identities, signs every archive with a minisign key dedicated to pf, and
   publishes to pf's own storage instead of Vercel's.

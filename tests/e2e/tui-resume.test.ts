@@ -5600,7 +5600,7 @@ test("manual upgrade output links stable notes and dev changes", async () => {
 
   try {
     const stable = Bun.spawn([installedPf, "upgrade", "--channel", "stable"], {
-      env: { ...process.env, HOME: home, PF_E2E_UPGRADE_BASE_URL: release.baseUrl },
+      env: { ...process.env, HOME: home, ...release.env },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -5613,7 +5613,7 @@ test("manual upgrade output links stable notes and dev changes", async () => {
     copyFileSync(PF_BIN, installedPf);
     chmodSync(installedPf, 0o755);
     const dev = Bun.spawn([installedPf, "upgrade", "--channel", "dev"], {
-      env: { ...process.env, HOME: home, PF_E2E_UPGRADE_BASE_URL: release.baseUrl },
+      env: { ...process.env, HOME: home, ...release.env },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -5668,7 +5668,7 @@ test.skipIf(!tmuxAvailable())(
         env: {
           ...gatewayEnv(home, gateway),
           PF_AUTO_UPGRADE: "1",
-          PF_E2E_UPGRADE_BASE_URL: release.baseUrl,
+          ...release.env,
           PF_TRACE_LOG: tracePath,
           PF_TRACE_SCOPES: "core,session",
         },

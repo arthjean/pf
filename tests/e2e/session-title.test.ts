@@ -289,7 +289,7 @@ test.skipIf(SKIP_TMUX)("tui generates a title after an upgrade relaunch resumes 
       env: {
         ...baseEnv(root, gateway),
         PF_AUTO_UPGRADE: "1",
-        PF_E2E_UPGRADE_BASE_URL: release.baseUrl,
+        ...release.env,
       },
     });
     await tui.waitForStableComposer(15000);

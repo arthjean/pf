@@ -1657,7 +1657,7 @@ pub const UpgradeSnapshot = struct {
         try out.writer.writeAll("{\"kind\":\"upgrade\"");
 
         if (self.err_message) |msg| {
-            try out.writer.writeAll(",\"error\":");
+            try out.writer.writeAll(",\"status\":\"failed\",\"error\":");
             try std.json.Stringify.value(msg, .{}, &out.writer);
             try out.writer.writeByte('}');
             return try out.toOwnedSlice();
@@ -2944,7 +2944,7 @@ test "core upgrade snapshot renders errors and statuses" {
     const error_json = try error_snapshot.renderJson(std.testing.allocator);
     defer std.testing.allocator.free(error_json);
     try std.testing.expectEqualStrings(
-        "{\"kind\":\"upgrade\",\"error\":\"download failed\"}",
+        "{\"kind\":\"upgrade\",\"status\":\"failed\",\"error\":\"download failed\"}",
         error_json,
     );
 

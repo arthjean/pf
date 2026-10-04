@@ -2,6 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const update_target = @import("update_target.zig");
+const minisign = @import("minisign.zig");
+const release_archive = @import("release_archive.zig");
+const release_keys = @import("release_keys.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -47,15 +50,41 @@ const ReceiveWatchdog = struct {
     }
 };
 
-/// pf has no release channel yet, so only the loopback E2E fixture serves
-/// upgrades. Set this once pf publishes its own releases.
-pub const cdn_base: ?[]const u8 = null;
+/// pf's release host. It serves `latest.txt`, then each release under its tag.
+pub const cdn_base = "https://releases.paneflow.dev/agent";
 
-pub fn resolveCdnBase() ?[]const u8 {
-    if (io_mod.getenv("PF_E2E_UPGRADE_BASE_URL")) |url| {
-        if (isLoopbackE2eUpgradeBase(url)) return url;
+/// Where releases come from and the minisign keys they must be signed with.
+pub const ReleaseOrigin = struct {
+    base_url: []const u8,
+    keys_buf: [2]minisign.PublicKey = undefined,
+    key_count: usize = 0,
+
+    pub fn keys(self: *const ReleaseOrigin) []const minisign.PublicKey {
+        return self.keys_buf[0..self.key_count];
     }
-    return cdn_base;
+
+    fn trust(self: *ReleaseOrigin, text: []const u8) void {
+        if (text.len == 0 or self.key_count == self.keys_buf.len) return;
+        self.keys_buf[self.key_count] = minisign.PublicKey.parse(text) catch return;
+        self.key_count += 1;
+    }
+};
+
+/// Resolves the release host. A validated loopback `PF_E2E_UPGRADE_BASE_URL`
+/// replaces it for end-to-end tests, and only then does
+/// `PF_E2E_UPGRADE_PUBLIC_KEY` replace the embedded release keys.
+pub fn resolveReleaseOrigin() ReleaseOrigin {
+    if (io_mod.getenv("PF_E2E_UPGRADE_BASE_URL")) |url| {
+        if (isLoopbackE2eUpgradeBase(url)) {
+            var origin: ReleaseOrigin = .{ .base_url = url };
+            origin.trust(io_mod.getenv("PF_E2E_UPGRADE_PUBLIC_KEY") orelse "");
+            return origin;
+        }
+    }
+    var origin: ReleaseOrigin = .{ .base_url = cdn_base };
+    origin.trust(release_keys.active);
+    origin.trust(release_keys.next);
+    return origin;
 }
 
 fn isLoopbackE2eUpgradeBase(url: []const u8) bool {
@@ -84,6 +113,7 @@ fn platformFromTarget() ?[]const u8 {
     const os: ?[]const u8 = switch (builtin.os.tag) {
         .macos => "macos",
         .linux => "linux",
+        .windows => if (builtin.cpu.arch == .x86_64) "windows" else null,
         else => null,
     };
     const arch: ?[]const u8 = switch (builtin.cpu.arch) {
@@ -99,10 +129,16 @@ fn platformFromTarget() ?[]const u8 {
     return null;
 }
 
+/// File name of this platform's release archive, such as `pf-linux-x86_64.tar.gz`.
+pub const archive_name: ?[]const u8 = if (platform) |p| "pf-" ++ p ++ release_archive.native_format.extension() else null;
+
 pub fn fetchTarget(alloc: Allocator, channel: Channel, base_url: []const u8, control: TransferControl) !Target {
     return switch (channel) {
         .stable => blk: {
-            const latest = try fetchLatestVersion(alloc, base_url, control);
+            const latest = fetchLatestVersion(alloc, base_url, control) catch |err| return switch (err) {
+                error.NotFound => error.NoReleasePublished,
+                else => err,
+            };
             defer alloc.free(latest);
             break :blk Target.initStable(alloc, latest) catch return error.FetchFailed;
         },
@@ -111,13 +147,16 @@ pub fn fetchTarget(alloc: Allocator, channel: Channel, base_url: []const u8, con
             defer client.deinit();
             const url = try std.fmt.allocPrint(alloc, "{s}/dev.json", .{base_url});
             defer alloc.free(url);
-            const manifest = try fetchTextBounded(
+            const manifest = fetchTextBounded(
                 &client,
                 alloc,
                 url,
                 update_target.max_manifest_bytes,
                 control,
-            );
+            ) catch |err| return switch (err) {
+                error.NotFound => error.NoReleasePublished,
+                else => err,
+            };
             defer alloc.free(manifest);
             break :blk Target.parseDevManifest(alloc, manifest) catch return error.FetchFailed;
         },
@@ -206,8 +245,8 @@ fn clearConnection(control: TransferControl) void {
 }
 
 test "transfer interrupt wakes a blocked socket read" {
-    // pf upgrade is disabled and unavailable on Windows. Its interrupt shuts
-    // the socket down gracefully, which does not wake a pending Windows receive.
+    // The interrupt shuts the socket down gracefully, which does not wake a
+    // pending Windows receive; stop() detaches the thread there instead.
     if (builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
     const zio = io_mod.getIo();
     const addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
@@ -261,7 +300,7 @@ fn fetchTextBounded(
     if (controlCancelled(control)) return error.Cancelled;
     const uri = std.Uri.parse(url) catch return error.FetchFailed;
 
-    var req = client.request(.GET, uri, .{}) catch return error.FetchFailed;
+    var req = client.request(.GET, uri, .{ .redirect_behavior = .unhandled }) catch return error.FetchFailed;
     defer req.deinit();
 
     var watchdog: ReceiveWatchdog = .{};
@@ -271,10 +310,9 @@ fn fetchTextBounded(
     defer clearConnection(control);
     req.sendBodiless() catch return error.FetchFailed;
 
-    var redirect_buf: [8192]u8 = undefined;
-    var response = req.receiveHead(&redirect_buf) catch return error.FetchFailed;
+    var response = req.receiveHead(&.{}) catch return error.FetchFailed;
     watchdog.progress();
-    if (response.head.status != .ok) return error.FetchFailed;
+    try checkStatus(response.head.status, error.FetchFailed);
     if (response.head.content_length) |content_length| {
         if (content_length > max_bytes) return error.FetchFailed;
     }
@@ -296,6 +334,16 @@ fn fetchTextBounded(
     return out.toOwnedSlice() catch return error.OutOfMemory;
 }
 
+/// pf never follows a redirect: the release host serves every object
+/// directly, so a redirect can only send pf somewhere it must not download
+/// from.
+fn checkStatus(status: std.http.Status, comptime other: anyerror) !void {
+    if (status == .ok) return;
+    if (status.class() == .redirect) return error.UnexpectedRedirect;
+    if (status == .not_found) return error.NotFound;
+    return other;
+}
+
 pub const DownloadProgress = struct {
     ctx: *anyopaque,
     start: *const fn (*anyopaque, ?u64) void,
@@ -315,7 +363,7 @@ pub fn downloadFileStreamingWithProgress(client: *std.http.Client, url: []const 
     var file_writer: std.Io.File.Writer = .initStreaming(file, io_mod.getIo(), &write_buf);
 
     const uri = std.Uri.parse(url) catch return error.DownloadFailed;
-    var req = client.request(.GET, uri, .{}) catch return error.DownloadFailed;
+    var req = client.request(.GET, uri, .{ .redirect_behavior = .unhandled }) catch return error.DownloadFailed;
     defer req.deinit();
 
     var watchdog: ReceiveWatchdog = .{};
@@ -325,10 +373,9 @@ pub fn downloadFileStreamingWithProgress(client: *std.http.Client, url: []const 
     defer clearConnection(control);
     req.sendBodiless() catch return error.DownloadFailed;
 
-    var redirect_buf: [8192]u8 = undefined;
-    var response = req.receiveHead(&redirect_buf) catch return error.DownloadFailed;
+    var response = req.receiveHead(&.{}) catch return error.DownloadFailed;
     watchdog.progress();
-    if (response.head.status != .ok) return error.DownloadFailed;
+    try checkStatus(response.head.status, error.DownloadFailed);
 
     const total = response.head.content_length;
     if (progress) |p| p.start(p.ctx, total);
@@ -359,6 +406,7 @@ pub fn verifyChecksum(client: *std.http.Client, file_path: []const u8, checksum_
         control,
     ) catch |err| return switch (err) {
         error.Cancelled => error.Cancelled,
+        error.UnexpectedRedirect => error.UnexpectedRedirect,
         else => error.ChecksumFetchFailed,
     };
     defer client.allocator.free(raw);
@@ -402,24 +450,149 @@ fn extractChecksumHex(raw: []const u8) ?[]const u8 {
     return if (trimmed.len >= 64) trimmed[0..64] else null;
 }
 
-pub fn extractTarGz(alloc: Allocator, archive_path: []const u8, dest_dir: []const u8) !void {
-    const result = std.process.run(alloc, io_mod.getIo(), .{
-        .argv = &.{ "tar", "-xzf", archive_path, "-C", dest_dir },
-    }) catch return error.ExtractionFailed;
-    defer alloc.free(result.stdout);
-    defer alloc.free(result.stderr);
+pub const VerifiedDownloadError = error{
+    NoArtifact,
+    DownloadFailed,
+    UnexpectedRedirect,
+    ChecksumFetchFailed,
+    ChecksumMismatch,
+    SignatureMissing,
+    SignatureFetchFailed,
+    InvalidArchive,
+    ArchiveTooLarge,
+    ExtractionFailed,
+    OutOfMemory,
+    Cancelled,
+} || minisign.Error;
 
-    switch (result.term) {
-        .exited => |code| if (code != 0) return error.ExtractionFailed,
-        else => return error.ExtractionFailed,
+/// Downloads this platform's archive of `target` into `tmp_dir`, verifies its
+/// SHA-256 sidecar and its minisign signature against `origin`'s keys, then
+/// extracts the binary. Returns the extracted binary's path, owned by the
+/// caller. Nothing outside `tmp_dir` is written.
+pub fn downloadVerifiedBinary(
+    alloc: Allocator,
+    client: *std.http.Client,
+    origin: *const ReleaseOrigin,
+    target: update_target.Target,
+    tmp_dir: []const u8,
+    progress: ?DownloadProgress,
+    control: TransferControl,
+) VerifiedDownloadError![]u8 {
+    const name = archive_name orelse return error.NoArtifact;
+    const archive_url = try std.fmt.allocPrint(alloc, "{s}/{s}/{s}", .{ origin.base_url, target.artifactRef(), name });
+    defer alloc.free(archive_url);
+    const archive_path = try std.fs.path.join(alloc, &.{ tmp_dir, name });
+    defer alloc.free(archive_path);
+
+    downloadFileStreamingWithProgress(client, archive_url, archive_path, progress, control) catch |err| return switch (err) {
+        error.Cancelled => error.Cancelled,
+        error.UnexpectedRedirect => error.UnexpectedRedirect,
+        else => error.DownloadFailed,
+    };
+    if (controlCancelled(control)) return error.Cancelled;
+
+    const checksum_url = try std.fmt.allocPrint(alloc, "{s}.sha256", .{archive_url});
+    defer alloc.free(checksum_url);
+    try verifyChecksum(client, archive_path, checksum_url, control);
+
+    const signature_url = try std.fmt.allocPrint(alloc, "{s}.minisig", .{archive_url});
+    defer alloc.free(signature_url);
+    const signature = fetchTextBounded(client, alloc, signature_url, minisign.max_signature_bytes, control) catch |err| return switch (err) {
+        error.Cancelled => error.Cancelled,
+        error.UnexpectedRedirect => error.UnexpectedRedirect,
+        error.NotFound => error.SignatureMissing,
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.SignatureFetchFailed,
+    };
+    defer alloc.free(signature);
+
+    const zio = io_mod.getIo();
+    {
+        var archive = std.Io.Dir.openFileAbsolute(zio, archive_path, .{}) catch return error.ExtractionFailed;
+        defer archive.close(zio);
+        try minisign.verifyFile(zio, archive, signature, origin.keys(), .{
+            .file = name,
+            .version = target.version(),
+            .channel = target.channel().label(),
+            .commit = target.revision(),
+        });
     }
+    if (controlCancelled(control)) return error.Cancelled;
+
+    var dest = std.Io.Dir.openDirAbsolute(zio, tmp_dir, .{}) catch return error.ExtractionFailed;
+    defer dest.close(zio);
+    try release_archive.extractBinary(zio, archive_path, release_archive.native_format, dest);
+    return std.fs.path.join(alloc, &.{ tmp_dir, release_archive.binary_name });
 }
 
-pub fn replaceBinary(new_path: []const u8, target_path: []const u8) !void {
-    std.Io.Dir.renameAbsolute(new_path, target_path, io_mod.getIo()) catch {
-        copyBinary(new_path, target_path) catch return error.ReplaceFailed;
+/// Fails with `error.InstallDirNotWritable` unless pf can create a file next
+/// to `exe_path`, so an upgrade stops before it downloads anything.
+pub fn checkInstallDirWritable(exe_path: []const u8) error{InstallDirNotWritable}!void {
+    const dir_path = std.fs.path.dirname(exe_path) orelse return error.InstallDirNotWritable;
+    const zio = io_mod.getIo();
+    var dir = std.Io.Dir.openDirAbsolute(zio, dir_path, .{}) catch return error.InstallDirNotWritable;
+    defer dir.close(zio);
+    var rand_buf: [8]u8 = undefined;
+    zio.random(&rand_buf);
+    var name_buf: [32]u8 = undefined;
+    const name = std.fmt.bufPrint(&name_buf, ".pf-write-probe-{s}", .{std.fmt.bytesToHex(rand_buf, .lower)}) catch unreachable;
+    var probe = dir.createFile(zio, name, .{ .exclusive = true }) catch return error.InstallDirNotWritable;
+    probe.close(zio);
+    dir.deleteFile(zio, name) catch {};
+}
+
+/// Installs `new_path` as the binary at `target_path`. POSIX replaces the
+/// file in one atomic rename. Windows cannot replace a running `.exe`, so it
+/// renames the running binary to `<target>.old` first and renames it back if
+/// the new binary cannot be moved into place; `sweepReplacedBinary` removes
+/// the leftover on a later start.
+pub fn installBinary(alloc: Allocator, new_path: []const u8, target_path: []const u8) error{ReplaceFailed}!void {
+    if (comptime builtin.os.tag != .windows) {
+        io_mod.copyFileAtomic(alloc, new_path, target_path) catch return error.ReplaceFailed;
         return;
+    }
+    const zio = io_mod.getIo();
+    const staged_path = std.fmt.allocPrint(alloc, "{s}.new", .{target_path}) catch return error.ReplaceFailed;
+    defer alloc.free(staged_path);
+    const old_path = std.fmt.allocPrint(alloc, "{s}.old", .{target_path}) catch return error.ReplaceFailed;
+    defer alloc.free(old_path);
+
+    // Stage on the target's volume so the final step is a rename.
+    io_mod.copyFileAtomic(alloc, new_path, staged_path) catch return error.ReplaceFailed;
+    errdefer std.Io.Dir.deleteFileAbsolute(zio, staged_path) catch {};
+    std.Io.Dir.deleteFileAbsolute(zio, old_path) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return error.ReplaceFailed,
     };
+    try moveFileWindows(alloc, target_path, old_path);
+    moveFileWindows(alloc, staged_path, target_path) catch {
+        moveFileWindows(alloc, old_path, target_path) catch {};
+        return error.ReplaceFailed;
+    };
+}
+
+/// Renames a file that may be a running executable. `std.Io.Dir.rename`
+/// opens the source for writing, which Windows refuses for a mapped image;
+/// `MoveFileExW` needs only delete access.
+fn moveFileWindows(alloc: Allocator, from: []const u8, to: []const u8) error{ReplaceFailed}!void {
+    const win32 = @import("../shared/win32.zig");
+    const from_w = std.unicode.wtf8ToWtf16LeAllocZ(alloc, from) catch return error.ReplaceFailed;
+    defer alloc.free(from_w);
+    const to_w = std.unicode.wtf8ToWtf16LeAllocZ(alloc, to) catch return error.ReplaceFailed;
+    defer alloc.free(to_w);
+    if (!win32.MoveFileExW(from_w, to_w, win32.MOVEFILE_WRITE_THROUGH).toBool()) return error.ReplaceFailed;
+}
+
+/// Deletes the `pf.exe.old` a Windows upgrade left next to the running
+/// binary. A failure, such as the previous pf still running, is ignored and
+/// the next start tries again.
+pub fn sweepReplacedBinary() void {
+    if (comptime builtin.os.tag != .windows) return;
+    var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const exe = currentExecutablePath(&exe_buf) catch return;
+    var old_buf: [std.fs.max_path_bytes + 4]u8 = undefined;
+    const old_path = std.fmt.bufPrint(&old_buf, "{s}.old", .{exe}) catch return;
+    std.Io.Dir.deleteFileAbsolute(io_mod.getIo(), old_path) catch {};
 }
 
 pub const ExecutablePathError = error{
@@ -440,30 +613,6 @@ pub fn currentExecutablePath(out: []u8) ExecutablePathError![]const u8 {
     return path;
 }
 
-fn copyBinary(src_path: []const u8, dest_path: []const u8) !void {
-    const zio = io_mod.getIo();
-    var src = std.Io.Dir.openFileAbsolute(zio, src_path, .{}) catch return error.ReplaceFailed;
-    defer src.close(zio);
-
-    const stat = src.stat(zio) catch return error.ReplaceFailed;
-
-    std.Io.Dir.deleteFileAbsolute(zio, dest_path) catch {};
-
-    var dest = std.Io.Dir.createFileAbsolute(zio, dest_path, .{}) catch return error.ReplaceFailed;
-    defer dest.close(zio);
-
-    var rbuf: [8192]u8 = undefined;
-    var r = src.readerStreaming(zio, &rbuf);
-    var transfer_buf: [64 * 1024]u8 = undefined;
-    while (true) {
-        const n = r.interface.readSliceShort(&transfer_buf) catch return error.ReplaceFailed;
-        if (n == 0) break;
-        dest.writeStreamingAll(zio, transfer_buf[0..n]) catch return error.ReplaceFailed;
-    }
-
-    dest.setPermissions(zio, stat.permissions) catch {};
-}
-
 fn writeTempFile(dir: std.Io.Dir, name: []const u8, content: []const u8) !void {
     var file = try dir.createFile(io_mod.getIo(), name, .{ .truncate = true });
     defer file.close(io_mod.getIo());
@@ -477,10 +626,13 @@ fn readAbsoluteFile(alloc: Allocator, path: []const u8) ![]u8 {
 }
 
 test "platform string is valid" {
-    // Windows has no release artifact yet.
     const value = platform orelse return error.SkipZigTest;
     try std.testing.expect(value.len > 0);
     try std.testing.expect(std.mem.find(u8, value, "-") != null);
+    if (builtin.os.tag == .windows and builtin.cpu.arch == .x86_64) {
+        try std.testing.expectEqualStrings("windows-x86_64", value);
+        try std.testing.expectEqualStrings("pf-windows-x86_64.zip", archive_name.?);
+    }
 }
 
 test "E2E upgrade base accepts only explicit IPv4 loopback origins" {
@@ -491,8 +643,22 @@ test "E2E upgrade base accepts only explicit IPv4 loopback origins" {
     try std.testing.expect(!isLoopbackE2eUpgradeBase("http://localhost:1234"));
 }
 
-test "production upgrade base is unset until pf has a release channel" {
-    try std.testing.expect(resolveCdnBase() == null);
+test "production upgrade origin is the release host with the embedded keys" {
+    if (io_mod.getenv("PF_E2E_UPGRADE_BASE_URL") != null) return error.SkipZigTest;
+    const origin = resolveReleaseOrigin();
+    try std.testing.expectEqualStrings("https://releases.paneflow.dev/agent", origin.base_url);
+    // Every embedded key parses, so a malformed slot cannot silently drop out.
+    const expected_keys: usize = if (release_keys.next.len == 0) 1 else 2;
+    try std.testing.expectEqual(expected_keys, origin.keys().len);
+}
+
+test "release host responses never follow redirects" {
+    try checkStatus(.ok, error.FetchFailed);
+    try std.testing.expectError(error.UnexpectedRedirect, checkStatus(.found, error.FetchFailed));
+    try std.testing.expectError(error.UnexpectedRedirect, checkStatus(.moved_permanently, error.FetchFailed));
+    try std.testing.expectError(error.UnexpectedRedirect, checkStatus(.temporary_redirect, error.FetchFailed));
+    try std.testing.expectError(error.NotFound, checkStatus(.not_found, error.FetchFailed));
+    try std.testing.expectError(error.FetchFailed, checkStatus(.internal_server_error, error.FetchFailed));
 }
 
 test "extractChecksumHex parses sha256sum format" {
@@ -518,7 +684,7 @@ test "bytesToHex renders lowercase sha256 digest" {
     try std.testing.expectEqualStrings("0f" ** 32, &hex);
 }
 
-test "replaceBinary moves replacement over target path" {
+test "installBinary replaces the target and keeps the old binary aside on Windows" {
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -532,9 +698,59 @@ test "replaceBinary moves replacement over target path" {
     const target_path = try std.fs.path.join(alloc, &.{ root, "pf-old" });
     defer alloc.free(target_path);
 
-    try replaceBinary(new_path, target_path);
+    try installBinary(alloc, new_path, target_path);
 
     const replaced = try readAbsoluteFile(alloc, target_path);
     defer alloc.free(replaced);
     try std.testing.expectEqualStrings("new", replaced);
+    if (builtin.os.tag == .windows) {
+        const old_path = try std.fmt.allocPrint(alloc, "{s}.old", .{target_path});
+        defer alloc.free(old_path);
+        const old = try readAbsoluteFile(alloc, old_path);
+        defer alloc.free(old);
+        try std.testing.expectEqualStrings("old", old);
+        // A second upgrade replaces the leftover.
+        try installBinary(alloc, new_path, target_path);
+    }
+}
+
+test "installBinary leaves the target untouched when it cannot replace it" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try writeTempFile(tmp.dir, "pf.exe", "old");
+    try writeTempFile(tmp.dir, "pf-new", "new");
+    // A directory where the old binary must go cannot be removed as a file.
+    try tmp.dir.createDir(std.testing.io, "pf.exe.old", .default_dir);
+    const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(root);
+    const new_path = try std.fs.path.join(alloc, &.{ root, "pf-new" });
+    defer alloc.free(new_path);
+    const target_path = try std.fs.path.join(alloc, &.{ root, "pf.exe" });
+    defer alloc.free(target_path);
+
+    try std.testing.expectError(error.ReplaceFailed, installBinary(alloc, new_path, target_path));
+    const kept = try readAbsoluteFile(alloc, target_path);
+    defer alloc.free(kept);
+    try std.testing.expectEqualStrings("old", kept);
+    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(std.testing.io, "pf.exe.new", .{}));
+}
+
+test "checkInstallDirWritable probes the binary directory" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(root);
+    const exe_path = try std.fs.path.join(alloc, &.{ root, "pf" });
+    defer alloc.free(exe_path);
+    try checkInstallDirWritable(exe_path);
+    var it = tmp.dir.iterate();
+    try std.testing.expect(try it.next(std.testing.io) == null);
+
+    const missing = try std.fs.path.join(alloc, &.{ root, "missing", "pf" });
+    defer alloc.free(missing);
+    try std.testing.expectError(error.InstallDirNotWritable, checkInstallDirWritable(missing));
 }

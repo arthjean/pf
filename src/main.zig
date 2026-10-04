@@ -4961,6 +4961,8 @@ test {
     _ = @import("tools/skills/skill.zig");
     _ = @import("core/upgrade/upgrade_helpers.zig");
     _ = @import("core/upgrade/upgrade_runtime.zig");
+    _ = @import("core/upgrade/minisign.zig");
+    _ = @import("core/upgrade/release_archive.zig");
     _ = @import("core/shared/types.zig");
     _ = @import("core/input/composer_history.zig");
     _ = @import("core/input/kill_ring.zig");

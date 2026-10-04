@@ -14,24 +14,21 @@ const found_hold_ns = 150 * std.time.ns_per_ms;
 pub const RunResult = struct {
     snapshot: output_contracts.UpgradeSnapshot,
     target_owned: ?update_target.Target = null,
+    message_owned: ?[]u8 = null,
 
     pub fn deinit(self: *RunResult, alloc: Allocator) void {
         if (self.target_owned) |*target| target.deinit(alloc);
+        if (self.message_owned) |message| alloc.free(message);
         self.* = undefined;
     }
 };
 
-const RunError = error{
+const RunError = helpers.VerifiedDownloadError || error{
     FetchFailed,
-    DownloadFailed,
-    ChecksumFetchFailed,
-    ChecksumMismatch,
-    ExtractionFailed,
+    NoReleasePublished,
     SelfExeNotFound,
+    InstallDirNotWritable,
     ReplaceFailed,
-    OutOfMemory,
-    Cancelled,
-    NoReleaseChannel,
 };
 
 pub fn run(
@@ -40,8 +37,7 @@ pub fn run(
     channel: update_target.Channel,
     format: output_contracts.OutputFormat,
 ) RunResult {
-    if (helpers.resolveCdnBase() == null) return failureResult(current, channel, error.NoReleaseChannel);
-    return runInner(alloc, current, channel, format) catch |err| failureResult(current, channel, err);
+    return runInner(alloc, current, channel, format) catch |err| failureResult(alloc, current, channel, err, .{});
 }
 
 fn runInner(
@@ -65,21 +61,26 @@ fn runInner(
     }
     if (format == .text) worker.join();
 
-    return completeRunResult(alloc, current, channel, worker_result);
+    return completeRunResult(alloc, current, channel, &worker_result);
 }
 
 fn completeRunResult(
     alloc: Allocator,
     current: update_target.CurrentBuild,
     channel: update_target.Channel,
-    worker_result: WorkerResult,
+    worker_result: *const WorkerResult,
 ) RunError!RunResult {
     if (worker_result.err) |e| {
+        var label_buf: [64]u8 = undefined;
+        var context: FailureContext = .{ .install_dir = worker_result.installDir() };
         if (worker_result.target_owned) |target_value| {
             var target = target_value;
+            context.release = target.writeDisplayLabel(&label_buf) catch "";
+            const result = failureResult(alloc, current, channel, e, context);
             target.deinit(alloc);
+            return result;
         }
-        return workerErrorToRunError(e);
+        return failureResult(alloc, current, channel, e, context);
     }
 
     const target = worker_result.target_owned orelse return error.FetchFailed;
@@ -115,48 +116,84 @@ fn completeRunResult(
     };
 }
 
+/// Facts a failure message names: the release pf refused and the directory
+/// it could not write.
+const FailureContext = struct {
+    release: []const u8 = "",
+    install_dir: []const u8 = "",
+};
+
 fn failureResult(
+    alloc: Allocator,
     current: update_target.CurrentBuild,
     channel: update_target.Channel,
     err: RunError,
+    context: FailureContext,
 ) RunResult {
-    return .{ .snapshot = .{
-        .current = versionLabel(current.version),
-        .latest = "",
-        .channel = channel.label(),
-        .current_channel = current.channel.label(),
-        .current_revision = current.revision,
-        .status = .failed,
-        .err_message = failureMessage(err),
-    } };
+    const message = formatFailure(alloc, err, context) catch null;
+    return .{
+        .snapshot = .{
+            .current = versionLabel(current.version),
+            .latest = "",
+            .channel = channel.label(),
+            .current_channel = current.channel.label(),
+            .current_revision = current.revision,
+            .status = .failed,
+            .err_message = message orelse failureMessage(err),
+        },
+        .message_owned = message,
+    };
+}
+
+fn formatFailure(alloc: Allocator, err: RunError, context: FailureContext) ![]u8 {
+    const reason: []const u8 = switch (err) {
+        error.SignatureMissing => "it has no signature, so it cannot be verified",
+        error.SignatureFetchFailed => "its signature could not be downloaded, so it cannot be verified",
+        error.MalformedSignature,
+        error.LegacyAlgorithm,
+        error.InvalidSignature,
+        error.InvalidTrustedComment,
+        => "its signature is invalid",
+        error.UnknownKey => "it is signed by an unknown key. Download pf from its release page",
+        error.ReleaseMismatch => "the signature belongs to a different release",
+        error.InvalidArchive => "the archive is invalid",
+        error.ArchiveTooLarge => "the archive expands beyond the 100 MB limit",
+        error.InstallDirNotWritable => return std.fmt.allocPrint(
+            alloc,
+            "Cannot write to {s}; reinstall pf in a user-writable directory or rerun with permission.",
+            .{context.install_dir},
+        ),
+        else => return alloc.dupe(u8, failureMessage(err)),
+    };
+    return std.fmt.allocPrint(alloc, "Refused to install pf {s}: {s}.", .{ versionLabel(context.release), reason });
 }
 
 fn failureMessage(err: RunError) []const u8 {
     return switch (err) {
-        error.FetchFailed => "failed to fetch latest version from CDN",
+        error.FetchFailed => "failed to fetch the latest version from the release host",
+        error.NoReleasePublished => "No pf release is published yet; rebuild from source to update.",
+        error.UnexpectedRedirect => "The pf release host redirected to an unexpected location; update refused.",
+        error.NoArtifact => "pf publishes no release for this platform",
         error.DownloadFailed => "failed to download release archive",
-        error.ChecksumFetchFailed => "failed to fetch checksum from CDN",
+        error.ChecksumFetchFailed => "failed to fetch checksum from the release host",
         error.ChecksumMismatch => "downloaded archive failed integrity check",
-        error.ExtractionFailed => "failed to extract release archive",
+        error.SignatureMissing,
+        error.SignatureFetchFailed,
+        error.MalformedSignature,
+        error.LegacyAlgorithm,
+        error.InvalidSignature,
+        error.InvalidTrustedComment,
+        error.UnknownKey,
+        error.ReleaseMismatch,
+        => "refused to install an unverified release",
+        error.ReadFailed, error.ExtractionFailed => "failed to extract release archive",
+        error.InvalidArchive => "refused to install an invalid release archive",
+        error.ArchiveTooLarge => "refused to install a release archive over the 100 MB limit",
         error.SelfExeNotFound => "could not determine path of running binary",
+        error.InstallDirNotWritable => "cannot write to the pf install directory",
         error.ReplaceFailed => "failed to replace binary (permission denied?)",
         error.OutOfMemory => "out of memory",
         error.Cancelled => "upgrade cancelled",
-        error.NoReleaseChannel => "no release channel is available yet; rebuild from source to update",
-    };
-}
-
-fn workerErrorToRunError(err: UpgradeError) RunError {
-    return switch (err) {
-        .fetch_failed => error.FetchFailed,
-        .download_failed => error.DownloadFailed,
-        .checksum_fetch_failed => error.ChecksumFetchFailed,
-        .checksum_mismatch => error.ChecksumMismatch,
-        .extraction_failed => error.ExtractionFailed,
-        .self_exe_not_found => error.SelfExeNotFound,
-        .replace_failed => error.ReplaceFailed,
-        .out_of_memory => error.OutOfMemory,
-        .cancelled => error.Cancelled,
     };
 }
 
@@ -170,8 +207,8 @@ fn upgradeWorker(
     show_progress: bool,
 ) void {
     defer done.store(true, .release);
-    upgradeWorkerInner(alloc, current, channel, result, progress, show_progress) catch {
-        if (result.err == null) result.err = .out_of_memory;
+    upgradeWorkerInner(alloc, current, channel, result, progress, show_progress) catch |err| {
+        if (result.err == null) result.err = err;
     };
 }
 
@@ -182,14 +219,11 @@ fn upgradeWorkerInner(
     result: *WorkerResult,
     progress: *ProgressState,
     show_progress: bool,
-) !void {
-    const cdn_base = helpers.resolveCdnBase() orelse {
-        result.err = .fetch_failed;
-        return;
-    };
-    const fetched_target = helpers.fetchTarget(alloc, channel, cdn_base, .{}) catch {
-        result.err = .fetch_failed;
-        return;
+) RunError!void {
+    const origin = helpers.resolveReleaseOrigin();
+    const fetched_target = helpers.fetchTarget(alloc, channel, origin.base_url, .{}) catch |err| return switch (err) {
+        error.NoReleasePublished, error.UnexpectedRedirect, error.Cancelled, error.OutOfMemory => |e| e,
+        else => error.FetchFailed,
     };
     result.target_owned = fetched_target;
     const target = result.target_owned.?;
@@ -198,6 +232,13 @@ fn upgradeWorkerInner(
     progress.markUpdateFound();
     if (show_progress) io_mod.sleep(found_hold_ns);
 
+    var self_exe_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const self_exe = helpers.currentExecutablePath(&self_exe_buf) catch return error.SelfExeNotFound;
+    helpers.checkInstallDirWritable(self_exe) catch |err| {
+        result.setInstallDir(std.fs.path.dirname(self_exe) orelse self_exe);
+        return err;
+    };
+
     const tmp_base: []const u8 = io_mod.tempDir();
     var rand_buf: [8]u8 = undefined;
     io_mod.getIo().random(&rand_buf);
@@ -205,65 +246,20 @@ fn upgradeWorkerInner(
     const tmp_dir = try std.fmt.allocPrint(alloc, "{s}/pf-upgrade-{s}", .{ tmp_base, rand_hex });
     defer alloc.free(tmp_dir);
     defer std.Io.Dir.cwd().deleteTree(io_mod.getIo(), tmp_dir) catch {};
-
-    std.Io.Dir.createDirAbsolute(io_mod.getIo(), tmp_dir, .default_dir) catch {
-        result.err = .extraction_failed;
-        return;
-    };
-
-    const archive_path = try std.fmt.allocPrint(alloc, "{s}/pf.tar.gz", .{tmp_dir});
-    defer alloc.free(archive_path);
-
-    const artifact_platform = helpers.platform orelse {
-        result.err = .download_failed;
-        return;
-    };
-    const archive_url = try std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz", .{ cdn_base, target.artifactRef(), artifact_platform });
-    defer alloc.free(archive_url);
+    std.Io.Dir.createDirAbsolute(io_mod.getIo(), tmp_dir, .default_dir) catch return error.ExtractionFailed;
 
     var client: std.http.Client = .{ .allocator = alloc, .io = io_mod.getIo() };
     defer client.deinit();
 
-    helpers.downloadFileStreamingWithProgress(&client, archive_url, archive_path, .{
+    const extracted_bin = try helpers.downloadVerifiedBinary(alloc, &client, &origin, target, tmp_dir, .{
         .ctx = progress,
         .start = progressDownloadStart,
         .update = progressDownloadUpdate,
-    }, .{}) catch {
-        result.err = .download_failed;
-        return;
-    };
+    }, .{});
+    defer alloc.free(extracted_bin);
     progress.markFinishing();
 
-    const checksum_url = try std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz.sha256", .{ cdn_base, target.artifactRef(), artifact_platform });
-    defer alloc.free(checksum_url);
-
-    helpers.verifyChecksum(&client, archive_path, checksum_url, .{}) catch |err| {
-        result.err = switch (err) {
-            error.ChecksumFetchFailed => .checksum_fetch_failed,
-            error.ChecksumMismatch => .checksum_mismatch,
-            error.Cancelled => .cancelled,
-        };
-        return;
-    };
-
-    helpers.extractTarGz(alloc, archive_path, tmp_dir) catch {
-        result.err = .extraction_failed;
-        return;
-    };
-
-    const extracted_bin = try std.fmt.allocPrint(alloc, "{s}/pf", .{tmp_dir});
-    defer alloc.free(extracted_bin);
-
-    var self_exe_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const self_exe = helpers.currentExecutablePath(&self_exe_buf) catch {
-        result.err = .self_exe_not_found;
-        return;
-    };
-
-    helpers.replaceBinary(extracted_bin, self_exe) catch {
-        result.err = .replace_failed;
-        return;
-    };
+    try helpers.installBinary(alloc, extracted_bin, self_exe);
 }
 
 const ProgressPhase = enum(u8) {
@@ -401,19 +397,19 @@ fn formatProgressLine(buf: []u8, percent: u8) []const u8 {
 
 const WorkerResult = struct {
     target_owned: ?update_target.Target = null,
-    err: ?UpgradeError = null,
-};
+    err: ?RunError = null,
+    install_dir_buf: [std.fs.max_path_bytes]u8 = undefined,
+    install_dir_len: usize = 0,
 
-const UpgradeError = enum {
-    fetch_failed,
-    download_failed,
-    checksum_fetch_failed,
-    checksum_mismatch,
-    extraction_failed,
-    self_exe_not_found,
-    replace_failed,
-    out_of_memory,
-    cancelled,
+    fn setInstallDir(self: *WorkerResult, dir: []const u8) void {
+        const n = @min(dir.len, self.install_dir_buf.len);
+        @memcpy(self.install_dir_buf[0..n], dir[0..n]);
+        self.install_dir_len = n;
+    }
+
+    fn installDir(self: *const WorkerResult) []const u8 {
+        return self.install_dir_buf[0..self.install_dir_len];
+    }
 };
 
 fn versionLabel(v: []const u8) []const u8 {
@@ -436,7 +432,7 @@ test "completeRunResult reports up to date when normalized versions match" {
         .channel = .stable,
         .version = "0.2.10",
         .revision = "0123456789ab",
-    }, .stable, .{ .target_owned = target });
+    }, .stable, &.{ .target_owned = target });
     defer result.deinit(alloc);
 
     try std.testing.expectEqual(output_contracts.UpgradeSnapshot.Status.up_to_date, result.snapshot.status);
@@ -452,7 +448,7 @@ test "completeRunResult reports upgraded when latest differs" {
         .channel = .stable,
         .version = "0.2.10",
         .revision = "0123456789ab",
-    }, .stable, .{ .target_owned = target });
+    }, .stable, &.{ .target_owned = target });
     defer result.deinit(alloc);
 
     try std.testing.expectEqual(output_contracts.UpgradeSnapshot.Status.upgraded, result.snapshot.status);
@@ -468,7 +464,7 @@ test "completeRunResult reports no update for an older stable target" {
         .channel = .stable,
         .version = "0.0.2",
         .revision = "0123456789ab",
-    }, .stable, .{ .target_owned = target });
+    }, .stable, &.{ .target_owned = target });
     defer result.deinit(alloc);
 
     try std.testing.expectEqual(output_contracts.UpgradeSnapshot.Status.up_to_date, result.snapshot.status);
@@ -476,34 +472,56 @@ test "completeRunResult reports no update for an older stable target" {
     try std.testing.expectEqualStrings("0.0.1", result.snapshot.latest);
 }
 
-test "completeRunResult maps worker errors and frees latest version" {
+test "completeRunResult names the refused release and frees its target" {
     const alloc = std.testing.allocator;
-    const target = try update_target.Target.initStable(alloc, "0.2.11");
+    const target = try update_target.Target.initStable(alloc, "v0.2.11");
 
-    try std.testing.expectError(
-        error.DownloadFailed,
-        completeRunResult(alloc, .{
-            .channel = .stable,
-            .version = "0.2.10",
-            .revision = "0123456789ab",
-        }, .stable, .{
-            .target_owned = target,
-            .err = .download_failed,
-        }),
+    var result = try completeRunResult(alloc, .{
+        .channel = .stable,
+        .version = "0.2.10",
+        .revision = "0123456789ab",
+    }, .stable, &.{
+        .target_owned = target,
+        .err = error.InvalidSignature,
+    });
+    defer result.deinit(alloc);
+
+    try std.testing.expectEqual(output_contracts.UpgradeSnapshot.Status.failed, result.snapshot.status);
+    try std.testing.expectEqualStrings(
+        "Refused to install pf 0.2.11: its signature is invalid.",
+        result.snapshot.err_message.?,
     );
 }
 
-test "failureResult preserves active error messages" {
-    const result = failureResult(.{
+test "failure messages explain each refusal" {
+    const alloc = std.testing.allocator;
+    const current: update_target.CurrentBuild = .{
         .channel = .stable,
         .version = "v0.2.10",
         .revision = "0123456789ab",
-    }, .stable, error.ChecksumMismatch);
-
-    try std.testing.expectEqual(output_contracts.UpgradeSnapshot.Status.failed, result.snapshot.status);
-    try std.testing.expectEqualStrings("0.2.10", result.snapshot.current);
-    try std.testing.expectEqualStrings("", result.snapshot.latest);
-    try std.testing.expectEqualStrings("downloaded archive failed integrity check", result.snapshot.err_message.?);
+    };
+    const cases = [_]struct { err: RunError, context: FailureContext = .{ .release = "0.3.0" }, message: []const u8 }{
+        .{ .err = error.ChecksumMismatch, .message = "downloaded archive failed integrity check" },
+        .{ .err = error.NoReleasePublished, .message = "No pf release is published yet; rebuild from source to update." },
+        .{ .err = error.UnexpectedRedirect, .message = "The pf release host redirected to an unexpected location; update refused." },
+        .{ .err = error.SignatureMissing, .message = "Refused to install pf 0.3.0: it has no signature, so it cannot be verified." },
+        .{ .err = error.UnknownKey, .message = "Refused to install pf 0.3.0: it is signed by an unknown key. Download pf from its release page." },
+        .{ .err = error.ReleaseMismatch, .message = "Refused to install pf 0.3.0: the signature belongs to a different release." },
+        .{ .err = error.InvalidArchive, .message = "Refused to install pf 0.3.0: the archive is invalid." },
+        .{
+            .err = error.InstallDirNotWritable,
+            .context = .{ .install_dir = "C:\\Program Files\\pf" },
+            .message = "Cannot write to C:\\Program Files\\pf; reinstall pf in a user-writable directory or rerun with permission.",
+        },
+    };
+    for (cases) |case| {
+        var result = failureResult(alloc, current, .stable, case.err, case.context);
+        defer result.deinit(alloc);
+        try std.testing.expectEqual(output_contracts.UpgradeSnapshot.Status.failed, result.snapshot.status);
+        try std.testing.expectEqualStrings("0.2.10", result.snapshot.current);
+        try std.testing.expectEqualStrings("", result.snapshot.latest);
+        try std.testing.expectEqualStrings(case.message, result.snapshot.err_message.?);
+    }
 }
 
 test "progressPercent clamps download progress to 100" {

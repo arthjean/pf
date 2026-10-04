@@ -39,6 +39,8 @@ export const WINDOWS_E2E_FILES: readonly string[] = [
   "web-search-permission-progress.test.ts",
   // Interactive terminal through ConPTY
   "windows-tui-smoke.test.ts",
+  // Verified self-update and the Windows ctrl+g relaunch through ConPTY
+  "upgrade-verification.test.ts",
 ];
 
 // The workspace skill roots in src/builtins/skills.zig.

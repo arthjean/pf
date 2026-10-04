@@ -242,45 +242,45 @@ pub const AutoUpgrade = struct {
         }
     }
 
+    /// Stays silent when no release is published, the host is unreachable,
+    /// or the binary's directory is not writable; the next interval retries.
     fn runOnce(
         self: *AutoUpgrade,
         alloc: Allocator,
         current: update_target.CurrentBuild,
     ) void {
-        const cdn_base = helpers.resolveCdnBase() orelse return;
+        const origin = helpers.resolveReleaseOrigin();
         if (helpers.cancelRequested(&self.should_stop)) return;
-        var target = helpers.fetchTarget(alloc, self.selected_channel, cdn_base, self.transferControl()) catch return;
+        var target = helpers.fetchTarget(alloc, self.selected_channel, origin.base_url, self.transferControl()) catch return;
         defer target.deinit(alloc);
 
         if (!target.shouldInstall(current)) return;
+
+        var self_exe_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const self_exe = helpers.currentExecutablePath(&self_exe_buf) catch return;
+        helpers.checkInstallDirWritable(self_exe) catch return;
 
         var label_buf: [64]u8 = undefined;
         const label = target.writeDisplayLabel(&label_buf) catch return;
         self.setLatestVersion(label);
         self.setState(.downloading);
 
-        self.downloadAndInstall(alloc, target, cdn_base) catch {
+        self.downloadAndInstall(alloc, target, &origin, self_exe) catch |err| {
+            debug_trace.logf("upgrade", "auto upgrade failed err={s}", .{@errorName(err)});
             self.setState(.failed);
             return;
         };
         self.setState(.ready);
     }
 
-    const InstallError = error{
-        AllocFailed,
-        DownloadFailed,
-        ChecksumFailed,
-        ExtractionFailed,
-        SelfExeNotFound,
-        InstallFailed,
-        Cancelled,
-    };
+    const InstallError = helpers.VerifiedDownloadError || error{InstallFailed};
 
     fn downloadAndInstall(
         self: *AutoUpgrade,
         alloc: Allocator,
         target: update_target.Target,
-        cdn_base: []const u8,
+        origin: *const helpers.ReleaseOrigin,
+        self_exe: []const u8,
     ) InstallError!void {
         var client: std.http.Client = .{ .allocator = alloc, .io = io_mod.getIo() };
         defer client.deinit();
@@ -290,43 +290,15 @@ pub const AutoUpgrade = struct {
         var rand_buf: [8]u8 = undefined;
         io_mod.getIo().random(&rand_buf);
         const rand_hex = std.fmt.bytesToHex(rand_buf, .lower);
-        const tmp_dir = std.fmt.allocPrint(alloc, "{s}/" ++ download_dir_prefix ++ "{s}", .{ tmp_base, rand_hex }) catch return error.AllocFailed;
+        const tmp_dir = try std.fmt.allocPrint(alloc, "{s}/" ++ download_dir_prefix ++ "{s}", .{ tmp_base, rand_hex });
         defer alloc.free(tmp_dir);
         defer std.Io.Dir.cwd().deleteTree(io_mod.getIo(), tmp_dir) catch {};
 
         std.Io.Dir.createDirAbsolute(io_mod.getIo(), tmp_dir, .default_dir) catch return error.ExtractionFailed;
 
-        const archive_path = std.fmt.allocPrint(alloc, "{s}/pf.tar.gz", .{tmp_dir}) catch return error.AllocFailed;
-        defer alloc.free(archive_path);
-
-        const artifact_platform = helpers.platform orelse return error.DownloadFailed;
-        const archive_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz", .{ cdn_base, target.artifactRef(), artifact_platform }) catch return error.AllocFailed;
-        defer alloc.free(archive_url);
-
-        helpers.downloadFileStreaming(&client, archive_url, archive_path, self.transferControl()) catch |err| return switch (err) {
-            error.Cancelled => error.Cancelled,
-            else => error.DownloadFailed,
-        };
-
-        if (self.should_stop.load(.acquire)) return error.Cancelled;
-
-        const checksum_url = std.fmt.allocPrint(alloc, "{s}/{s}/pf-{s}.tar.gz.sha256", .{ cdn_base, target.artifactRef(), artifact_platform }) catch return error.AllocFailed;
-        defer alloc.free(checksum_url);
-
-        helpers.verifyChecksum(&client, archive_path, checksum_url, self.transferControl()) catch |err| return switch (err) {
-            error.Cancelled => error.Cancelled,
-            else => error.ChecksumFailed,
-        };
-
-        if (self.should_stop.load(.acquire)) return error.Cancelled;
-
-        helpers.extractTarGz(alloc, archive_path, tmp_dir) catch return error.ExtractionFailed;
-
-        const extracted_bin = std.fmt.allocPrint(alloc, "{s}/pf", .{tmp_dir}) catch return error.AllocFailed;
+        const extracted_bin = try helpers.downloadVerifiedBinary(alloc, &client, origin, target, tmp_dir, null, self.transferControl());
         defer alloc.free(extracted_bin);
 
-        var self_exe_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const self_exe = helpers.currentExecutablePath(&self_exe_buf) catch return error.SelfExeNotFound;
         try self.installUnlessStopped(alloc, extracted_bin, self_exe);
     }
 
@@ -342,7 +314,7 @@ pub const AutoUpgrade = struct {
         self.install_mutex.lockUncancelable(io_mod.getIo());
         defer self.install_mutex.unlock(io_mod.getIo());
         if (self.should_stop.load(.acquire)) return error.Cancelled;
-        io_mod.copyFileAtomic(alloc, extracted_bin, self_exe) catch return error.InstallFailed;
+        helpers.installBinary(alloc, extracted_bin, self_exe) catch return error.InstallFailed;
     }
 
     fn sleepInterruptible(self: *AutoUpgrade, total_ms: u64) void {

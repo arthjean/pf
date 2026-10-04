@@ -25,6 +25,7 @@ const mcp_health = @import("../mcp/health.zig");
 const mcp_runtime = @import("../mcp/mcp_runtime.zig");
 const tool_set_contract = @import("../tooling/tool_set.zig");
 const update_target = @import("../upgrade/update_target.zig");
+const upgrade_helpers = @import("../upgrade/upgrade_helpers.zig");
 const test_builtin_gateway = if (builtin.is_test)
     @import("../../builtins/gateway.zig")
 else
@@ -216,6 +217,7 @@ const windows_interrupt_exit = struct {
 
 pub fn runBeforeInteractive(alloc: Allocator, args: []const [:0]const u8, cfg: Config) !BeforeInteractiveResult {
     windows_interrupt_exit.install();
+    upgrade_helpers.sweepReplacedBinary();
     if (requireWindowsHome(builtin.os.tag, .{})) |result| return result;
     const run_result = cli_surface.runIfRequested(alloc, args, cliSurfaceConfig(cfg)) catch |err| switch (err) {
         error.UnknownCliCommand => return .{ .exit = 1 },
@@ -499,7 +501,35 @@ fn replaceProcessDefault(
     zio: std.Io,
     options: std.process.ReplaceOptions,
 ) std.process.ReplaceError {
+    if (comptime builtin.os.tag == .windows) return relaunchAsChild(zio, options);
     return std.process.replace(zio, options);
+}
+
+/// Windows cannot replace a process image, so the upgraded pf runs as a
+/// child that shares the console, and this process exits with its exit code.
+/// Returns only when the child cannot start.
+fn relaunchAsChild(zio: std.Io, options: std.process.ReplaceOptions) std.process.ReplaceError {
+    const win32 = @import("../shared/win32.zig");
+    // The child answers Ctrl+C itself; this process must outlive it.
+    _ = win32.SetConsoleCtrlHandler(ignoreConsoleInterrupt, .TRUE);
+    var child = std.process.spawn(zio, .{ .argv = options.argv }) catch |err| {
+        _ = win32.SetConsoleCtrlHandler(ignoreConsoleInterrupt, .FALSE);
+        return switch (err) {
+            error.AccessDenied, error.PermissionDenied => error.AccessDenied,
+            error.FileNotFound => error.FileNotFound,
+            error.OutOfMemory => error.OutOfMemory,
+            else => error.InvalidExe,
+        };
+    };
+    const term = child.wait(zio) catch std.process.exit(1);
+    std.process.exit(switch (term) {
+        .exited => |code| code,
+        else => 1,
+    });
+}
+
+fn ignoreConsoleInterrupt(_: u32) callconv(.winapi) std.os.windows.BOOL {
+    return .TRUE;
 }
 
 fn writeUpgradeRelaunchFailure(
