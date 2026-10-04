@@ -16,7 +16,10 @@ and has been modified since. Notable modifications:
   channels.
 - The release workflow signs macOS and Windows binaries with Paneflow's own
   identities, signs every archive with a minisign key dedicated to pf, and
-  publishes to pf's own storage instead of Vercel's.
+  publishes to pf's own storage instead of Vercel's. The CDN backfill
+  restores that storage from GitHub Releases after verifying every
+  signature, and release preparation drafts the changelog through the AI
+  Gateway only when asked.
 - pf builds and runs natively on Windows x86_64: profile and temp paths,
   private state, the console UI, command execution through Git Bash or
   PowerShell inside Job Objects, line-ending-preserving edits, and
