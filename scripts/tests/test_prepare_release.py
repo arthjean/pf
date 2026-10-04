@@ -199,6 +199,8 @@ class PrepareReleaseWorkflowTests(unittest.TestCase):
     def test_pull_request_states_that_merging_publishes_nothing(self) -> None:
         create = step(self.workflow, "Create pull request")
         self.assertIn("Merging publishes nothing", create)
+        # Without --head, gh uses the checked-out dispatch branch as the head.
+        self.assertIn('gh pr create \\\n            --base main \\\n            --head "$BRANCH"', create)
         self.assertNotIn("publish the GitHub release automatically", create)
 
 
