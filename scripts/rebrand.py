@@ -77,8 +77,8 @@ FX_SH_RE = re.compile(r"fx\.sh")
 RULES = [
     # The styled wordmark keeps its width and byte length.
     (r"\U0001D487x", "\U0001D491f"),
-    (r"https://releases\.fx\.sh", "https://paneflow.dev/agent/releases"),
-    (r"releases\.fx\.sh", "paneflow.dev/agent/releases"),
+    (r"https://releases\.fx\.sh", "https://releases.paneflow.dev/agent"),
+    (r"releases\.fx\.sh", "releases.paneflow.dev/agent"),
     (r"https?://fx\.sh", "https://paneflow.dev/agent"),
     (r"(?<![A-Za-z0-9.-])fx\.sh(?![A-Za-z0-9])", "paneflow.dev/agent"),
     (r"libfx", "libpf"),

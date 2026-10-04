@@ -500,17 +500,47 @@ Check in the golden file and wire a regression test that re-runs `pf replay` in 
 
 ## Releases
 
-pf publishes no release yet, and publishes none until Arthur runs the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). Until then, `release.yml`, `dev-release.yml`, and `publish-libpf.yml` run only on manual dispatch, so a push to `main` starts none of them, and an automatic trigger returns only through that checklist.
+pf publishes no release yet, and publishes none until Arthur runs the [go-live checklist](#go-live-checklist). The pipeline below is built and proven by dry runs and tests with fake uploaders; its publishing steps have never run. No install script or package manager (Homebrew, winget, Scoop) is available, and `pf upgrade` reports that no pf release is published and that pf must be rebuilt from source.
 
-The target process, once the go-live checklist restores it:
+Three locks keep anything from being published by accident: the release workflows run only on manual dispatch, so a push to `main` starts none of them; each defaults to a dry run; and every job that holds a signing key or R2 credentials runs in a protected environment that waits for Arthur's approval. An automatic trigger returns only through the go-live checklist.
 
-1. Edit `pub const version = "X.Y.Z";` in `src/main.zig`
-2. Merge to `main`
-3. The release workflow checks if `vX.Y.Z` tag exists; if not, it builds the platform binaries, creates the git tag, and publishes a GitHub Release with the binaries attached
+### Release pipeline
 
-pf publishes no release yet. `pf upgrade` checks `https://releases.paneflow.dev/agent`, reports that no pf release is published and that pf must be rebuilt from source, and installs a release only after its SHA-256 sidecar and its minisign signature verify against a key embedded in `src/core/upgrade/release_keys.zig`. No install script is published. `release.yml` publishes to GitHub Releases and pf's R2 bucket only when dispatched with `validate_only` disabled and approved in the `release` environment; `dev-release.yml` and `cdn-backfill.yml` still carry inherited upload steps that target storage pf does not own, which the distribution PRD replaces before the first release.
+1. **Prepare Release** (`prepare-release.yml`) bumps `pub const version` in `src/main.zig`, inserts a `## X.Y.Z` entry wrapped in release markers at the top of `CHANGELOG.md`, and opens a pull request. Its `changelog` input defaults to `manual`, which writes a placeholder to replace in the pull request and calls no paid service. `ai` is an opt-in that drafts the entry from the source diff through the AI Gateway and runs the public changelog policy lint; it fails before any branch is created when the `AI_GATEWAY_API_KEY` secret is not set. Merging the pull request publishes nothing.
+2. **Release** (`release.yml`) runs on `main`. Its `validate_only` input defaults to `true`; see [Validate release artifacts without publishing](#validate-release-artifacts-without-publishing) for what that run does. With `validate_only` disabled and no `vX.Y.Z` tag yet, the `release` job waits for a second `release` approval, refuses a `CHANGELOG.md` entry that still holds the Prepare Release placeholder, creates the tag, and runs `scripts/publish-release.sh`. That script creates the GitHub Release with every archive, `.sha256`, and `.minisig`, uploads the same files to R2 under `agent/vX.Y.Z/` with `Cache-Control: public, max-age=31536000, immutable`, and writes `agent/latest.txt` last with `Cache-Control: no-cache`. A failed upload names the file and leaves `latest.txt` unchanged.
+3. **CDN Backfill** (`cdn-backfill.yml`) restores R2 from GitHub Releases, the canonical copy. `scripts/backfill-release.sh` downloads each release, verifies every `.minisig` and its trusted comment against `src/core/upgrade/release_keys.zig`, and uploads through `scripts/publish-release.sh` with the paths and headers above. Its `dry-run` input defaults to `true` and lists the uploads without writing. A release that fails verification is skipped, reported, and makes the run fail at the end. `latest.txt` moves only when `update-latest` is set and the newest GitHub Release was backfilled and verified, so it never points backward.
 
-The dev release workflow publishes commit-addressed binaries and then updates `dev.json`. Its jobs only run after a successful CI run on `main`, so a manual dispatch builds nothing until the distribution PRD reworks it. `pf upgrade --channel dev` and `pf upgrade --channel stable` store the chosen channel in user settings for manual upgrades, automatic upgrades, and the `ctrl+g` handoff; neither channel has a published build yet. Dev publishing does not create tags or GitHub Releases.
+The release archives are `pf-linux-x86_64.tar.gz`, `pf-linux-aarch64.tar.gz`, `pf-macos-x86_64.tar.gz`, `pf-macos-aarch64.tar.gz`, and `pf-windows-x86_64.zip`. Each carries a `.sha256` and a `.minisig` whose trusted comment is `file:<archive> version:vX.Y.Z channel:stable`, and a GitHub build provenance attestation.
+
+### Signing and protected environments
+
+Three GitHub Environments hold every release secret, each with Arthur as required reviewer and limited to `main`; no release secret exists at repository level:
+
+* `apple-signing` holds Paneflow's Developer ID Application certificate and an App Store Connect API key. `scripts/sign-and-notarize-macos.sh` signs both macOS binaries as `dev.paneflow.agent` with the certificate of `APPLE_TEAM_ID` and notarizes them with `notarytool`.
+* `windows-signing` holds the client secret of the service principal dedicated to pf. `scripts/sign-windows.ps1` signs `pf.exe` with Azure Artifact Signing (account `strivex-signing`, certificate profile `StriveX-Release`) and requires `O=Strivex` in the signer subject.
+* `release` holds `PF_MINISIGN_SECRET_KEY` and the R2 credentials. `scripts/sign-release-archives.sh` signs every archive and verifies each signature against the active public key before anything is published.
+
+### Release host
+
+Releases are served from the Cloudflare R2 bucket `paneflow-agent-releases` through the custom domain `https://releases.paneflow.dev`. `pf upgrade` and automatic upgrades fetch only from `https://releases.paneflow.dev/agent`: `latest.txt`, then the archive, `.sha256`, and `.minisig` of that tag, and refuse redirects to another host. The R2 token has Object Read & Write on that bucket only. `R2_ENDPOINT` is the account endpoint `https://<account-id>.r2.cloudflarestorage.com` with no path, because a bucket path makes rclone store every key under a second bucket prefix while reporting success; `scripts/publish-release.sh` refuses it.
+
+### Minisign key and rotation
+
+pf installs an archive only after its SHA-256 sidecar and its minisign signature verify against one of the two public keys in `src/core/upgrade/release_keys.zig`, and its trusted comment names the expected file, version, and channel. `active` signs every release; `next` stays empty until a rotation. The secret key exists only as `PF_MINISIGN_SECRET_KEY` in the `release` environment and in Arthur's offline backup.
+
+To rotate the key without stranding installed builds:
+
+1. Generate the new key pair offline with `minisign -G` and back up its secret key.
+2. Put the new public key in `next` and publish a release, still signed by the `active` key, so installed builds that upgrade trust both keys.
+3. Once that release has been out long enough, move the new public key to `active`, empty `next`, replace `PF_MINISIGN_SECRET_KEY`, and publish the next release with the new key. Builds older than step 2 cannot verify it and must be reinstalled by hand.
+
+If the secret key leaks, skip the wait: remove the leaked key from both slots, publish a release signed by a new key, and tell users that builds trusting the leaked key need a manual reinstall. CDN Backfill verifies only against the two current slots, so a release signed by a retired key fails its backfill.
+
+### Dev channel
+
+`dev-release.yml` runs only on manual dispatch and still carries inherited upload steps that target storage pf does not own, so it publishes nothing. US-019 in `tasks/prd-pf-distribution.md` rebuilds it as a minisign-signed dry run. `pf upgrade --channel dev` and `pf upgrade --channel stable` store the chosen channel in user settings for manual upgrades, automatic upgrades, and the `ctrl+g` handoff; neither channel has a published build yet.
+
+### Release notes
 
 Release notes are public product copy. Describe user-visible behavior, always spell the product `pf`, and omit contributor attribution, tracker references, repository or website work, delivery infrastructure, CI and test details, branch history, and implementation-only refactors. Use commits and pull requests as research evidence only. Changelog formatting and release-marker rules live in `AGENTS.md`.
 
@@ -543,6 +573,19 @@ credentials. It records two alternating startup cohorts, an identical-control
 status calibration, and a separate native image-flow memory screen. Review the
 retained measurements before changing release signing defaults; successful
 measurement is not performance approval.
+
+### Go-live checklist
+
+Run these steps in order, in one session, when Arthur decides the CLI is ready. Each names the files it changes and its rollback. A bad release is always superseded by a higher version; never move `latest.txt` backward, because stable builds refuse downgrades and would stay on the bad version anyway.
+
+1. **Prepare the release.** Dispatch **Actions > Prepare Release** with the bump type and `changelog: manual`, replace the placeholder in the pull request with the public release notes, wait for CI, and merge. Changes `src/main.zig` and `CHANGELOG.md`. Rollback: close the pull request unmerged and delete its `prepare-vX.Y.Z` branch; after a merge nothing is published yet, so the next Prepare Release supersedes it.
+2. **Publish.** Dispatch **Actions > Release** on `main` with `validate_only: false`, then approve `apple-signing`, `windows-signing`, and both `release` waits. Changes no file; creates the `vX.Y.Z` tag, the GitHub Release, and the R2 objects under `agent/`. Rollback: a failure before **Create git tag** needs only a fix and a new dispatch. A failure after the tag and before the GitHub Release needs the tag deleted with `git push origin :refs/tags/vX.Y.Z` before the next dispatch. A failure during the R2 upload leaves `latest.txt` unchanged; dispatch **CDN Backfill** for `vX.Y.Z` with `update-latest` set, after a dry run. A release found bad after publication is superseded by a fixed higher version.
+3. **Document installation and verification.** In `README.md`, replace "Paneflow Agent does not publish releases yet" with install and verification sections that give the minisign public key from `release_keys.zig`, `minisign -Vm pf-linux-x86_64.tar.gz -P <public key>`, and `gh attestation verify pf-linux-x86_64.tar.gz --repo arthjean/pf`. Update the release-state statements in this section, the AGENTS.md Releasing section, and `NOTICE`. Changes `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `NOTICE`. Rollback: revert the documentation commit.
+4. **Update the Windows notes.** Remove "Release downloads and `pf upgrade`" from the README list of features not yet available on Windows, and add the recovery note: if an upgrade is interrupted and `pf.exe` is missing, rename `pf.exe.old` in the same directory back to `pf.exe`. Changes `README.md`. Rollback: revert the commit.
+5. **Upgrade from a previous build.** On Linux, macOS, and Windows, build the commit before the version bump with `zig build -Doptimize=ReleaseSafe`, run its `pf upgrade`, and confirm that `pf --version` reports `X.Y.Z` and that a second `pf upgrade` reports pf up to date. Changes no file. Rollback: a failed upgrade leaves the installed binary unchanged; fix pf and publish a higher version.
+6. **Decide the release trigger.** Keep `release.yml` dispatch-only, or restore a push trigger that releases when a merged version bump has no tag. Changes `.github/workflows/release.yml` and `ReleaseWorkflowTests` in `scripts/tests/test_publish_release.py`. Rollback: restore the dispatch-only trigger.
+7. **Restore the dev channel.** Once US-019 lands, restore the automatic `dev-release.yml` trigger after a successful CI run on `main`. Changes `.github/workflows/dev-release.yml`. Rollback: return it to dispatch-only; installed dev builds move on at the next dev build.
+8. **Publish libpf, if US-020 ships it.** Dispatch `publish-libpf.yml` for the first `libpf` version. Changes `sdk/package.json` and `.github/workflows/publish-libpf.yml` as US-020 specifies. Rollback: `npm deprecate` the version and publish a higher one; npm allows unpublishing only within 72 hours.
 
 ## Benchmarks
 

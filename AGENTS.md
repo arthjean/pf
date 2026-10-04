@@ -382,31 +382,24 @@ Do not document intended behavior as if it already exists.
 
 ## Releasing
 
-Releases use a two-workflow pipeline. The maintainer controls the changelog voice and format.
+Releases use a two-workflow pipeline, Prepare Release then Release. The maintainer controls the changelog voice and format. `CONTRIBUTING.md` (Releases) documents the full pipeline: signing, protected environments, the R2 host, minisign key rotation, CDN Backfill, and the go-live checklist.
 
-pf publishes no release yet. `release.yml`, `dev-release.yml`, and `publish-libpf.yml` run only on manual dispatch, and an automatic trigger returns only through the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). The steps below describe the target process, not one that runs today: merging a version bump starts no release.
+pf publishes no release yet. `release.yml`, `dev-release.yml`, `publish-libpf.yml`, and `cdn-backfill.yml` run only on manual dispatch, `release.yml` defaults to `validate_only` and `cdn-backfill.yml` to `dry-run`, and every job that holds a signing key or R2 credentials waits for approval in a protected environment (`apple-signing`, `windows-signing`, `release`). An automatic trigger returns only through the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). Merging a version bump starts no release.
 
-### Automated flow (preferred)
+### Prepare the release
 
 1. Go to **Actions > Prepare Release** on GitHub
-2. Select the bump type (`patch`, `minor`, or `major`) and run the workflow
-3. The workflow bumps the version, feeds the actual `git diff` to an LLM to draft the changelog, and opens a PR
-4. Review the PR — edit the AI-drafted changelog if needed — then merge
-5. The existing `release.yml` detects the version change and handles build, publish, tagging, and the GitHub Release
+2. Select the bump type (`patch`, `minor`, or `major`) and the `changelog` mode, then run the workflow
+3. The workflow bumps the version, inserts the `## <version>` entry, and opens a PR. `manual`, the default, writes a placeholder and calls no paid service. `ai` feeds the actual `git diff` to an LLM through the AI Gateway (`AI_GATEWAY_API_KEY` secret) to draft the entry from the real code diff, not from commit messages or PR descriptions, and fails before creating a branch when the secret is not set
+4. Replace the placeholder, or review the AI draft, then merge
 
-The `prepare-release.yml` workflow uses the Vercel AI Gateway (`AI_GATEWAY_API_KEY` secret) to generate the changelog from the real code diff, not from commit messages or PR descriptions.
+To prepare a release by hand, bump `pub const version` in `src/main.zig` and write the changelog entry in `CHANGELOG.md` at the top, under a new `## <version>` heading, wrapped in `<!-- release:start -->` and `<!-- release:end -->` markers. Remove the markers from the previous release entry so only the new release has them.
 
-### Manual flow
+### Publish the release
 
-To prepare a release by hand:
+Dispatch **Actions > Release** on `main` with `validate_only` disabled. It builds all five platforms, signs and notarizes the macOS binaries with Paneflow's Developer ID, signs `pf.exe` with Azure Artifact Signing, signs every archive with the pf minisign key, attests build provenance, and, after a second `release` approval, refuses a changelog that still holds the placeholder, creates the tag, publishes the GitHub Release, uploads to R2 under `agent/vX.Y.Z/`, and writes `agent/latest.txt` last. The release body is extracted from the content between the `<!-- release:start -->` and `<!-- release:end -->` markers in `CHANGELOG.md`.
 
-1. Create a branch (e.g. `prepare-v0.3.0`)
-2. Bump `pub const version` in `src/main.zig`
-3. Write the changelog entry in `CHANGELOG.md` at the top, under a new `## <version>` heading, wrapped in `<!-- release:start -->` and `<!-- release:end -->` markers. Remove the markers from the previous release entry so only the new release has them.
-4. Update `README.md` install example version
-5. Open a PR and merge to `main`
-
-When the PR merges, CI compares the version tag to what exists in git. If the tag is missing, it cross-compiles all platform binaries, creates the git tag, and publishes a GitHub Release with the binaries attached. The release body is extracted from the content between the `<!-- release:start -->` and `<!-- release:end -->` markers in `CHANGELOG.md`.
+`pf upgrade` installs an archive only when its minisign signature verifies against the `active` or `next` public key in `src/core/upgrade/release_keys.zig`. A key rotation puts the new key in `next` for at least one release before it becomes `active`. When an R2 upload fails or the bucket is lost, **Actions > CDN Backfill** restores it from GitHub Releases after verifying every signature.
 
 ### Writing the changelog
 

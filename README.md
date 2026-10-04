@@ -15,7 +15,7 @@ Paneflow Agent is a coding agent CLI written in Zig: a small native binary that 
 
 ## Install
 
-Paneflow Agent does not publish releases yet. [Build it from source](#build-from-source), then put `zig-out/bin/pf` on your `PATH`.
+Paneflow Agent does not publish releases yet. [Build it from source](#build-from-source), then put `zig-out/bin/pf` on your `PATH`. No install script or package manager (Homebrew, winget, Scoop) is available.
 
 ## Get started
 
