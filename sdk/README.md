@@ -4,8 +4,8 @@
 in-memory conversation with `prompt`, `checkpoint`, and `close` operations,
 plus mid-turn steering on each running turn.
 
-`libpf` is not published to npm yet. Build it from this repository with the
-scripts in `sdk/scripts/`.
+pf does not distribute `libpf`; it is not published to npm. Build it from this
+repository with the scripts in `sdk/scripts/`.
 
 Node.js uses the native addon when available and falls back to WebAssembly.
 Browsers use WebAssembly with JSPI. The default package has no runtime

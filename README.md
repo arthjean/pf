@@ -9,7 +9,7 @@ Paneflow Agent is a coding agent CLI written in Zig: a small native binary that 
 ## Highlights
 
 - **Any model:** Vercel AI Gateway, ChatGPT or Grok subscriptions, or your own OpenAI-compatible endpoint such as Ollama or OpenRouter
-- **Any interface:** interactive shell, one-shot `pf ask` for scripts, or embedded through libpf and ACP
+- **Any interface:** interactive shell, one-shot `pf ask` for scripts, or embedded through ACP
 - **Shell-like output:** inline rendering that preserves your terminal scrollback
 - **Extensible:** skills, MCP servers, and subagents
 
@@ -95,7 +95,7 @@ pf builds as a native binary or WebAssembly. Applications embedding pf can provi
 | `createPfAgent()` | Embed the agent core in a JavaScript host with `pf-core.wasm`. |
 | `createPfTerminal()` | Embed the interactive terminal with `pf-term.wasm`. |
 
-The SDK package is `libpf`; it is not published to npm yet. See the [WebAssembly SDK](sdk/README.md) and the runnable Node.js, browser, Next.js, and Nuxt [examples](examples/README.md). The WebAssembly SDK is experimental.
+pf does not distribute a JavaScript SDK. The [SDK sources](sdk/README.md) build the `libpf` package from this repository for pf's own tests and benchmarks, and the WebAssembly SDK is experimental. To embed an agent in a JavaScript application from npm, use the SDK that the upstream [fx](https://github.com/vercel-labs/fx) project publishes; it embeds that project's agent, not pf.
 
 ## Slack workspace installation
 

@@ -14,9 +14,6 @@ import unittest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "sign-and-notarize-macos.sh"
 RELEASE_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "release.yml"
-PUBLISH_LIBPF_WORKFLOW_PATH = (
-    REPO_ROOT / ".github" / "workflows" / "publish-libpf.yml"
-)
 PGSO_WORKFLOW_PATH = (
     REPO_ROOT / ".github" / "workflows" / "pgso-macos-arm64.yml"
 )
@@ -633,13 +630,13 @@ class MacosSigningWorkflowTests(unittest.TestCase):
 
     def test_every_privileged_publish_job_uses_an_environment_gate(self) -> None:
         release = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
-        publish_libpf = PUBLISH_LIBPF_WORKFLOW_PATH.read_text(encoding="utf-8")
+        dev_release = DEV_RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
 
         release_job = release.split("  release:\n", 1)[1]
-        npm_publish_job = publish_libpf.split("  publish:\n", 1)[1]
+        dev_publish_job = dev_release.split("  publish:\n", 1)[1]
 
         self.assertIn("environment: release", release_job)
-        self.assertIn("environment: npm", npm_publish_job)
+        self.assertIn("environment: release", dev_publish_job)
 
     def test_stable_release_is_the_only_workflow_with_signing_secrets(self) -> None:
         release = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
