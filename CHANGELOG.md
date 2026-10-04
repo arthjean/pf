@@ -1,3 +1,10 @@
+## 0.0.13
+
+<!-- release:start -->
+<!-- release:placeholder -->
+Replace this placeholder with the public release notes before publishing.
+<!-- release:end -->
+
 # Paneflow Agent
 
 ## Unreleased
