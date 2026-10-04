@@ -389,15 +389,6 @@ jobs:
           name: release-signed
           path: release
 
-      - name: Create git tag
-        env:
-          RELEASE_TAG: ${{ needs.check-version.outputs.version }}
-        run: |
-          set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          git tag -- "$RELEASE_TAG"
-          git push origin "refs/tags/${RELEASE_TAG}"
-
       - name: Extract changelog entry
         run: |
           awk '/<!-- release:start -->/{found=1; next} /<!-- release:end -->/{found=0} found{print}' CHANGELOG.md > /tmp/release-notes.md
@@ -406,7 +397,20 @@ jobs:
             echo "Error: No release notes found between <!-- release:start --> and <!-- release:end --> markers in CHANGELOG.md"
             exit 1
           fi
+          if grep -q '<!-- release:placeholder -->' /tmp/release-notes.md; then
+            echo "::error::CHANGELOG.md still holds the Prepare Release placeholder <!-- release:placeholder -->; replace it with the release notes before publishing"
+            exit 1
+          fi
           echo "Extracted release notes ($LINES lines)"
+
+      - name: Create git tag
+        env:
+          RELEASE_TAG: ${{ needs.check-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          git tag -- "$RELEASE_TAG"
+          git push origin "refs/tags/${RELEASE_TAG}"
 
       - name: Install rclone
         run: |

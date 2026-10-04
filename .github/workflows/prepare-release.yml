@@ -11,6 +11,14 @@ on:
           - patch
           - minor
           - major
+      changelog:
+        description: "manual writes a placeholder entry to edit in the PR; ai drafts it through the AI Gateway (needs the AI_GATEWAY_API_KEY secret)"
+        required: true
+        type: choice
+        default: manual
+        options:
+          - manual
+          - ai
 
 permissions:
   actions: write
@@ -25,6 +33,16 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     steps:
+      - name: Require the AI Gateway key
+        if: inputs.changelog == 'ai'
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          if [ -z "$AI_GATEWAY_API_KEY" ]; then
+            echo "::error::changelog is ai but the AI_GATEWAY_API_KEY secret is not set; no branch was created"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -45,6 +63,7 @@ jobs:
           echo "Bumping $CURRENT -> $NEW (${{ inputs.bump }})"
 
       - name: Collect changes since last tag
+        if: inputs.changelog == 'ai'
         id: changes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
@@ -65,7 +84,17 @@ jobs:
           echo "Diff: ${DIFF_SIZE} bytes, $(wc -l < /tmp/diff.txt) lines"
           echo "Commits: $(wc -l < /tmp/log.txt)"
 
+      # release.yml refuses to publish while this placeholder is in the entry.
+      - name: Write placeholder changelog
+        if: inputs.changelog == 'manual'
+        run: |
+          printf '%s\n' \
+            '<!-- release:placeholder -->' \
+            'Replace this placeholder with the public release notes before publishing.' \
+            > /tmp/changelog-body.md
+
       - name: Generate changelog with AI
+        if: inputs.changelog == 'ai'
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         run: |
@@ -305,9 +334,9 @@ jobs:
 
           - Bump version to ${NEW} in \`src/main.zig\`
           - Update \`README.md\` install example to v${NEW}
-          - Add the draft changelog entry for ${NEW}
+          - Add the ${{ inputs.changelog }} changelog entry for ${NEW}
 
-          When merged, CI will detect the version change, cross-compile platform binaries, and publish the GitHub release automatically.
+          Merging publishes nothing: \`release.yml\` runs only on manual dispatch. With a manual changelog, replace the placeholder in \`CHANGELOG.md\` before merging; \`release.yml\` refuses to publish while it remains.
           EOF
           )"
 
