@@ -126,6 +126,26 @@ class SignReleaseArchivesTests(unittest.TestCase):
             calls = (root / "calls.log").read_text().splitlines()
             self.assertEqual(["-S", "-V", "-S", "-V"], [c.split()[0] for c in calls])
 
+    def test_dev_builds_name_their_commit_in_the_trusted_comment(self) -> None:
+        commit = "0123456789abcdef" * 2 + "01234567"
+        with tempfile.TemporaryDirectory(prefix="pf-minisign-") as tmp:
+            root = pathlib.Path(tmp)
+            release = root / "release"
+            result, _, _ = self.run_script(
+                root,
+                args=["--commit", commit, VERSION, "dev"]
+                + [str(release / n) for n in ARCHIVES],
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            for name in ARCHIVES:
+                comment = f"file:{name} version:{VERSION} channel:dev commit:{commit}"
+                self.assertIn(
+                    f"trusted comment: {comment}",
+                    (release / f"{name}.minisig").read_text(),
+                )
+                self.assertIn(f"Signed and verified {name} ({comment})", result.stdout)
+
     def test_failures_remove_the_secret_key(self) -> None:
         for extra_env, message in (
             ({"PF_SIGN_TEST_FAIL": "sign"}, "minisign failed to sign"),
@@ -154,6 +174,11 @@ class SignReleaseArchivesTests(unittest.TestCase):
             ({"args": ["0.1.0", "stable", "x"]}, "Release version must look like vX.Y.Z"),
             ({"args": [VERSION, "beta", "x"]}, "Unsupported release channel: beta"),
             ({"args": [VERSION, "stable", "missing.zip"]}, "Archive not found: missing.zip"),
+            ({"args": [VERSION, "dev", "x"]}, "Dev builds need --commit with a full commit SHA"),
+            ({"args": ["--commit", "0123456", VERSION, "dev", "x"]},
+             "Dev builds need --commit with a full commit SHA: 0123456"),
+            ({"args": ["--commit", "a" * 40, VERSION, "stable", "x"]},
+             "Stable releases take no --commit"),
         )
         for kwargs, message in cases:
             with self.subTest(message=message):

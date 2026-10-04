@@ -47,8 +47,9 @@ function serve(installed: Installed, options: UpgradeFixtureOptions = {}) {
 async function upgradeJson(
   installed: Installed,
   env: Record<string, string | undefined>,
+  args: string[] = [],
 ): Promise<{ code: number; report: Record<string, unknown>; stderr: string }> {
-  const proc = Bun.spawn([installed.pf, "upgrade", "--json"], {
+  const proc = Bun.spawn([installed.pf, "upgrade", ...args, "--json"], {
     env: {
       ...process.env,
       HOME: installed.home,
@@ -142,6 +143,27 @@ describe("pf upgrade verification", () => {
       expectUnchanged(installed);
     }, TIMEOUT_MS);
   }
+
+  test("installs a signed dev build", async () => {
+    const installed = install();
+    const fixture = serve(installed);
+
+    const { code, report, stderr } = await upgradeJson(installed, fixture.env, ["--channel", "dev"]);
+    expect(report, stderr).toMatchObject({ kind: "upgrade", status: "upgraded" });
+    expect(code).toBe(0);
+    expect(readFileSync(installed.pf).equals(fixture.artifact)).toBe(true);
+  }, TIMEOUT_MS);
+
+  test("refuses a dev build signed for another commit and keeps the binary", async () => {
+    const installed = install();
+    const fixture = serve(installed, { signedRevision: "0123456789abcdef0123456789abcdef01234567" });
+
+    const { code, report, stderr } = await upgradeJson(installed, fixture.env, ["--channel", "dev"]);
+    expect(report, stderr).toMatchObject({ kind: "upgrade", status: "failed" });
+    expect(String(report.error)).toEndWith("the signature belongs to a different release.");
+    expect(code).toBe(1);
+    expectUnchanged(installed);
+  }, TIMEOUT_MS);
 
   test("reports an older stable release as up to date without downloading it", async () => {
     const installed = install();

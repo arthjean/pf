@@ -1,9 +1,16 @@
 name: Dev Release
 
 on:
-  # Manual dispatch only until the first release. An automatic trigger returns
-  # only through the go-live checklist (US-018 in tasks/prd-pf-distribution.md).
+  # Manual dispatch only until the first release. The automatic trigger after a
+  # successful CI run on main returns only through the go-live checklist
+  # (US-018 in tasks/prd-pf-distribution.md). The default run builds, signs,
+  # and verifies every dev archive and logs its planned uploads without writing.
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build, sign, and verify every dev archive, and dry-run the publication
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -13,11 +20,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      dry_run: ${{ steps.metadata.outputs.dry_run }}
+      sha: ${{ steps.metadata.outputs.sha }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve commit and version
+        id: metadata
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          VERSION=$(grep 'pub const version' src/main.zig | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::src/main.zig version is not strict SemVer"
+            exit 1
+          fi
+          if [[ "$DRY_RUN" != true && "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::Dev builds publish only from main"
+            exit 1
+          fi
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+
   build:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+    needs: metadata
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
@@ -33,12 +64,12 @@ jobs:
           - name: macos-aarch64
             target: aarch64-macos
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.metadata.outputs.sha }}
 
       - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: "0.16.0"
 
@@ -54,164 +85,130 @@ jobs:
           sha256sum pf-${{ matrix.name }}.tar.gz > pf-${{ matrix.name }}.tar.gz.sha256
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pf-${{ matrix.name }}
           path: |
             pf-${{ matrix.name }}.tar.gz
             pf-${{ matrix.name }}.tar.gz.sha256
 
-  web:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
-    name: Build web artifacts
-    runs-on: ubuntu-latest
+  # Dev builds carry minisign signatures only: no Azure signing of pf.exe.
+  build-windows:
+    needs: metadata
+    name: Build windows-x86_64
+    runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.metadata.outputs.sha }}
 
       - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: "0.16.0"
 
-      - name: Build terminal WASM
-        run: zig build -Doptimize=ReleaseSafe -Dwasm-surface=term
+      - name: Build dev binary
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-windows-gnu -Dupdate-channel=dev
 
-      - name: Package web artifacts
+      - name: Smoke test dev binary
+        shell: bash
         run: |
-          cp sdk/pf-sdk.js pf-sdk.js
-          cp sdk/core-output.js core-output.js
-          cp sdk/wasm-module.js wasm-module.js
-          cp zig-out/bin/pf-term.wasm pf-term.wasm
-          sha256sum pf-sdk.js > pf-sdk.js.sha256
-          sha256sum core-output.js > core-output.js.sha256
-          sha256sum wasm-module.js > wasm-module.js.sha256
-          sha256sum pf-term.wasm > pf-term.wasm.sha256
+          ./zig-out/bin/pf.exe help >/dev/null
+          ./zig-out/bin/pf.exe status --json >/dev/null
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $env:RUNNER_TEMP 'pf-package-windows-x86_64'
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          Copy-Item -LiteralPath zig-out/bin/pf.exe, LICENSE, THIRD_PARTY_NOTICES.md -Destination $packageDir
+          Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath pf-windows-x86_64.zip
+          $hash = (Get-FileHash -LiteralPath pf-windows-x86_64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText((Join-Path $PWD 'pf-windows-x86_64.zip.sha256'), "$hash  pf-windows-x86_64.zip`n")
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: pf-web
+          name: pf-windows-x86_64
           path: |
-            pf-sdk.js
-            pf-sdk.js.sha256
-            core-output.js
-            core-output.js.sha256
-            wasm-module.js
-            wasm-module.js.sha256
-            pf-term.wasm
-            pf-term.wasm.sha256
+            pf-windows-x86_64.zip
+            pf-windows-x86_64.zip.sha256
+          if-no-files-found: error
 
-  publish:
-    needs: [build, web]
+  sign:
+    needs: [metadata, build, build-windows]
+    name: Sign dev archives
     runs-on: ubuntu-latest
-    env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
-      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
-      PF_WEB_DEPLOY_HOOK_URL: ${{ secrets.PF_WEB_DEPLOY_HOOK_URL }}
+    environment: release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.metadata.outputs.sha }}
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
+          pattern: pf-*
           merge-multiple: true
+          path: release
 
-      - name: Publish immutable dev artifacts
+      - name: Install minisign
         run: |
-          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y minisign
 
-          for FILE in pf-*.tar.gz pf-*.tar.gz.sha256; do
-            [ -f "$FILE" ] || continue
-            CONTENT_TYPE="application/octet-stream"
-            [[ "$FILE" == *.sha256 ]] && CONTENT_TYPE="text/plain"
-            [[ "$FILE" == *.tar.gz ]] && CONTENT_TYPE="application/gzip"
+      - name: Sign and verify archives with minisign
+        env:
+          PF_MINISIGN_SECRET_KEY: ${{ secrets.PF_MINISIGN_SECRET_KEY }}
+          SHA: ${{ needs.metadata.outputs.sha }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: scripts/sign-release-archives.sh --commit "$SHA" "$VERSION" dev release/pf-*.tar.gz release/pf-*.zip
 
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              -X PUT "https://blob.vercel-storage.com/cli/dev/${RELEASE_SHA}/${FILE}" \
-              -H "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
-              -H "x-api-version: 7" \
-              -H "x-content-type: ${CONTENT_TYPE}" \
-              -H "x-add-random-suffix: 0" \
-              -H "x-cache-control-max-age: 31536000" \
-              --data-binary "@${FILE}")
-            echo "Uploaded ${FILE} for ${RELEASE_SHA} ($HTTP_CODE)"
-            if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-              echo "::error::Failed to upload ${FILE} to the dev channel ($HTTP_CODE)"
-              exit 1
-            fi
-          done
-
-      - name: Publish immutable web artifacts
+      - name: Dry-run the publication
+        if: needs.metadata.outputs.dry_run == 'true'
+        env:
+          SHA: ${{ needs.metadata.outputs.sha }}
+          VERSION: ${{ needs.metadata.outputs.version }}
         run: |
-          set -euo pipefail
+          set -o pipefail
+          scripts/publish-release.sh --dev --dry-run "$VERSION" "$SHA" release | tee -a "$GITHUB_STEP_SUMMARY"
 
-          sha256sum --check pf-sdk.js.sha256
-          sha256sum --check core-output.js.sha256
-          sha256sum --check wasm-module.js.sha256
-          sha256sum --check pf-term.wasm.sha256
+      - name: Upload signed dev build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dev-signed
+          path: release/
+          if-no-files-found: error
 
-          for FILE in pf-sdk.js pf-sdk.js.sha256 core-output.js core-output.js.sha256 wasm-module.js wasm-module.js.sha256 pf-term.wasm pf-term.wasm.sha256; do
-            CONTENT_TYPE="application/octet-stream"
-            [[ "$FILE" == *.js ]] && CONTENT_TYPE="text/javascript"
-            [[ "$FILE" == *.wasm ]] && CONTENT_TYPE="application/wasm"
-            [[ "$FILE" == *.sha256 ]] && CONTENT_TYPE="text/plain"
+  publish:
+    needs: [metadata, sign]
+    if: needs.metadata.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
 
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              -X PUT "https://blob.vercel-storage.com/cli/dev/${RELEASE_SHA}/web/${FILE}" \
-              -H "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
-              -H "x-api-version: 7" \
-              -H "x-content-type: ${CONTENT_TYPE}" \
-              -H "x-add-random-suffix: 0" \
-              -H "x-cache-control-max-age: 31536000" \
-              --data-binary "@${FILE}")
-            echo "Uploaded web/${FILE} for ${RELEASE_SHA} ($HTTP_CODE)"
-            if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-              echo "::error::Failed to upload ${FILE} to the dev web channel ($HTTP_CODE)"
-              exit 1
-            fi
-          done
+      - name: Download signed dev build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dev-signed
+          path: release
 
-      - name: Point dev channel at this commit
-        id: point-dev
+      - name: Install rclone
         run: |
-          set -euo pipefail
-          echo "updated=false" >> "$GITHUB_OUTPUT"
+          sudo apt-get update
+          sudo apt-get install -y rclone
 
-          MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$MAIN_SHA" != "$RELEASE_SHA" ]; then
-            echo "main advanced to ${MAIN_SHA}; leaving dev.json unchanged"
-            exit 0
-          fi
-
-          VERSION=$(grep 'pub const version' src/main.zig | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          jq -n --arg version "$VERSION" --arg commit "$RELEASE_SHA" \
-            '{version: $version, commit: $commit}' > /tmp/dev.json
-
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X PUT "https://blob.vercel-storage.com/cli/dev.json" \
-            -H "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
-            -H "x-api-version: 7" \
-            -H "x-content-type: application/json" \
-            -H "x-add-random-suffix: 0" \
-            -H "x-cache-control-max-age: 60" \
-            --data-binary "@/tmp/dev.json")
-          echo "Updated dev.json to ${RELEASE_SHA} ($HTTP_CODE)"
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "::error::Failed to update dev.json ($HTTP_CODE)"
-            exit 1
-          fi
-          echo "updated=true" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy pf-web
-        if: steps.point-dev.outputs.updated == 'true' && env.PF_WEB_DEPLOY_HOOK_URL != ''
-        run: |
-          curl --fail --silent --show-error \
-            --retry 3 --retry-all-errors --max-time 30 \
-            -X POST "$PF_WEB_DEPLOY_HOOK_URL"
+      # dev.json moves to this build only while main still points at it, and
+      # retention keeps the newest 30 dev builds and the one dev.json names.
+      - name: Publish to R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          SHA: ${{ needs.metadata.outputs.sha }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: scripts/publish-release.sh --dev "$VERSION" "$SHA" release

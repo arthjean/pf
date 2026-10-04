@@ -320,6 +320,12 @@ test "minisign binds the signature to the file, version, channel, and commit" {
         .version = "0.1.0",
         .channel = "dev",
     }));
+    try std.testing.expectError(error.ReleaseMismatch, verifyBytes("archive bytes", dev_sig, &keys, .{
+        .file = "pf-linux-x86_64.tar.gz",
+        .version = "0.1.0",
+        .channel = "dev",
+        .commit = "fedcba987654",
+    }));
 
     const padded = try signer.sign(alloc, "ED", "archive bytes", test_comment ++ " extra:1");
     defer alloc.free(padded);

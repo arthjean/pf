@@ -1,6 +1,7 @@
 #!/bin/bash
 # Signs pf release archives with the release minisign key, then verifies each
 # signature against the active public key committed in release_keys.zig.
+# Dev builds pass --commit, which the trusted comment names after the channel.
 
 set -euo pipefail
 
@@ -15,8 +16,13 @@ fail() {
     exit 1
 }
 
+commit=""
+if [[ "${1:-}" == --commit ]]; then
+    commit="${2:-}"
+    shift 2 || shift
+fi
 if [[ $# -lt 3 ]]; then
-    fail "usage: sign-release-archives.sh <version> <channel> <archive>..."
+    fail "usage: sign-release-archives.sh [--commit <sha>] <version> <channel> <archive>..."
 fi
 version="$1"
 channel="$2"
@@ -24,9 +30,11 @@ shift 2
 if [[ ! "${version}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
     fail "Release version must look like vX.Y.Z: ${version}"
 fi
-if [[ "${channel}" != stable ]]; then
-    fail "Unsupported release channel: ${channel}"
-fi
+case "${channel}" in
+    stable) [[ -z "${commit}" ]] || fail "Stable releases take no --commit" ;;
+    dev) [[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || fail "Dev builds need --commit with a full commit SHA: ${commit:-<none>}" ;;
+    *) fail "Unsupported release channel: ${channel}" ;;
+esac
 for archive in "$@"; do
     [[ -f "${archive}" ]] || fail "Archive not found: ${archive}"
 done
@@ -44,7 +52,7 @@ printf '%s\n' "${PF_MINISIGN_SECRET_KEY}" >"${key_dir}/minisign.key"
 
 for archive in "$@"; do
     name="$(basename "${archive}")"
-    comment="file:${name} version:${version} channel:${channel}"
+    comment="file:${name} version:${version} channel:${channel}${commit:+ commit:${commit}}"
     if ! "${minisign_bin}" -S -s "${key_dir}/minisign.key" -m "${archive}" \
         -x "${archive}.minisig" -t "${comment}" </dev/null >/dev/null; then
         fail "minisign failed to sign ${name}"

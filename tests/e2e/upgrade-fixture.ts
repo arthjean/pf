@@ -20,6 +20,8 @@ export type UpgradeFixtureOptions = {
   signature?: "valid" | "bad" | "missing";
   /** Version named by the trusted comment, when it must differ from `latest`. */
   signedVersion?: string;
+  /** Commit named by the dev build's trusted comment, when it must differ from `revision`. */
+  signedRevision?: string;
   /** Redirects the archive request to another host. */
   redirectArchive?: boolean;
 };
@@ -158,7 +160,10 @@ export function startUpgradeServer(
     archive,
     `file:${name} version:${options.signedVersion ?? latest} channel:stable`,
   );
-  const devSignature = key.sign(archive, `file:${name} version:9.9.9 channel:dev commit:${revision}`);
+  const devSignature = key.sign(
+    archive,
+    `file:${name} version:9.9.9 channel:dev commit:${options.signedRevision ?? revision}`,
+  );
 
   const stableArchiveRoute = `/${latest}/${name}`;
   const devArchiveRoute = `/dev/${revision}/${name}`;

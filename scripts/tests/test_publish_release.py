@@ -25,6 +25,8 @@ FILES = tuple(
     name + suffix for name in ARCHIVES for suffix in ("", ".sha256", ".minisig")
 )
 IMMUTABLE = "Cache-Control: public, max-age=31536000, immutable"
+COMMIT = "c0ffee" + "0" * 34
+DEV_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "dev-release.yml"
 R2_ENV = {
     "R2_ACCESS_KEY_ID": "r2-access-key",
     "R2_SECRET_ACCESS_KEY": "r2-secret-material",
@@ -33,7 +35,10 @@ R2_ENV = {
 }
 
 # Each fake appends one tab-separated line per call: the tool, then its
-# arguments. rclone also records the uploaded content of latest.txt.
+# arguments. rclone also records the uploaded content of latest.txt and
+# dev.json, prints PF_PUBLISH_TEST_DEV_LISTING for lsf, and prints
+# PF_PUBLISH_TEST_DEV_JSON for cat, failing when it is unset; git prints
+# PF_PUBLISH_TEST_MAIN_SHA as the head of main.
 # PF_PUBLISH_TEST_FAIL_<TOOL> makes a call fail when an argument ends with
 # that file name, or every call when it is "all".
 FAKE_TOOL = r'''#!/usr/bin/env python3
@@ -47,13 +52,21 @@ line = "\t".join([name] + args)
 if name == "rclone":
     if os.environ.get("RCLONE_CONFIG_R2_NO_CHECK_BUCKET") != "true":
         raise SystemExit("rclone remote is missing no_check_bucket")
-    if args[2].endswith("/latest.txt"):
-        line += "\tcontent=" + pathlib.Path(args[1]).read_text()
+    if args[0] == "copyto" and args[2].endswith(("/latest.txt", "/dev.json")):
+        line += "\tcontent=" + pathlib.Path(args[1]).read_text().replace("\n", "\\n")
 with open(os.environ["PF_PUBLISH_TEST_LOG"], "a") as log:
     log.write(line + "\n")
 fail = os.environ.get("PF_PUBLISH_TEST_FAIL_" + name.upper(), "")
 if fail == "all" or (fail and any(arg.endswith("/" + fail) for arg in args)):
     raise SystemExit(1)
+if name == "rclone" and args[0] == "lsf":
+    sys.stdout.write(os.environ.get("PF_PUBLISH_TEST_DEV_LISTING", ""))
+elif name == "rclone" and args[0] == "cat":
+    if "PF_PUBLISH_TEST_DEV_JSON" not in os.environ:
+        raise SystemExit("object not found")
+    print(os.environ["PF_PUBLISH_TEST_DEV_JSON"])
+elif name == "git":
+    print(os.environ["PF_PUBLISH_TEST_MAIN_SHA"] + "\trefs/heads/main")
 '''
 
 
@@ -63,12 +76,13 @@ class PublishReleaseScriptTests(unittest.TestCase):
         root: pathlib.Path,
         *,
         dry_run: bool = False,
+        dev: bool = False,
         env_overrides: dict[str, str | None] | None = None,
         missing_file: str | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], list[list[str]], pathlib.Path]:
         tools = root / "tools"
         tools.mkdir()
-        for name in ("rclone", "gh"):
+        for name in ("rclone", "gh", "git"):
             tool = tools / name
             tool.write_text(FAKE_TOOL, encoding="utf-8")
             tool.chmod(0o755)
@@ -91,7 +105,9 @@ class PublishReleaseScriptTests(unittest.TestCase):
             {
                 "PF_PUBLISH_RCLONE_BIN": str(tools / "rclone"),
                 "PF_PUBLISH_GH_BIN": str(tools / "gh"),
+                "PF_PUBLISH_GIT_BIN": str(tools / "git"),
                 "PF_PUBLISH_TEST_LOG": str(log),
+                "PF_PUBLISH_TEST_MAIN_SHA": COMMIT,
                 "GITHUB_STEP_SUMMARY": str(summary),
                 "RUNNER_TEMP": str(root),
             }
@@ -102,7 +118,10 @@ class PublishReleaseScriptTests(unittest.TestCase):
             else:
                 env[key] = value
         command = [str(SCRIPT_PATH)]
-        if dry_run:
+        if dev:
+            command += ["--dev"] + (["--dry-run"] if dry_run else [])
+            command += [VERSION, COMMIT, str(artifacts)]
+        elif dry_run:
             command += ["--dry-run", VERSION, str(artifacts)]
         else:
             command += [VERSION, str(artifacts), str(notes)]
@@ -273,6 +292,233 @@ class PublishReleaseScriptTests(unittest.TestCase):
                 )
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("Release version must look like vX.Y.Z", result.stderr)
+
+
+def dev_listing(builds: list[str]) -> str:
+    """An `rclone lsf --format tp` listing of agent/dev/, oldest build first,
+    with two files per build and entries that are not dev builds."""
+    lines = ["2026-09-01 00:00:00;README.txt", "2026-09-01 00:00:00;scratch/probe.txt"]
+    for index, build in enumerate(builds):
+        minute = f"{index // 60:02d}:{index % 60:02d}"
+        lines.append(f"2026-10-01 10:{minute};{build}/pf-linux-x86_64.tar.gz")
+        lines.append(f"2026-10-01 11:{minute};{build}/pf-windows-x86_64.zip.minisig")
+    return "\n".join(lines) + "\n"
+
+
+class DevPublishTests(unittest.TestCase):
+    run_script = PublishReleaseScriptTests.run_script
+    older = [f"{index:040x}" for index in range(1, 32)]
+
+    def publish(
+        self, tmp: str, env: dict[str, str | None] | None = None
+    ) -> tuple[subprocess.CompletedProcess[str], list[list[str]], pathlib.Path]:
+        overrides: dict[str, str | None] = {
+            "PF_PUBLISH_TEST_DEV_LISTING": dev_listing(self.older + [COMMIT]),
+        }
+        overrides.update(env or {})
+        return self.run_script(pathlib.Path(tmp), dev=True, env_overrides=overrides)
+
+    def test_uploads_the_build_then_dev_json_then_removes_builds_beyond_30(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-publish-dev-") as tmp:
+            result, calls, _ = self.publish(tmp)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertNotIn("gh", [call[0] for call in calls])
+            copies = [call for call in calls if call[:2] == ["rclone", "copyto"]]
+            self.assertEqual(
+                [f"r2:pf-releases/agent/dev/{COMMIT}/{name}" for name in FILES]
+                + ["r2:pf-releases/agent/dev.json"],
+                [call[3] for call in copies],
+            )
+            for call in copies[:-1]:
+                self.assertEqual(["--header-upload", IMMUTABLE], call[4:6])
+            manifest = copies[-1]
+            self.assertEqual(
+                ["--header-upload", "Cache-Control: no-cache",
+                 "--header-upload", "Content-Type: application/json"],
+                manifest[4:8],
+            )
+            self.assertEqual(
+                'content={"version":"0.1.0","commit":"' + COMMIT + '"}\\n', manifest[8]
+            )
+            kinds = [call[0] if call[0] == "git" else call[1] for call in calls]
+            self.assertEqual(
+                ["copyto"] * len(FILES) + ["git", "copyto", "lsf", "purge", "purge"], kinds
+            )
+            self.assertEqual(["ls-remote", "origin", "refs/heads/main"], calls[len(FILES)][1:])
+            self.assertEqual(
+                sorted(f"r2:pf-releases/agent/dev/{build}" for build in self.older[:2]),
+                sorted(call[2] for call in calls if call[1:2] == ["purge"]),
+            )
+            self.assertIn(f"Published dev build {COMMIT}", result.stdout)
+            self.assertEqual([], list(pathlib.Path(tmp).glob("pf-publish.*")))
+
+    def test_main_advanced_keeps_dev_json_and_the_build_it_names(self) -> None:
+        named = self.older[0]
+        with tempfile.TemporaryDirectory(prefix="pf-publish-dev-") as tmp:
+            result, calls, summary = self.publish(tmp, {
+                "PF_PUBLISH_TEST_MAIN_SHA": "f" * 40,
+                "PF_PUBLISH_TEST_DEV_JSON": '{"version":"0.1.0","commit":"' + named + '"}',
+            })
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            targets = [call[3] for call in calls if call[1:2] == ["copyto"]]
+            self.assertFalse(any(t.endswith("/dev.json") for t in targets))
+            self.assertIn("main advanced to " + "f" * 40 + "; dev.json unchanged.",
+                          summary.read_text())
+            self.assertEqual(
+                [f"r2:pf-releases/agent/dev/{self.older[1]}"],
+                [call[2] for call in calls if call[1:2] == ["purge"]],
+            )
+
+    def test_unreadable_dev_json_removes_no_build(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-publish-dev-") as tmp:
+            result, calls, summary = self.publish(
+                tmp, {"PF_PUBLISH_TEST_MAIN_SHA": "f" * 40}
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("Retention skipped", summary.read_text())
+            self.assertFalse(any(call[1:2] in (["purge"], ["lsf"]) for call in calls))
+
+    def test_failed_upload_leaves_dev_json_and_old_builds_untouched(self) -> None:
+        failing = "pf-linux-aarch64.tar.gz.sha256"
+        with tempfile.TemporaryDirectory(prefix="pf-publish-dev-") as tmp:
+            result, calls, summary = self.publish(
+                tmp, {"PF_PUBLISH_TEST_FAIL_RCLONE": failing}
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            message = f"Upload failed: {failing}; dev.json unchanged."
+            self.assertIn(message, summary.read_text())
+            self.assertTrue(calls[-1][3].endswith("/" + failing))
+            self.assertNotIn("git", [call[0] for call in calls])
+
+    def test_unreadable_main_or_failed_removal_fails(self) -> None:
+        for env, message in (
+            ({"PF_PUBLISH_TEST_FAIL_GIT": "all"}, "Cannot read main from origin; dev.json unchanged."),
+            ({"PF_PUBLISH_TEST_FAIL_RCLONE": self.older[0]},
+             f"Retention failed: could not remove dev build {self.older[0]}."),
+        ):
+            with self.subTest(message=message):
+                with tempfile.TemporaryDirectory(prefix="pf-publish-dev-") as tmp:
+                    result, _, _ = self.publish(tmp, env)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn(message, result.stderr)
+
+    def test_dry_run_logs_dev_destinations_and_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-publish-dev-") as tmp:
+            result, calls, _ = self.run_script(
+                pathlib.Path(tmp), dev=True, dry_run=True,
+                env_overrides={name: None for name in R2_ENV},
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual([], calls)
+            lines = result.stdout.splitlines()
+            self.assertTrue(all(line.startswith("dry run: ") for line in lines))
+            for name in FILES:
+                self.assertTrue(any(
+                    f"{name} -> r2:<R2_BUCKET>/agent/dev/{COMMIT}/{name} (" in line
+                    and IMMUTABLE in line for line in lines
+                ), name)
+            self.assertIn(
+                "dry run: dev.json -> r2:<R2_BUCKET>/agent/dev.json (Content-Type: "
+                f"application/json; Cache-Control: no-cache) if main still points at {COMMIT}",
+                lines,
+            )
+            self.assertTrue(lines[-2].startswith("dry run: retention keeps the newest 30"))
+
+    def test_rejects_short_or_missing_commits(self) -> None:
+        for args in (
+            ["--dev", "--dry-run", VERSION, COMMIT[:12], "release"],
+            ["--dev", "--dry-run", VERSION, "release"],
+        ):
+            with self.subTest(args=args):
+                result = subprocess.run(
+                    [str(SCRIPT_PATH), *args],
+                    cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+                )
+                self.assertNotEqual(0, result.returncode)
+                self.assertTrue(
+                    "full commit SHA" in result.stderr or "usage:" in result.stderr,
+                    result.stderr,
+                )
+
+
+class DevReleaseWorkflowTests(unittest.TestCase):
+    workflow = DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    def test_dispatch_only_and_dry_run_by_default(self) -> None:
+        triggers = self.workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertEqual(
+            ["workflow_dispatch:"],
+            [line.strip() for line in triggers.splitlines()
+             if line.startswith("  ") and not line.startswith("   ")
+             and not line.strip().startswith("#")],
+        )
+        self.assertIn("returns only through the go-live checklist", " ".join(
+            line.strip(" #") for line in triggers.splitlines() if line.strip().startswith("#")
+        ))
+        dry_run = triggers.split("      dry_run:\n", 1)[1]
+        self.assertIn("type: boolean", dry_run)
+        self.assertIn("default: true", dry_run)
+
+    def test_builds_all_five_platforms_on_the_dev_channel(self) -> None:
+        build = job(self.workflow, "build")
+        for target in ("x86_64-linux", "aarch64-linux", "x86_64-macos", "aarch64-macos"):
+            self.assertIn(f"target: {target}", build)
+        self.assertIn("-Dupdate-channel=dev", build)
+        self.assertIn(
+            "-Dtarget=x86_64-windows-gnu -Dupdate-channel=dev",
+            job(self.workflow, "build-windows"),
+        )
+
+    def test_signs_with_the_commit_and_dry_runs_before_any_upload(self) -> None:
+        sign = job(self.workflow, "sign")
+        self.assertIn("environment: release", sign)
+        self.assertIn("needs: [metadata, build, build-windows]", sign)
+        self.assertIn(
+            'scripts/sign-release-archives.sh --commit "$SHA" "$VERSION" dev '
+            "release/pf-*.tar.gz release/pf-*.zip",
+            sign,
+        )
+        self.assertIn(
+            'scripts/publish-release.sh --dev --dry-run "$VERSION" "$SHA" release', sign
+        )
+        self.assertIn("if: needs.metadata.outputs.dry_run == 'true'", sign)
+        publish = job(self.workflow, "publish")
+        self.assertIn("if: needs.metadata.outputs.dry_run != 'true'", publish)
+        self.assertIn("environment: release", publish)
+        self.assertIn('scripts/publish-release.sh --dev "$VERSION" "$SHA" release', publish)
+        self.assertIn(
+            "DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}",
+            job(self.workflow, "metadata"),
+        )
+
+    def test_secrets_stay_in_their_environment_jobs(self) -> None:
+        for secret, owner in (
+            ("PF_MINISIGN_SECRET_KEY", "sign"),
+            ("R2_ACCESS_KEY_ID", "publish"),
+            ("R2_SECRET_ACCESS_KEY", "publish"),
+            ("R2_ENDPOINT", "publish"),
+            ("R2_BUCKET", "publish"),
+        ):
+            with self.subTest(secret=secret):
+                reference = f"${{{{ secrets.{secret} }}}}"
+                self.assertEqual(1, self.workflow.count(reference))
+                self.assertIn(reference, job(self.workflow, owner))
+        self.assertEqual(5, self.workflow.count("secrets."))
+
+    def test_dev_builds_are_neither_apple_nor_azure_signed_and_ship_no_web_package(self) -> None:
+        for reference in (
+            "sign-and-notarize-macos", "sign-windows.ps1", "apple-signing",
+            "windows-signing", "AZURE_", "APPLE_", "PF_WEB_DEPLOY_HOOK_URL",
+            "wasm-surface", "pf-sdk.js", "blob.vercel-storage.com",
+            "BLOB_READ_WRITE_TOKEN",
+        ):
+            with self.subTest(reference=reference):
+                self.assertNotIn(reference, self.workflow)
 
 
 ACTIVE_KEY = "RW" + "A" * 54
