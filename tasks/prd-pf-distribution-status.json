@@ -4,7 +4,7 @@
     {"id": "EP-001", "title": "Public CI baseline", "status": "DONE", "priority": "P0", "stories_total": 3, "stories_done": 3},
     {"id": "EP-002", "title": "Signed release artifacts", "status": "DONE", "priority": "P0", "stories_total": 6, "stories_done": 6},
     {"id": "EP-003", "title": "Verified self-update", "status": "DONE", "priority": "P0", "stories_total": 5, "stories_done": 5},
-    {"id": "EP-004", "title": "Release tooling and documentation", "status": "TODO", "priority": "P1", "stories_total": 4, "stories_done": 0},
+    {"id": "EP-004", "title": "Release tooling and documentation", "status": "IN_REVIEW", "priority": "P1", "stories_total": 4, "stories_done": 0},
     {"id": "EP-005", "title": "Dev channel and JavaScript SDK", "status": "TODO", "priority": "P2", "stories_total": 3, "stories_done": 0}
   ],
   "stories": [
@@ -22,10 +22,10 @@
     {"id": "US-012", "title": "Extract release archives in-process", "epic": "EP-003", "status": "DONE", "priority": "P0", "size": "M", "blocked_by": [], "started_at": "2026-10-04", "completed_at": "2026-10-04", "reviewed_at": "2026-10-04"},
     {"id": "US-013", "title": "Replace the running binary on Windows", "epic": "EP-003", "status": "DONE", "priority": "P0", "size": "L", "blocked_by": ["US-011", "US-012"], "started_at": "2026-10-04", "completed_at": "2026-10-04", "reviewed_at": "2026-10-04"},
     {"id": "US-014", "title": "Prove the upgrade path end to end with signed fixtures", "epic": "EP-003", "status": "DONE", "priority": "P0", "size": "M", "blocked_by": ["US-011", "US-012", "US-013"], "started_at": "2026-10-04", "completed_at": "2026-10-04", "reviewed_at": "2026-10-04"},
-    {"id": "US-015", "title": "Make the AI changelog draft optional", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": [], "started_at": null, "completed_at": null, "reviewed_at": null},
-    {"id": "US-016", "title": "Backfill R2 from GitHub Releases", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": ["US-008"], "started_at": null, "completed_at": null, "reviewed_at": null},
-    {"id": "US-017", "title": "Document the release pipeline", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": ["US-008", "US-013"], "started_at": null, "completed_at": null, "reviewed_at": null},
-    {"id": "US-018", "title": "Write the go-live checklist for the first release", "epic": "EP-004", "status": "TODO", "priority": "P1", "size": "S", "blocked_by": ["US-009", "US-014", "US-015", "US-016", "US-017"], "started_at": null, "completed_at": null, "reviewed_at": null},
+    {"id": "US-015", "title": "Make the AI changelog draft optional", "epic": "EP-004", "status": "IN_REVIEW", "priority": "P1", "size": "S", "blocked_by": [], "started_at": "2026-10-04", "completed_at": null, "reviewed_at": null},
+    {"id": "US-016", "title": "Backfill R2 from GitHub Releases", "epic": "EP-004", "status": "IN_REVIEW", "priority": "P1", "size": "S", "blocked_by": ["US-008"], "started_at": "2026-10-04", "completed_at": null, "reviewed_at": null},
+    {"id": "US-017", "title": "Document the release pipeline", "epic": "EP-004", "status": "IN_REVIEW", "priority": "P1", "size": "S", "blocked_by": ["US-008", "US-013"], "started_at": "2026-10-04", "completed_at": null, "reviewed_at": null},
+    {"id": "US-018", "title": "Write the go-live checklist for the first release", "epic": "EP-004", "status": "IN_REVIEW", "priority": "P1", "size": "S", "blocked_by": ["US-009", "US-014", "US-015", "US-016", "US-017"], "started_at": "2026-10-04", "completed_at": null, "reviewed_at": null},
     {"id": "US-019", "title": "Prepare signed dev builds for R2 with retention", "epic": "EP-005", "status": "TODO", "priority": "P2", "size": "M", "blocked_by": ["US-008", "US-013"], "started_at": null, "completed_at": null, "reviewed_at": null},
     {"id": "US-020", "title": "Validate assumption: libpf ships as a pf product", "epic": "EP-005", "status": "TODO", "priority": "P2", "size": "S", "blocked_by": ["US-003"], "started_at": null, "completed_at": null, "reviewed_at": null},
     {"id": "US-021", "title": "Repair or retire the SDK examples", "epic": "EP-005", "status": "TODO", "priority": "P2", "size": "S", "blocked_by": ["US-020"], "started_at": null, "completed_at": null, "reviewed_at": null}
