@@ -5,6 +5,8 @@
 #
 # With --dry-run it checks the release files and prints every destination and
 # header it would write, without credentials and without writing anything.
+# --r2-only skips the GitHub Release and --no-latest leaves agent/latest.txt
+# alone; scripts/backfill-release.sh uses them to restore R2 from GitHub.
 
 set -euo pipefail
 
@@ -30,12 +32,19 @@ fail() {
 }
 
 dry_run=false
-if [[ "${1:-}" == --dry-run ]]; then
-    dry_run=true
+github_release=true
+update_latest=true
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --dry-run) dry_run=true ;;
+        --r2-only) github_release=false ;;
+        --no-latest) update_latest=false ;;
+        *) fail "Unknown option: $1" ;;
+    esac
     shift
-fi
+done
 if [[ $# -lt 2 || $# -gt 3 ]]; then
-    fail "usage: publish-release.sh [--dry-run] <version> <artifact-dir> [<notes-file>]"
+    fail "usage: publish-release.sh [--dry-run] [--r2-only] [--no-latest] <version> <artifact-dir> [<notes-file>]"
 fi
 version="$1"
 artifact_dir="$2"
@@ -53,7 +62,9 @@ for archive in "${archives[@]}"; do
 done
 
 if [[ "${dry_run}" == false ]]; then
-    [[ -f "${notes_file}" ]] || fail "Missing release notes file: ${notes_file:-<none>}"
+    if [[ "${github_release}" == true && ! -f "${notes_file}" ]]; then
+        fail "Missing release notes file: ${notes_file:-<none>}"
+    fi
     for required_name in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ENDPOINT R2_BUCKET; do
         if [[ -z "${!required_name:-}" ]]; then
             fail "Missing required environment variable: ${required_name}"
@@ -75,8 +86,10 @@ destination="r2:${R2_BUCKET:-<R2_BUCKET>}/agent"
 prefix=""
 [[ "${dry_run}" == true ]] && prefix="dry run: "
 
-echo "${prefix}GitHub Release ${version} with ${#files[@]} assets"
-if [[ "${dry_run}" == false ]]; then
+if [[ "${github_release}" == true ]]; then
+    echo "${prefix}GitHub Release ${version} with ${#files[@]} assets"
+fi
+if [[ "${dry_run}" == false && "${github_release}" == true ]]; then
     asset_paths=()
     for file in "${files[@]}"; do
         asset_paths+=("${artifact_dir}/${file}")
@@ -108,9 +121,11 @@ for file in "${files[@]}"; do
         "${content_type}" "${immutable_cache}" "${file}"
 done
 
-latest_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/pf-publish.XXXXXX")"
-trap 'rm -rf "${latest_dir}"' EXIT
-printf '%s' "${version}" >"${latest_dir}/latest.txt"
-upload "${latest_dir}/latest.txt" "${destination}/latest.txt" \
-    text/plain "${manifest_cache}" latest.txt
+if [[ "${update_latest}" == true ]]; then
+    latest_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/pf-publish.XXXXXX")"
+    trap 'rm -rf "${latest_dir}"' EXIT
+    printf '%s' "${version}" >"${latest_dir}/latest.txt"
+    upload "${latest_dir}/latest.txt" "${destination}/latest.txt" \
+        text/plain "${manifest_cache}" latest.txt
+fi
 echo "${prefix}Published ${version}"

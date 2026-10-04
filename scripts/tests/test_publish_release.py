@@ -10,7 +10,9 @@ import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "publish-release.sh"
+BACKFILL_PATH = REPO_ROOT / "scripts" / "backfill-release.sh"
 RELEASE_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "release.yml"
+BACKFILL_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "cdn-backfill.yml"
 VERSION = "v0.1.0"
 ARCHIVES = (
     "pf-linux-x86_64.tar.gz",
@@ -271,6 +273,339 @@ class PublishReleaseScriptTests(unittest.TestCase):
                 )
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("Release version must look like vX.Y.Z", result.stderr)
+
+
+ACTIVE_KEY = "RW" + "A" * 54
+NEXT_KEY = "RW" + "B" * 54
+
+# A fake gh for the backfill: it lists the tags in PF_BACKFILL_TEST_RELEASES
+# and downloads a release by copying <PF_BACKFILL_TEST_ASSETS>/<tag>/.
+FAKE_BACKFILL_GH = r"""#!/usr/bin/env python3
+import os
+import pathlib
+import shutil
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["PF_PUBLISH_TEST_LOG"], "a") as log:
+    log.write("\t".join(["gh"] + args) + "\n")
+if os.environ.get("PF_BACKFILL_TEST_FAIL_LIST") and args[:2] == ["release", "list"]:
+    raise SystemExit(1)
+if args[:2] == ["release", "list"]:
+    for tag in os.environ["PF_BACKFILL_TEST_RELEASES"].split():
+        print(tag)
+elif args[:2] == ["release", "download"]:
+    source = pathlib.Path(os.environ["PF_BACKFILL_TEST_ASSETS"]) / args[2]
+    target = pathlib.Path(args[args.index("--dir") + 1])
+    if not source.is_dir():
+        raise SystemExit("release not found")
+    for item in source.iterdir():
+        shutil.copy(item, target / item.name)
+else:
+    raise SystemExit("unexpected gh call")
+"""
+
+# A fake minisign that accepts a signature only for the key named in its
+# untrusted comment, and prints its trusted comment like minisign -V.
+FAKE_BACKFILL_MINISIGN = r"""#!/usr/bin/env python3
+import os
+import pathlib
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["PF_PUBLISH_TEST_LOG"], "a") as log:
+    log.write("\t".join(["minisign"] + args) + "\n")
+def value(flag):
+    return args[args.index(flag) + 1]
+lines = pathlib.Path(value("-x")).read_text().splitlines()
+if args[0] != "-V" or lines[0] != "untrusted comment: key " + value("-P"):
+    raise SystemExit("Signature verification failed")
+print("Signature and comment signature verified")
+print("Trusted comment: " + lines[2].removeprefix("trusted comment: "))
+"""
+
+
+class BackfillScriptTests(unittest.TestCase):
+    def run_backfill(
+        self,
+        root: pathlib.Path,
+        releases: tuple[str, ...],
+        *args: str,
+        keys: tuple[str, str] = (ACTIVE_KEY, ""),
+        signer: dict[tuple[str, str], str] | None = None,
+        comment: dict[tuple[str, str], str] | None = None,
+        env_overrides: dict[str, str | None] | None = None,
+    ) -> tuple[subprocess.CompletedProcess[str], list[list[str]], pathlib.Path]:
+        tools = root / "tools"
+        tools.mkdir()
+        for name, source in (
+            ("gh", FAKE_BACKFILL_GH),
+            ("minisign", FAKE_BACKFILL_MINISIGN),
+            ("rclone", FAKE_TOOL),
+        ):
+            (tools / name).write_text(source, encoding="utf-8")
+            (tools / name).chmod(0o755)
+        assets = root / "assets"
+        for version in releases:
+            release = assets / version
+            release.mkdir(parents=True)
+            for name in ARCHIVES:
+                (release / name).write_text(f"{version} {name}\n")
+                (release / f"{name}.sha256").write_text(f"hash  {name}\n")
+                key = (signer or {}).get((version, name), ACTIVE_KEY)
+                trusted = (comment or {}).get(
+                    (version, name), f"file:{name} version:{version} channel:stable"
+                )
+                (release / f"{name}.minisig").write_text(
+                    f"untrusted comment: key {key}\nsignature\n"
+                    f"trusted comment: {trusted}\nglobal\n"
+                )
+        keys_file = root / "release_keys.zig"
+        keys_file.write_text(
+            f'pub const active = "{keys[0]}";\npub const next = "{keys[1]}";\n'
+        )
+        log = root / "calls.log"
+        summary = root / "summary.md"
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("R2_", "RCLONE_"))
+        }
+        env.update(R2_ENV)
+        env.update(
+            {
+                "PF_PUBLISH_RCLONE_BIN": str(tools / "rclone"),
+                "PF_PUBLISH_GH_BIN": str(tools / "gh"),
+                "PF_MINISIGN_BIN": str(tools / "minisign"),
+                "PF_RELEASE_KEYS_FILE": str(keys_file),
+                "PF_PUBLISH_TEST_LOG": str(log),
+                "PF_BACKFILL_TEST_RELEASES": " ".join(releases),
+                "PF_BACKFILL_TEST_ASSETS": str(assets),
+                "GITHUB_STEP_SUMMARY": str(summary),
+                "RUNNER_TEMP": str(root),
+            }
+        )
+        for key, value in (env_overrides or {}).items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = value
+        result = subprocess.run(
+            [str(BACKFILL_PATH), *args], cwd=root, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        calls = (
+            [line.split("\t") for line in log.read_text().splitlines()]
+            if log.exists()
+            else []
+        )
+        return result, calls, summary
+
+    @staticmethod
+    def uploads(calls: list[list[str]]) -> list[str]:
+        return [call[3] for call in calls if call[0] == "rclone"]
+
+    def test_verifies_each_signature_then_uploads_like_a_release(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, _ = self.run_backfill(
+                pathlib.Path(tmp), ("v0.2.0", "v0.1.0"), "all"
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertEqual(
+                ["list", "download", "download"],
+                [call[2] for call in calls if call[0] == "gh"],
+            )
+            for version in ("v0.1.0", "v0.2.0"):
+                expected = [f"r2:pf-releases/agent/{version}/{name}" for name in FILES]
+                self.assertEqual(
+                    expected,
+                    [t for t in self.uploads(calls) if f"/{version}/" in t],
+                )
+            self.assertFalse(any(t.endswith("latest.txt") for t in self.uploads(calls)))
+            for call in calls:
+                if call[0] == "rclone":
+                    name = pathlib.Path(call[3]).name
+                    content_type = (
+                        "application/gzip" if name.endswith(".tar.gz")
+                        else "application/zip" if name.endswith(".zip")
+                        else "text/plain"
+                    )
+                    self.assertEqual(
+                        ["--header-upload", IMMUTABLE,
+                         "--header-upload", f"Content-Type: {content_type}"],
+                        call[4:],
+                    )
+            # Every archive of a release is verified before its first upload,
+            # and older releases go first.
+            kinds = [
+                (call[0], call[3] if call[0] == "rclone" else call[-1])
+                for call in calls if call[0] in ("minisign", "rclone")
+            ]
+            first_upload = kinds.index(next(k for k in kinds if k[0] == "rclone"))
+            self.assertEqual(
+                [f"v0.1.0/{name}.minisig" for name in ARCHIVES],
+                ["/".join(pathlib.Path(k[1]).parts[-2:]) for k in kinds[:first_upload]],
+            )
+            self.assertIn("/v0.1.0/", kinds[first_upload][1])
+            self.assertIn("Backfilled 2 release(s).", result.stdout)
+
+    def test_latest_moves_only_to_the_newest_verified_release(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, _ = self.run_backfill(
+                pathlib.Path(tmp), ("v0.1.0", "v0.2.0"), "--update-latest", "all"
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            latest = [c for c in calls if c[0] == "rclone"][-1]
+            self.assertEqual("r2:pf-releases/agent/latest.txt", latest[3])
+            self.assertEqual("content=v0.2.0", latest[-1])
+            self.assertEqual(1, sum(t.endswith("latest.txt") for t in self.uploads(calls)))
+
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, summary = self.run_backfill(
+                pathlib.Path(tmp), ("v0.1.0", "v0.2.0"), "--update-latest", "v0.1.0"
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(len(FILES), len(self.uploads(calls)))
+            self.assertFalse(any(t.endswith("latest.txt") for t in self.uploads(calls)))
+            self.assertIn(
+                "latest.txt unchanged: v0.2.0 is the newest release and was not backfilled.",
+                summary.read_text(),
+            )
+
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, _ = self.run_backfill(
+                pathlib.Path(tmp), ("v0.1.0", "v0.2.0"), "--update-latest", "all",
+                signer={("v0.2.0", "pf-linux-aarch64.tar.gz"): NEXT_KEY},
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertFalse(any(t.endswith("latest.txt") for t in self.uploads(calls)))
+            self.assertFalse(any("/v0.2.0/" in t for t in self.uploads(calls)))
+
+    def test_refused_signature_skips_the_release_and_fails_at_the_end(self) -> None:
+        for override, problem in (
+            ({"signer": {("v0.1.0", "pf-macos-x86_64.tar.gz"): NEXT_KEY}},
+             "pf-macos-x86_64.tar.gz.minisig does not verify against release_keys.zig"),
+            ({"comment": {("v0.1.0", "pf-windows-x86_64.zip"):
+                          "file:pf-windows-x86_64.zip version:v0.2.0 channel:stable"}},
+             "pf-windows-x86_64.zip.minisig belongs to a different release"),
+            ({"comment": {("v0.1.0", "pf-linux-x86_64.tar.gz"):
+                          "file:pf-linux-x86_64.tar.gz version:v0.1.0 channel:stable2"}},
+             "pf-linux-x86_64.tar.gz.minisig belongs to a different release"),
+        ):
+            with self.subTest(problem=problem):
+                with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+                    result, calls, summary = self.run_backfill(
+                        pathlib.Path(tmp), ("v0.1.0", "v0.2.0"), "all", **override
+                    )
+
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn(f"Skipped v0.1.0: {problem}.", summary.read_text())
+                    self.assertIn("Backfill failed for v0.1.0", result.stderr)
+                    self.assertFalse(any("/v0.1.0/" in t for t in self.uploads(calls)))
+                    self.assertEqual(
+                        len(FILES),
+                        sum("/v0.2.0/" in t for t in self.uploads(calls)),
+                    )
+
+    def test_next_key_slot_verifies_after_a_rotation(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, _ = self.run_backfill(
+                pathlib.Path(tmp), ("v0.1.0",), "all", keys=(NEXT_KEY, ACTIVE_KEY)
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(len(FILES), len(self.uploads(calls)))
+
+    def test_failed_upload_skips_the_release_and_leaves_latest(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, summary = self.run_backfill(
+                pathlib.Path(tmp), ("v0.1.0",), "--update-latest", "all",
+                env_overrides={"PF_PUBLISH_TEST_FAIL_RCLONE": "pf-linux-x86_64.tar.gz"},
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Skipped v0.1.0: its upload failed.", summary.read_text())
+            self.assertFalse(any(t.endswith("latest.txt") for t in self.uploads(calls)))
+
+    def test_dry_run_verifies_and_lists_uploads_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, _ = self.run_backfill(
+                pathlib.Path(tmp), ("v0.1.0",), "--dry-run", "--update-latest", "all",
+                env_overrides={name: None for name in R2_ENV},
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual([], self.uploads(calls))
+            self.assertEqual(len(ARCHIVES), sum(c[0] == "minisign" for c in calls))
+            self.assertNotIn("release create", " ".join(" ".join(c) for c in calls))
+            for name in FILES:
+                self.assertIn(
+                    f"dry run: {name} -> r2:<R2_BUCKET>/agent/v0.1.0/{name}",
+                    result.stdout,
+                )
+            self.assertIn("dry run: latest.txt -> r2:<R2_BUCKET>/agent/latest.txt", result.stdout)
+            self.assertNotIn("GitHub Release", result.stdout)
+
+    def test_no_release_means_nothing_to_backfill(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, summary = self.run_backfill(pathlib.Path(tmp), (), "all")
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("No GitHub Release exists; nothing to backfill.", summary.read_text())
+            self.assertEqual([["gh", "release", "list"]], [c[:3] for c in calls])
+
+    def test_listing_failure_and_unknown_version_fail_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, _ = self.run_backfill(
+                pathlib.Path(tmp), ("v0.1.0",), "all",
+                env_overrides={"PF_BACKFILL_TEST_FAIL_LIST": "1"},
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Could not list GitHub Releases.", result.stderr)
+            self.assertEqual([], self.uploads(calls))
+        with tempfile.TemporaryDirectory(prefix="pf-backfill-") as tmp:
+            result, calls, _ = self.run_backfill(pathlib.Path(tmp), ("v0.1.0",), "v0.3.0")
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("No GitHub Release v0.3.0 exists", result.stderr)
+            self.assertEqual([], self.uploads(calls))
+        for version in ("0.1.0", "v0.1", "latest"):
+            with self.subTest(version=version):
+                result = subprocess.run(
+                    [str(BACKFILL_PATH), "--dry-run", version],
+                    cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+                )
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("Version must be vX.Y.Z or all", result.stderr)
+
+
+class CdnBackfillWorkflowTests(unittest.TestCase):
+    workflow = BACKFILL_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    def test_dispatch_only_and_dry_run_by_default(self) -> None:
+        triggers = self.workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertEqual(
+            ["workflow_dispatch:"],
+            [line.strip() for line in triggers.splitlines()
+             if line.startswith("  ") and not line.startswith("   ")],
+        )
+        dry_run = triggers.split("      dry-run:\n", 1)[1]
+        self.assertIn("type: boolean", dry_run)
+        self.assertIn("default: true", dry_run)
+        update_latest = triggers.split("      update-latest:\n", 1)[1]
+        self.assertIn("default: false", update_latest.split("      dry-run:", 1)[0])
+
+    def test_runs_the_backfill_script_in_the_release_environment(self) -> None:
+        self.assertIn("environment: release", self.workflow)
+        self.assertIn('scripts/backfill-release.sh "${args[@]}" "$VERSION"', self.workflow)
+        self.assertIn('if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi', self.workflow)
+        self.assertIn(
+            'if [[ "$UPDATE_LATEST" == true ]]; then args+=(--update-latest); fi',
+            self.workflow,
+        )
+        self.assertIn("apt-get install -y minisign rclone", self.workflow)
+
+    def test_no_vercel_blob_reference_remains(self) -> None:
+        for reference in ("blob.vercel-storage.com", "BLOB_READ_WRITE_TOKEN", "CDN_BASE"):
+            self.assertNotIn(reference, self.workflow)
 
 
 def job(workflow: str, name: str) -> str:
