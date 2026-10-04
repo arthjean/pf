@@ -53,13 +53,14 @@ const Entries = struct {
     total_bytes: u64 = 0,
     found_binary: bool = false,
 
-    /// Returns true when `name` is the binary to write.
-    fn admit(self: *Entries, name: []const u8, size: u64) Error!bool {
+    /// Returns true when `name` is the binary to write. An entry named like
+    /// the binary must be a regular file.
+    fn admit(self: *Entries, name: []const u8, size: u64, is_file: bool) Error!bool {
         if (!isSafeEntryName(name)) return error.InvalidArchive;
         self.total_bytes +|= size;
         if (self.total_bytes > max_uncompressed_bytes) return error.ArchiveTooLarge;
         if (!std.mem.eql(u8, name, "pf") and !std.mem.eql(u8, name, "pf.exe")) return false;
-        if (self.found_binary or !std.mem.eql(u8, name, binary_name)) return error.InvalidArchive;
+        if (self.found_binary or !is_file or !std.mem.eql(u8, name, binary_name)) return error.InvalidArchive;
         self.found_binary = true;
         return true;
     }
@@ -103,8 +104,8 @@ fn extractTarGz(io: std.Io, file: std.Io.File, dest_dir: std.Io.Dir) Error!void 
     // Hard links and other special entries fail inside `next`.
     while (tar.next() catch return readError(&file_reader)) |entry| {
         if (entry.kind == .sym_link) return error.InvalidArchive;
-        const size = if (entry.kind == .file) entry.size else 0;
-        if (!try entries.admit(entry.name, size) or entry.kind != .file) continue;
+        const is_file = entry.kind == .file;
+        if (!try entries.admit(entry.name, if (is_file) entry.size else 0, is_file)) continue;
 
         var out = try createBinary(io, dest_dir);
         defer out.close(io);
@@ -142,7 +143,8 @@ fn extractZip(io: std.Io, file: std.Io.File, dest_dir: std.Io.Dir) Error!void {
         // Unix hosts store the file type in the high bits; refuse links.
         const unix_type = (header.external_file_attributes >> 16) & 0o170000;
         if (unix_type == 0o120000) return error.InvalidArchive;
-        if (!try entries.admit(name, entry.uncompressed_size)) continue;
+        // `std.zip` treats every name ending in `/` as a directory.
+        if (!try entries.admit(name, entry.uncompressed_size, !std.mem.endsWith(u8, name, "/"))) continue;
 
         entry.extract(&file_reader, .{}, &name_buf, dest_dir) catch |err| return switch (err) {
             error.ReadFailed => error.ExtractionFailed,
@@ -330,7 +332,9 @@ test "release archive extracts the root binary from tar.gz and zip" {
         defer alloc.free(extracted);
         try std.testing.expectEqualStrings("new pf binary", extracted);
         try archive.expectNothingElseWritten();
-        if (builtin.os.tag != .windows) {
+        // Only POSIX releases carry a mode; `std.zip` writes no executable
+        // bit, and pf extracts zips only on Windows.
+        if (builtin.os.tag != .windows and format == .tar_gz) {
             const stat = try archive.out.statFile(std.testing.io, binary_name, .{});
             try std.testing.expect(stat.permissions.toMode() & 0o100 != 0);
         }
@@ -379,6 +383,11 @@ test "release archive requires exactly one binary at the root" {
             try std.testing.expectError(error.InvalidArchive, archive.extract(format));
         }
     }
+    // A tar directory entry may omit the trailing `/` and still carry the
+    // binary's name.
+    var directory = try TestArchive.init(alloc, .tar_gz, &.{.{ .name = binary_name, .kind = .directory }});
+    defer directory.deinit(alloc);
+    try std.testing.expectError(error.InvalidArchive, directory.extract(.tar_gz));
 }
 
 test "release archive stops at the uncompressed size limit" {
