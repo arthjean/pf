@@ -545,7 +545,7 @@ pub fn checkInstallDirWritable(exe_path: []const u8) error{InstallDirNotWritable
 /// file in one atomic rename. Windows cannot replace a running `.exe`, so it
 /// renames the running binary to `<target>.old` first and renames it back if
 /// the new binary cannot be moved into place; `sweepReplacedBinary` removes
-/// the leftover on a later start.
+/// the leftovers on a later start.
 pub fn installBinary(alloc: Allocator, new_path: []const u8, target_path: []const u8) error{ReplaceFailed}!void {
     if (comptime builtin.os.tag != .windows) {
         io_mod.copyFileAtomic(alloc, new_path, target_path) catch return error.ReplaceFailed;
@@ -562,6 +562,10 @@ pub fn installBinary(alloc: Allocator, new_path: []const u8, target_path: []cons
     errdefer std.Io.Dir.deleteFileAbsolute(zio, staged_path) catch {};
     std.Io.Dir.deleteFileAbsolute(zio, old_path) catch |err| switch (err) {
         error.FileNotFound => {},
+        // A pf still running from the leftover, such as the parent of a
+        // ctrl+g relaunch, keeps it from being deleted. A running image can
+        // still be renamed, so it moves aside under a unique name.
+        error.AccessDenied, error.PermissionDenied, error.FileBusy => try moveAside(alloc, old_path),
         else => return error.ReplaceFailed,
     };
     try moveFileWindows(alloc, target_path, old_path);
@@ -569,6 +573,15 @@ pub fn installBinary(alloc: Allocator, new_path: []const u8, target_path: []cons
         moveFileWindows(alloc, old_path, target_path) catch {};
         return error.ReplaceFailed;
     };
+}
+
+fn moveAside(alloc: Allocator, old_path: []const u8) error{ReplaceFailed}!void {
+    var rand_buf: [8]u8 = undefined;
+    io_mod.getIo().random(&rand_buf);
+    const aside_path = std.fmt.allocPrint(alloc, "{s}.{s}", .{ old_path, std.fmt.bytesToHex(rand_buf, .lower) }) catch
+        return error.ReplaceFailed;
+    defer alloc.free(aside_path);
+    try moveFileWindows(alloc, old_path, aside_path);
 }
 
 /// Renames a file that may be a running executable. `std.Io.Dir.rename`
@@ -583,16 +596,30 @@ fn moveFileWindows(alloc: Allocator, from: []const u8, to: []const u8) error{Rep
     if (!win32.MoveFileExW(from_w, to_w, win32.MOVEFILE_WRITE_THROUGH).toBool()) return error.ReplaceFailed;
 }
 
-/// Deletes the `pf.exe.old` a Windows upgrade left next to the running
-/// binary. A failure, such as the previous pf still running, is ignored and
-/// the next start tries again.
+/// Deletes the `pf.exe.old` and `pf.exe.old.<id>` files Windows upgrades left
+/// next to the running binary. A failure, such as a previous pf still
+/// running, is ignored and the next start tries again.
 pub fn sweepReplacedBinary() void {
     if (comptime builtin.os.tag != .windows) return;
     var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
     const exe = currentExecutablePath(&exe_buf) catch return;
-    var old_buf: [std.fs.max_path_bytes + 4]u8 = undefined;
-    const old_path = std.fmt.bufPrint(&old_buf, "{s}.old", .{exe}) catch return;
-    std.Io.Dir.deleteFileAbsolute(io_mod.getIo(), old_path) catch {};
+    sweepReplacedBinaryAt(exe);
+}
+
+fn sweepReplacedBinaryAt(exe_path: []const u8) void {
+    const zio = io_mod.getIo();
+    const dir_path = std.fs.path.dirname(exe_path) orelse return;
+    var prefix_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const old_name = std.fmt.bufPrint(&prefix_buf, "{s}.old", .{std.fs.path.basename(exe_path)}) catch return;
+    var dir = std.Io.Dir.openDirAbsolute(zio, dir_path, .{ .iterate = true }) catch return;
+    defer dir.close(zio);
+    var entries = dir.iterate();
+    while (entries.next(zio) catch return) |entry| {
+        if (entry.kind != .file or !std.mem.startsWith(u8, entry.name, old_name)) continue;
+        const rest = entry.name[old_name.len..];
+        if (rest.len != 0 and rest[0] != '.') continue;
+        dir.deleteFile(zio, entry.name) catch {};
+    }
 }
 
 pub const ExecutablePathError = error{
@@ -736,6 +763,85 @@ test "installBinary leaves the target untouched when it cannot replace it" {
     defer alloc.free(kept);
     try std.testing.expectEqualStrings("old", kept);
     try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(std.testing.io, "pf.exe.new", .{}));
+}
+
+test "installBinary moves a leftover that still runs aside on Windows" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const zio = io_mod.getIo();
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(root);
+    const target_path = try std.fs.path.join(alloc, &.{ root, "pf.exe" });
+    defer alloc.free(target_path);
+    const new_path = try std.fs.path.join(alloc, &.{ root, "pf-new" });
+    defer alloc.free(new_path);
+    const system_root = io_mod.getenv("SystemRoot") orelse "C:\\Windows";
+    const ping = try std.fs.path.join(alloc, &.{ system_root, "System32", "PING.EXE" });
+    defer alloc.free(ping);
+    try io_mod.copyFileAtomic(alloc, ping, target_path);
+    try writeTempFile(tmp.dir, "pf-new", "new");
+
+    // The running pf.exe moves to pf.exe.old and keeps running there, as the
+    // parent of a ctrl+g relaunch does.
+    var running = try std.process.spawn(zio, .{
+        .argv = &.{ target_path, "-n", "60", "127.0.0.1" },
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
+    var killed = false;
+    defer if (!killed) running.kill(zio);
+    try installBinary(alloc, new_path, target_path);
+
+    // A second upgrade cannot delete the running leftover and moves it aside.
+    try writeTempFile(tmp.dir, "pf-new", "newer");
+    try installBinary(alloc, new_path, target_path);
+    const installed = try readAbsoluteFile(alloc, target_path);
+    defer alloc.free(installed);
+    try std.testing.expectEqualStrings("newer", installed);
+    const old_path = try std.fmt.allocPrint(alloc, "{s}.old", .{target_path});
+    defer alloc.free(old_path);
+    const old = try readAbsoluteFile(alloc, old_path);
+    defer alloc.free(old);
+    try std.testing.expectEqualStrings("new", old);
+    try std.testing.expectEqual(@as(usize, 1), countLeftovers(tmp.dir, "pf.exe.old."));
+
+    running.kill(zio);
+    killed = true;
+    sweepReplacedBinaryAt(target_path);
+    try std.testing.expectEqual(@as(usize, 0), countLeftovers(tmp.dir, "pf.exe.old"));
+}
+
+fn countLeftovers(dir: std.Io.Dir, prefix: []const u8) usize {
+    var count: usize = 0;
+    var it = dir.iterate();
+    while (it.next(std.testing.io) catch return count) |entry| {
+        if (std.mem.startsWith(u8, entry.name, prefix)) count += 1;
+    }
+    return count;
+}
+
+test "sweepReplacedBinaryAt removes only the binary's leftovers" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(root);
+    const exe_path = try std.fs.path.join(alloc, &.{ root, "pf.exe" });
+    defer alloc.free(exe_path);
+    for ([_][]const u8{ "pf.exe", "pf.exe.old", "pf.exe.old.0123456789abcdef", "pf.exe.older", "other.exe.old" }) |name| {
+        try writeTempFile(tmp.dir, name, "x");
+    }
+
+    sweepReplacedBinaryAt(exe_path);
+
+    try std.testing.expectEqual(@as(usize, 0), countLeftovers(tmp.dir, "pf.exe.old."));
+    try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(std.testing.io, "pf.exe.old", .{}));
+    for ([_][]const u8{ "pf.exe", "pf.exe.older", "other.exe.old" }) |name| {
+        _ = try tmp.dir.statFile(std.testing.io, name, .{});
+    }
 }
 
 test "checkInstallDirWritable probes the binary directory" {
