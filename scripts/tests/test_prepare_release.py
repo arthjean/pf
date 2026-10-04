@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import os
 import pathlib
 import subprocess
@@ -161,6 +163,37 @@ class PrepareReleaseWorkflowTests(unittest.TestCase):
             self.assertIn(
                 "- **Upgrade:** Verify signed releases",
                 (work / "release-notes.md").read_text(),
+            )
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "needs GNU base64")
+    def test_release_commit_payload_carries_the_full_source_files(self) -> None:
+        create = script(
+            step(self.workflow, "Create pull request"),
+            {"${{ inputs.changelog }}": "manual",
+             "${{ steps.version.outputs.new }}": "0.1.0"},
+        )
+        start = create.index("base64 -w 0 src/main.zig")
+        end = create.index("> /tmp/create-release-commit.json") + len(
+            "> /tmp/create-release-commit.json"
+        )
+        with tempfile.TemporaryDirectory(prefix="pf-prepare-") as tmp:
+            root = pathlib.Path(tmp)
+            (root / "src").mkdir()
+            for name in ("src/main.zig", "README.md", "CHANGELOG.md"):
+                (root / name).write_bytes((REPO_ROOT / name).read_bytes())
+            payload = create[start:end].replace("/tmp/", f"{root}/")
+            result = run_bash(
+                payload,
+                root,
+                {"GITHUB_REPOSITORY": "o/pf", "BRANCH": "prepare-v0.1.0",
+                 "GITHUB_SHA": "0" * 40, "NEW": "0.1.0"},
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            request = json.loads((root / "create-release-commit.json").read_text())
+            additions = request["variables"]["input"]["fileChanges"]["additions"]
+            self.assertEqual(
+                (REPO_ROOT / "src" / "main.zig").read_bytes(),
+                base64.b64decode(additions[0]["contents"]),
             )
 
     def test_pull_request_states_that_merging_publishes_nothing(self) -> None:

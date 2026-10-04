@@ -286,14 +286,19 @@ jobs:
             -f sha="$GITHUB_SHA" \
             >/dev/null
 
+          # Files, not arguments: base64 of src/main.zig exceeds the kernel's
+          # per-argument limit.
+          base64 -w 0 src/main.zig > /tmp/main_zig.b64
+          base64 -w 0 README.md > /tmp/readme.b64
+          base64 -w 0 CHANGELOG.md > /tmp/changelog.b64
           jq -n \
             --arg repository "$GITHUB_REPOSITORY" \
             --arg branch "$BRANCH" \
             --arg expected_head "$GITHUB_SHA" \
             --arg headline "Prepare v${NEW} release" \
-            --arg main_zig "$(base64 -w 0 src/main.zig)" \
-            --arg readme "$(base64 -w 0 README.md)" \
-            --arg changelog "$(base64 -w 0 CHANGELOG.md)" \
+            --rawfile main_zig /tmp/main_zig.b64 \
+            --rawfile readme /tmp/readme.b64 \
+            --rawfile changelog /tmp/changelog.b64 \
             '{
               query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
               variables: {
