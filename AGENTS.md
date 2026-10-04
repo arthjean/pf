@@ -384,7 +384,7 @@ Do not document intended behavior as if it already exists.
 
 Releases use a two-workflow pipeline, Prepare Release then Release. The maintainer controls the changelog voice and format. `CONTRIBUTING.md` (Releases) documents the full pipeline: signing, protected environments, the R2 host, minisign key rotation, CDN Backfill, and the go-live checklist.
 
-pf publishes no release yet. `release.yml`, `dev-release.yml`, `publish-libpf.yml`, and `cdn-backfill.yml` run only on manual dispatch, `release.yml` defaults to `validate_only` and `cdn-backfill.yml` to `dry-run`, and every job that holds a signing key or R2 credentials waits for approval in a protected environment (`apple-signing`, `windows-signing`, `release`). An automatic trigger returns only through the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). Merging a version bump starts no release.
+pf publishes no release yet and does not distribute the `libpf` JavaScript SDK. `release.yml`, `dev-release.yml`, and `cdn-backfill.yml` run only on manual dispatch, `release.yml` defaults to `validate_only`, `dev-release.yml` to `dry_run`, and `cdn-backfill.yml` to `dry-run`, and every job that holds a signing key or R2 credentials waits for approval in a protected environment (`apple-signing`, `windows-signing`, `release`). An automatic trigger returns only through the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). Merging a version bump starts no release.
 
 ### Prepare the release
 

@@ -538,7 +538,15 @@ If the secret key leaks, skip the wait: remove the leaked key from both slots, p
 
 ### Dev channel
 
-`dev-release.yml` runs only on manual dispatch and still carries inherited upload steps that target storage pf does not own, so it publishes nothing. US-019 in `tasks/prd-pf-distribution.md` rebuilds it as a minisign-signed dry run. `pf upgrade --channel dev` and `pf upgrade --channel stable` store the chosen channel in user settings for manual upgrades, automatic upgrades, and the `ctrl+g` handoff; neither channel has a published build yet.
+`dev-release.yml` runs only on manual dispatch, and its `dry_run` input defaults to `true`. It builds all five targets from the dispatched commit with `-Dupdate-channel=dev`. Under the `release` approval it signs every archive with the pf minisign key, using the trusted comment `file:<archive> version:vX.Y.Z channel:dev commit:<sha>`, verifies each signature, and runs `scripts/publish-release.sh --dev --dry-run`, which lists every destination without writing.
+
+Dev builds carry minisign signatures only: the macOS binaries are not signed with the Apple Developer ID or notarized, `pf.exe` is not signed with Azure Artifact Signing, and no provenance attestation is produced.
+
+With `dry_run` disabled on `main`, a second `release` approval runs `scripts/publish-release.sh --dev`. It uploads the files to `agent/dev/<commit>/` with the immutable cache header, then writes `agent/dev.json` with `Cache-Control: no-cache` only while `main` still points at that commit. Last, it removes the oldest dev builds beyond the newest 30, never the one `dev.json` names. pf refuses a dev archive whose trusted comment names a commit other than the one in `dev.json`.
+
+`pf upgrade --channel dev` and `pf upgrade --channel stable` store the chosen channel in user settings for manual upgrades, automatic upgrades, and the `ctrl+g` handoff; neither channel has a published build yet.
+
+pf does not distribute the `libpf` JavaScript SDK: there is no npm package and no example applications. CI still builds and tests `sdk/`, and the benchmarks still measure it.
 
 ### Release notes
 
@@ -584,8 +592,7 @@ Run these steps in order, in one session, when Arthur decides the CLI is ready. 
 4. **Update the Windows notes.** Remove "Release downloads and `pf upgrade`" from the README list of features not yet available on Windows, and add the recovery note: if an upgrade is interrupted and `pf.exe` is missing, rename `pf.exe.old` in the same directory back to `pf.exe`. Changes `README.md`. Rollback: revert the commit.
 5. **Upgrade from a previous build.** On Linux, macOS, and Windows, build the commit before the version bump with `zig build -Doptimize=ReleaseSafe`, run its `pf upgrade`, and confirm that `pf --version` reports `X.Y.Z` and that a second `pf upgrade` reports pf up to date. Changes no file. Rollback: a failed upgrade leaves the installed binary unchanged; fix pf and publish a higher version.
 6. **Decide the release trigger.** Keep `release.yml` dispatch-only, or restore a push trigger that releases when a merged version bump has no tag. Changes `.github/workflows/release.yml` and `ReleaseWorkflowTests` in `scripts/tests/test_publish_release.py`. Rollback: restore the dispatch-only trigger.
-7. **Restore the dev channel.** Once US-019 lands, restore the automatic `dev-release.yml` trigger after a successful CI run on `main`. Changes `.github/workflows/dev-release.yml`. Rollback: return it to dispatch-only; installed dev builds move on at the next dev build.
-8. **Publish libpf, if US-020 ships it.** Dispatch `publish-libpf.yml` for the first `libpf` version. Changes `sdk/package.json` and `.github/workflows/publish-libpf.yml` as US-020 specifies. Rollback: `npm deprecate` the version and publish a higher one; npm allows unpublishing only within 72 hours.
+7. **Restore the dev channel.** Dispatch `dev-release.yml` with `dry_run: false` once and approve both `release` waits. Then restore its automatic trigger after a successful CI run on `main`, and have the `metadata` job resolve the commit from `github.event.workflow_run.head_sha`. Changes `.github/workflows/dev-release.yml` and `DevReleaseWorkflowTests` in `scripts/tests/test_publish_release.py`. Rollback: return it to dispatch-only; installed dev builds move on at the next dev build.
 
 ## Benchmarks
 

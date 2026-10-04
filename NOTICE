@@ -19,7 +19,10 @@ and has been modified since. Notable modifications:
   publishes to pf's own storage instead of Vercel's. The CDN backfill
   restores that storage from GitHub Releases after verifying every
   signature, and release preparation drafts the changelog through the AI
-  Gateway only when asked.
+  Gateway only when asked. Dev builds are signed with the same minisign key,
+  and their signature names the commit they were built from.
+- pf does not distribute the JavaScript SDK: the npm publishing workflow and
+  the example applications are removed.
 - pf builds and runs natively on Windows x86_64: profile and temp paths,
   private state, the console UI, command execution through Git Bash or
   PowerShell inside Job Objects, line-ending-preserving edits, and
