@@ -32,6 +32,7 @@ export const WINDOWS_E2E_FILES: readonly string[] = [
   // MCP
   "mcp-http.test.ts",
   "mcp-legacy-remote.test.ts",
+  "windows-mcp-oauth.test.ts",
   // Headless agent runs
   "file-tool-permissions.test.ts",
   "session-title.test.ts",

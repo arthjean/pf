@@ -9,50 +9,92 @@ const poll_ms: i64 = 100;
 
 /// Listens for an OAuth callback on 127.0.0.1:`port`; port 0 picks a free one.
 /// On Windows `std.Io.net` binds every listener with shared access, so another
-/// program could hold the same fixed port without an error. A fixed Windows
-/// port is therefore bound through Winsock with `SO_EXCLUSIVEADDRUSE`, and a
-/// port another program holds returns `error.AddressInUse`.
+/// program could bind the same port and receive the redirect. Windows ports,
+/// fixed or picked, are therefore bound through Winsock with
+/// `SO_EXCLUSIVEADDRUSE`, and a port another program holds returns
+/// `error.AddressInUse`.
 pub fn listenLoopback(port: u16) !std.Io.net.Server {
     const address: std.Io.net.IpAddress = .{ .ip4 = .loopback(port) };
-    if (comptime builtin.os.tag == .windows) {
-        if (port != 0) return listenExclusiveWindows(address);
-    }
+    if (comptime builtin.os.tag == .windows) return listenExclusiveWindows(address);
     return address.listen(io_mod.getIo(), .{ .reuse_address = true });
 }
 
-fn listenExclusiveWindows(address: std.Io.net.IpAddress) !std.Io.net.Server {
+/// Listens on a Windows loopback `address`, IPv4 or IPv6, with
+/// `SO_EXCLUSIVEADDRUSE`. Port 0 picks a free port, which the returned
+/// server's address names. A port another program holds returns
+/// `error.AddressInUse`, and a host without that address family returns
+/// `error.AddressFamilyUnsupported` or `error.AddressUnavailable`.
+pub fn listenExclusiveWindows(address: std.Io.net.IpAddress) error{
+    OAuthCallbackListenerFailed,
+    AddressInUse,
+    AddressFamilyUnsupported,
+    AddressUnavailable,
+}!std.Io.net.Server {
     const win32 = @import("../shared/win32.zig");
     const ws2_32 = std.os.windows.ws2_32;
     var wsa_data: win32.WSADATA = undefined;
     if (win32.WSAStartup(0x0202, &wsa_data) != 0) return error.OAuthCallbackListenerFailed;
+    const family: i32 = switch (address) {
+        .ip4 => ws2_32.AF.INET,
+        .ip6 => ws2_32.AF.INET6,
+    };
     const socket = win32.WSASocketW(
-        ws2_32.AF.INET,
+        family,
         ws2_32.SOCK.STREAM,
         ws2_32.IPPROTO.TCP,
         null,
         0,
         win32.WSA_FLAG_OVERLAPPED | win32.WSA_FLAG_NO_HANDLE_INHERIT,
     );
-    if (socket == std.os.windows.INVALID_HANDLE_VALUE) return error.OAuthCallbackListenerFailed;
+    if (socket == std.os.windows.INVALID_HANDLE_VALUE) {
+        return if (win32.WSAGetLastError() == win32.WSAEAFNOSUPPORT)
+            error.AddressFamilyUnsupported
+        else
+            error.OAuthCallbackListenerFailed;
+    }
     errdefer _ = win32.closesocket(socket);
     const enable: i32 = 1;
     if (win32.setsockopt(socket, ws2_32.SOL.SOCKET, win32.SO_EXCLUSIVEADDRUSE, std.mem.asBytes(&enable), @sizeOf(i32)) != 0) {
         return error.OAuthCallbackListenerFailed;
     }
-    const sockaddr: ws2_32.sockaddr.in = .{
-        .port = std.mem.nativeToBig(u16, address.ip4.port),
-        .addr = @bitCast(address.ip4.bytes),
+    const bind_result = switch (address) {
+        .ip4 => |value| ip4: {
+            const sockaddr: ws2_32.sockaddr.in = .{
+                .port = std.mem.nativeToBig(u16, value.port),
+                .addr = @bitCast(value.bytes),
+            };
+            break :ip4 win32.bind(socket, @ptrCast(&sockaddr), @sizeOf(ws2_32.sockaddr.in));
+        },
+        .ip6 => |value| ip6: {
+            const sockaddr: ws2_32.sockaddr.in6 = .{
+                .port = std.mem.nativeToBig(u16, value.port),
+                .flowinfo = value.flow,
+                .addr = value.bytes,
+                .scope_id = value.interface.index,
+            };
+            break :ip6 win32.bind(socket, @ptrCast(&sockaddr), @sizeOf(ws2_32.sockaddr.in6));
+        },
     };
-    if (win32.bind(socket, @ptrCast(&sockaddr), @sizeOf(ws2_32.sockaddr.in)) != 0) {
+    if (bind_result != 0) {
         return switch (win32.WSAGetLastError()) {
             // EACCES: the holder bound with SO_EXCLUSIVEADDRUSE.
             win32.WSAEADDRINUSE, win32.WSAEACCES => error.AddressInUse,
+            win32.WSAEADDRNOTAVAIL => error.AddressUnavailable,
+            win32.WSAEAFNOSUPPORT => error.AddressFamilyUnsupported,
             else => error.OAuthCallbackListenerFailed,
         };
     }
     if (win32.listen(socket, std.Io.net.default_kernel_backlog) != 0) return error.OAuthCallbackListenerFailed;
+    var bound = address;
+    if (address.getPort() == 0) {
+        var storage: ws2_32.sockaddr.in6 = undefined;
+        var length: i32 = @sizeOf(ws2_32.sockaddr.in6);
+        if (win32.getsockname(socket, @ptrCast(&storage), &length) != 0) return error.OAuthCallbackListenerFailed;
+        // The port sits at the same offset in both address families.
+        bound.setPort(std.mem.bigToNative(u16, storage.port));
+    }
     return .{
-        .socket = .{ .handle = socket, .address = address },
+        .socket = .{ .handle = socket, .address = bound },
         .options = .{ .mode = .stream, .protocol = .tcp },
     };
 }
@@ -122,6 +164,20 @@ pub fn await_form(
     origin: []const u8,
 ) !?Accepted(Callback) {
     return await_request(Callback, parse, alloc, listener, parser_context, .{ .caller = cancel_flag, .runtime = lifecycle_cancel_flag }, null, origin);
+}
+
+/// Like `await`, for a caller that carries its own cancel flag and the
+/// runtime's, either of which may be absent.
+pub fn awaitCancellable(
+    comptime Callback: type,
+    comptime parse: fn (?*anyopaque, Allocator, []const u8) ParseResult(Callback),
+    alloc: Allocator,
+    listener: *std.Io.net.Server,
+    parser_context: ?*anyopaque,
+    cancel_flag: ?*const std.atomic.Value(bool),
+    lifecycle_cancel_flag: ?*const std.atomic.Value(bool),
+) !?Accepted(Callback) {
+    return await_request(Callback, parse, alloc, listener, parser_context, .{ .caller = cancel_flag, .runtime = lifecycle_cancel_flag }, null, null);
 }
 
 const Cancellation = struct {
@@ -547,6 +603,30 @@ test "loopback callback listener reports a fixed port another program holds" {
     var holder = try holder_address.listen(zio, .{});
     defer holder.deinit(zio);
     try std.testing.expectError(error.AddressInUse, listenLoopback(holder.socket.address.getPort()));
+}
+
+test "loopback callback listener holds a picked Windows port exclusively" {
+    // Only Windows binds listeners with shared access by default.
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    const zio = io_mod.getIo();
+    var listener = try listenLoopback(0);
+    defer listener.deinit(zio);
+    const port = listener.socket.address.getPort();
+    try std.testing.expect(port != 0);
+
+    // A shared bind by another program cannot take the picked port.
+    const intruder_address: std.Io.net.IpAddress = .{ .ip4 = .loopback(port) };
+    if (intruder_address.listen(zio, .{ .reuse_address = true })) |intruder| {
+        var bound = intruder;
+        bound.deinit(zio);
+        return error.TestUnexpectedResult;
+    } else |_| {}
+
+    // The picked port accepts like any listener.
+    const client = try listener.socket.address.connect(zio, .{ .mode = .stream });
+    defer client.close(zio);
+    const accepted = try listener.accept(zio);
+    accepted.close(zio);
 }
 
 const TestCallback = struct {

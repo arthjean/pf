@@ -556,6 +556,8 @@ pub const WSA_FLAG_OVERLAPPED: windows.DWORD = 0x01;
 pub const WSA_FLAG_NO_HANDLE_INHERIT: windows.DWORD = 0x80;
 pub const WSAEACCES: i32 = 10013;
 pub const WSAEADDRINUSE: i32 = 10048;
+pub const WSAEAFNOSUPPORT: i32 = 10047;
+pub const WSAEADDRNOTAVAIL: i32 = 10049;
 
 pub extern "ws2_32" fn WSAStartup(
     wVersionRequested: windows.WORD,
@@ -588,5 +590,11 @@ pub extern "ws2_32" fn bind(
 ) callconv(.winapi) i32;
 
 pub extern "ws2_32" fn listen(s: windows.HANDLE, backlog: i32) callconv(.winapi) i32;
+
+pub extern "ws2_32" fn getsockname(
+    s: windows.HANDLE,
+    name: *windows.ws2_32.sockaddr,
+    namelen: *i32,
+) callconv(.winapi) i32;
 
 pub extern "ws2_32" fn closesocket(s: windows.HANDLE) callconv(.winapi) i32;

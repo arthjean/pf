@@ -1080,7 +1080,13 @@ fn callbackSocketCreation(comptime os_tag: std.Target.Os.Tag) CallbackSocketCrea
     };
 }
 
-fn listenPinnedCallback(address: std.Io.net.IpAddress) std.Io.net.IpAddress.ListenError!std.Io.net.Server {
+const PinnedCallbackListenError = std.Io.net.IpAddress.ListenError || error{OAuthCallbackListenerFailed};
+
+fn listenPinnedCallback(address: std.Io.net.IpAddress) PinnedCallbackListenError!std.Io.net.Server {
+    // A `std.Io.net` listener on Windows binds with shared access, so another
+    // program could hold the pinned port too. The exclusive Winsock bind
+    // refuses a port in use, as the POSIX path below does.
+    if (comptime builtin.os.tag == .windows) return browser_callback.listenExclusiveWindows(address);
     const posix = std.posix;
     const SocketAddress = extern union {
         any: posix.sockaddr,
@@ -1193,7 +1199,7 @@ fn listenPinnedCallback(address: std.Io.net.IpAddress) std.Io.net.IpAddress.List
     };
 }
 
-fn isUnavailableIpv6CallbackError(err: std.Io.net.IpAddress.ListenError) bool {
+fn isUnavailableIpv6CallbackError(err: PinnedCallbackListenError) bool {
     return err == error.AddressFamilyUnsupported or err == error.AddressUnavailable;
 }
 
@@ -1201,7 +1207,7 @@ pub fn authorizeInteractive(
     alloc: Allocator,
     options: InteractiveAuthorizationOptions,
 ) !AuthorizationResult {
-    if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (comptime builtin.os.tag == .wasi) {
         return error.InteractiveMcpAuthorizationUnsupported;
     }
     const bridge = try slack_bridge_config(alloc, options.endpoint, options.config);
@@ -1211,8 +1217,12 @@ pub fn authorizeInteractive(
     errdefer if (options.completion) |completion| completion.finish(false);
     const configured_port = if (bridge_origin == null) options.config.callback_port else null;
     var address = try std.Io.net.IpAddress.parse("127.0.0.1", configured_port orelse 0);
-    var listener = if (configured_port != null)
-        listenPinnedCallback(address) catch return error.McpCallbackPortUnavailable
+    var listener = if (configured_port) |port|
+        listenPinnedCallback(address) catch return pinnedPortUnavailable(port)
+    else if (comptime builtin.os.tag == .windows)
+        // A shared Windows bind would let another program bind the picked
+        // port too and receive the redirect.
+        try browser_callback.listenExclusiveWindows(address)
     else
         try address.listen(io_mod.getIo(), .{ .reuse_address = true });
     defer listener.deinit(io_mod.getIo());
@@ -1221,7 +1231,7 @@ pub fn authorizeInteractive(
         const ipv6_address = try std.Io.net.IpAddress.parse("::1", port);
         ipv6_listener = listenPinnedCallback(ipv6_address) catch |err| fallback: {
             if (isUnavailableIpv6CallbackError(err)) break :fallback null;
-            return error.McpCallbackPortUnavailable;
+            return pinnedPortUnavailable(port);
         };
     }
     defer if (ipv6_listener) |*value| value.deinit(io_mod.getIo());
@@ -1315,8 +1325,34 @@ fn slack_bridge_config(alloc: Allocator, endpoint: []const u8, client_config: Cl
     return .{ .origin = origin, .scope = scope };
 }
 
+// The pinned callback port behind the latest `McpCallbackPortUnavailable`, so
+// the error message can name it. Process-wide because the interactive UI
+// authorizes on a worker thread and formats the error on its own thread.
+var unavailable_callback_port: std.atomic.Value(u16) = .init(0);
+threadlocal var port_message_buf: [96]u8 = undefined;
+
+fn pinnedPortUnavailable(port: u16) error{McpCallbackPortUnavailable} {
+    unavailable_callback_port.store(port, .release);
+    return error.McpCallbackPortUnavailable;
+}
+
+/// Returns a message for `err`. A returned port message stays valid until the
+/// next call on the same thread.
 pub fn authentication_error_message(err: anyerror) []const u8 {
     return switch (err) {
+        error.McpCallbackPortUnavailable => port: {
+            const port = unavailable_callback_port.load(.acquire);
+            if (port == 0) break :port "The OAuth callback port is in use. Close the program using it and retry";
+            break :port std.fmt.bufPrint(
+                &port_message_buf,
+                "Port {d} is in use. Close the program using it and retry",
+                .{port},
+            ) catch "The OAuth callback port is in use. Close the program using it and retry";
+        },
+        error.McpAuthorizationCallbackTimedOut => "Authorization was not completed in time. The server remains unauthorized",
+        // The store was kept as an `.unreadable` backup, so a retry starts a
+        // new authorization.
+        error.CredentialsUndecryptable => "Your saved MCP credentials cannot be decrypted on this logon. Retry to authorize again",
         error.SlackScopeConfigurationMismatch => "Your configured Slack scopes request fewer permissions than pf requires. Authorization was not started. Custom scope subsets are not supported for the pf app. Remove the local scopes override only if you want to authorize the full shared scope set",
         else => @errorName(err),
     };
@@ -1600,6 +1636,14 @@ fn requestInteractiveAuthorization(
     if (!try ctx.open_url(ctx.open_ctx, alloc, authorization.url)) {
         return error.McpAuthorizationBrowserOpenFailed;
     }
+    if (comptime builtin.os.tag == .windows) {
+        return awaitInteractiveCallbackWindows(
+            alloc,
+            .{ ctx.listener, ctx.ipv6_listener },
+            ctx.cancellation,
+            interactive_callback_timeout_ms,
+        );
+    }
     const max_accepts = if (ctx.ipv6_listener == null)
         1
     else
@@ -1624,6 +1668,48 @@ fn requestInteractiveAuthorization(
         return response;
     }
     return error.InvalidAuthorizationCallback;
+}
+
+/// Waits for the redirect on Windows. `std.Io` reads there ignore socket
+/// timeouts, so `browser_callback` bounds every accept and read with select
+/// ticks, and it answers the browser's speculative connections and unrelated
+/// requests without ending the wait.
+fn awaitInteractiveCallbackWindows(
+    alloc: Allocator,
+    listeners: [2]?*std.Io.net.Server,
+    cancellation: operation_control.CancellationSources,
+    timeout_ms: i32,
+) !AuthorizationResponse {
+    const deadline_ms = io_mod.milliTimestamp() + timeout_ms;
+    while (io_mod.milliTimestamp() < deadline_ms) {
+        for (listeners) |maybe_listener| {
+            const listener = maybe_listener orelse continue;
+            var accepted = (try browser_callback.awaitCancellable(
+                AuthorizationResponse,
+                classifyInteractiveCallback,
+                alloc,
+                listener,
+                null,
+                cancellation.caller,
+                cancellation.runtime,
+            )) orelse continue;
+            defer accepted.deinit();
+            errdefer accepted.callback.deinit(alloc);
+            try accepted.respond(.ok);
+            return accepted.callback;
+        }
+    }
+    return error.McpAuthorizationCallbackTimedOut;
+}
+
+fn classifyInteractiveCallback(
+    _: ?*anyopaque,
+    alloc: Allocator,
+    target: []const u8,
+) browser_callback.ParseResult(AuthorizationResponse) {
+    if (!std.mem.startsWith(u8, target, "/callback?")) return .unrelated;
+    const response = parseAuthorizationRedirect(alloc, target) catch |err| return .{ .failed = err };
+    return .{ .accepted = response };
 }
 
 fn request_bridged_authorization(
@@ -2944,9 +3030,7 @@ test "interactive callback redirect honors a pinned port" {
 }
 
 test "interactive callback rejects a pinned port already listening" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
-        return error.SkipZigTest;
-    }
+    if (builtin.os.tag == .wasi) return error.SkipZigTest;
     var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
     var listener = try address.listen(std.testing.io, .{ .reuse_address = true });
     defer listener.deinit(std.testing.io);
@@ -2969,9 +3053,7 @@ test "interactive callback rejects a pinned port already listening" {
 }
 
 test "interactive callback rejects a pinned IPv6 port already listening" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
-        return error.SkipZigTest;
-    }
+    if (builtin.os.tag == .wasi) return error.SkipZigTest;
     var address = try std.Io.net.IpAddress.parse("::1", 0);
     var listener = address.listen(std.testing.io, .{ .reuse_address = true }) catch |err| switch (err) {
         error.AddressFamilyUnsupported, error.AddressUnavailable => return error.SkipZigTest,
@@ -2997,9 +3079,7 @@ test "interactive callback rejects a pinned IPv6 port already listening" {
 }
 
 test "interactive callback immediately reuses a completed pinned port" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
-        return error.SkipZigTest;
-    }
+    if (builtin.os.tag == .wasi) return error.SkipZigTest;
     var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
     var listener = try address.listen(std.testing.io, .{ .reuse_address = true });
     var listener_open = true;
@@ -3063,9 +3143,7 @@ test "pinned callback sockets create close-on-exec atomically where supported" {
 }
 
 test "interactive callback wait observes caller and lifecycle cancellation" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
-        return error.SkipZigTest;
-    }
+    if (builtin.os.tag == .wasi) return error.SkipZigTest;
     var address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
     var listener = try address.listen(std.testing.io, .{ .reuse_address = true });
     defer listener.deinit(std.testing.io);
@@ -3084,15 +3162,99 @@ test "interactive callback wait observes caller and lifecycle cancellation" {
         defer thread.join();
 
         const started_ms = io_mod.milliTimestamp();
-        try std.testing.expectError(
-            error.Cancelled,
-            waitForInteractiveCallback(&listener, null, .{
-                .caller = &caller,
-                .runtime = &runtime,
-            }),
-        );
+        const cancellation: operation_control.CancellationSources = .{
+            .caller = &caller,
+            .runtime = &runtime,
+        };
+        if (comptime builtin.os.tag == .windows) {
+            try std.testing.expectError(
+                error.Cancelled,
+                awaitInteractiveCallbackWindows(std.testing.allocator, .{ &listener, null }, cancellation, 60_000),
+            );
+        } else {
+            try std.testing.expectError(error.Cancelled, waitForInteractiveCallback(&listener, null, cancellation));
+        }
         try std.testing.expect(io_mod.milliTimestamp() - started_ms < 1_000);
     }
+}
+
+test "interactive callback on Windows answers stray requests and returns the redirect" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var listener = try browser_callback.listenLoopback(0);
+    defer listener.deinit(std.testing.io);
+    const port = listener.socket.address.getPort();
+
+    const Browser = struct {
+        fn exchange(target_port: u16, request_text: []const u8, response: []u8) !usize {
+            var address: std.Io.net.IpAddress = .{ .ip4 = .loopback(target_port) };
+            var stream = try address.connect(std.testing.io, .{ .mode = .stream });
+            defer stream.close(std.testing.io);
+            var write_buffer: [256]u8 = undefined;
+            var writer = stream.writer(std.testing.io, &write_buffer);
+            try writer.interface.writeAll(request_text);
+            try writer.interface.flush();
+            var read_buffer: [1024]u8 = undefined;
+            var reader = stream.reader(std.testing.io, &read_buffer);
+            return reader.interface.readSliceShort(response);
+        }
+
+        fn run(target_port: u16, status: *[2][12]u8) void {
+            // A speculative connection that never sends must not hold the wait.
+            var idle_address: std.Io.net.IpAddress = .{ .ip4 = .loopback(target_port) };
+            var idle = idle_address.connect(std.testing.io, .{ .mode = .stream }) catch return;
+            defer idle.close(std.testing.io);
+            var response: [512]u8 = undefined;
+            const unrelated_len = exchange(target_port, "GET /favicon.ico HTTP/1.1\r\nHost: localhost\r\n\r\n", &response) catch return;
+            @memcpy(&status[0], response[0..@min(unrelated_len, 12)]);
+            const callback_len = exchange(target_port, "GET /callback?code=the-code&state=the-state HTTP/1.1\r\nHost: localhost\r\n\r\n", &response) catch return;
+            @memcpy(&status[1], response[0..@min(callback_len, 12)]);
+        }
+    };
+    var status: [2][12]u8 = @splat(@splat(0));
+    const thread = try std.Thread.spawn(.{}, Browser.run, .{ port, &status });
+    var response = try awaitInteractiveCallbackWindows(alloc, .{ &listener, null }, .{}, 10_000);
+    defer response.deinit(alloc);
+    thread.join();
+
+    try std.testing.expectEqualStrings("the-code", response.code);
+    try std.testing.expectEqualStrings("the-state", response.state);
+    try std.testing.expectEqualStrings("HTTP/1.1 404", &status[0]);
+    try std.testing.expectEqualStrings("HTTP/1.1 200", &status[1]);
+}
+
+test "interactive callback on Windows reports the end of the authorization window" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    var listener = try browser_callback.listenLoopback(0);
+    defer listener.deinit(std.testing.io);
+    const started_ms = io_mod.milliTimestamp();
+    try std.testing.expectError(
+        error.McpAuthorizationCallbackTimedOut,
+        awaitInteractiveCallbackWindows(std.testing.allocator, .{ &listener, null }, .{}, 300),
+    );
+    try std.testing.expect(io_mod.milliTimestamp() - started_ms < 2_000);
+}
+
+test "pinned callback port conflict names the port" {
+    try std.testing.expectEqual(error.McpCallbackPortUnavailable, pinnedPortUnavailable(33418));
+    try std.testing.expectEqualStrings(
+        "Port 33418 is in use. Close the program using it and retry",
+        authentication_error_message(error.McpCallbackPortUnavailable),
+    );
+
+    // The interactive UI authorizes on a worker thread and formats the error
+    // on its own thread.
+    const Worker = struct {
+        fn run() void {
+            std.debug.assert(pinnedPortUnavailable(33419) == error.McpCallbackPortUnavailable);
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Worker.run, .{});
+    thread.join();
+    try std.testing.expectEqualStrings(
+        "Port 33419 is in use. Close the program using it and retry",
+        authentication_error_message(error.McpCallbackPortUnavailable),
+    );
 }
 
 test "refresh rejection is final only for invalid_grant" {
