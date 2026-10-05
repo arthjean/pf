@@ -53,6 +53,36 @@ pub extern "crypt32" fn CryptUnprotectData(
 
 pub extern "kernel32" fn LocalFree(hMem: ?*anyopaque) callconv(.winapi) ?*anyopaque;
 
+pub const CF_UNICODETEXT: windows.UINT = 13;
+pub const GMEM_MOVEABLE: windows.UINT = 0x0002;
+
+pub const HWND_MESSAGE: windows.HWND = @ptrFromInt(@as(usize, @bitCast(@as(isize, -3))));
+
+pub extern "user32" fn CreateWindowExW(
+    dwExStyle: windows.DWORD,
+    lpClassName: [*:0]const u16,
+    lpWindowName: ?[*:0]const u16,
+    dwStyle: windows.DWORD,
+    X: c_int,
+    Y: c_int,
+    nWidth: c_int,
+    nHeight: c_int,
+    hWndParent: ?windows.HWND,
+    hMenu: ?*anyopaque,
+    hInstance: ?windows.HINSTANCE,
+    lpParam: ?*anyopaque,
+) callconv(.winapi) ?windows.HWND;
+pub extern "user32" fn DestroyWindow(hWnd: windows.HWND) callconv(.winapi) windows.BOOL;
+pub extern "user32" fn OpenClipboard(hWndNewOwner: ?windows.HWND) callconv(.winapi) windows.BOOL;
+pub extern "user32" fn CloseClipboard() callconv(.winapi) windows.BOOL;
+pub extern "user32" fn EmptyClipboard() callconv(.winapi) windows.BOOL;
+pub extern "user32" fn SetClipboardData(uFormat: windows.UINT, hMem: ?windows.HANDLE) callconv(.winapi) ?windows.HANDLE;
+pub extern "user32" fn GetClipboardData(uFormat: windows.UINT) callconv(.winapi) ?windows.HANDLE;
+pub extern "kernel32" fn GlobalAlloc(uFlags: windows.UINT, dwBytes: usize) callconv(.winapi) ?windows.HANDLE;
+pub extern "kernel32" fn GlobalLock(hMem: windows.HANDLE) callconv(.winapi) ?*anyopaque;
+pub extern "kernel32" fn GlobalUnlock(hMem: windows.HANDLE) callconv(.winapi) windows.BOOL;
+pub extern "kernel32" fn GlobalFree(hMem: windows.HANDLE) callconv(.winapi) ?windows.HANDLE;
+
 pub const SW_SHOWNORMAL: c_int = 1;
 pub const COINIT_APARTMENTTHREADED: windows.DWORD = 0x2;
 pub const COINIT_DISABLE_OLE1DDE: windows.DWORD = 0x4;

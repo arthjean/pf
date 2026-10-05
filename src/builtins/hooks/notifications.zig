@@ -5,6 +5,8 @@ const notification_contract = @import("../../core/notifications/notification_con
 const notification_sound = @import("../../core/notifications/sound.zig");
 const debug_trace = @import("../../core/shared/debug_trace.zig");
 const app_session_runtime = @import("../../core/app/app_session_runtime.zig");
+const io_mod = @import("../../core/shared/io.zig");
+const builtin = @import("builtin");
 
 const Preferences = notification_contract.Preferences;
 const Kind = notification_contract.Kind;
@@ -197,6 +199,9 @@ fn Runtime(comptime App: type) type {
                 );
                 return;
             };
+            if (ready.attention_required > 0) notifyDesktop(app, .attention_required);
+            if (ready.turn_end_success > 0) notifyDesktop(app, .turn_end_success);
+            if (ready.turn_end_error > 0) notifyDesktop(app, .turn_end_error);
             deliver(player, .attention_required, .success, ready.attention_required);
             deliver(player, .turn_end, .success, ready.turn_end_success);
             deliver(player, .turn_end, .@"error", ready.turn_end_error);
@@ -280,11 +285,48 @@ fn Runtime(comptime App: type) type {
             }
         }
 
+        fn notifyDesktop(app: *App, event: DesktopEvent) void {
+            const sequence = desktopNotificationSequence(builtin.os.tag, io_mod.getenv("WT_SESSION"), event) orelse return;
+            app.shell.writeNotificationSequence(&app.metrics, sequence);
+        }
+
         fn emitInteractiveBell(raw: *anyopaque) void {
             const app: *App = @ptrCast(@alignCast(raw));
             app.shell.writeNotificationBell(&app.metrics);
         }
     };
+}
+
+const DesktopEvent = enum { turn_end_success, turn_end_error, attention_required };
+
+/// Windows Terminal turns OSC 777 into a desktop toast when the user enables
+/// `compatibility.allowOSC777`, and only while its window is unfocused; it
+/// ignores the sequence otherwise. It ignores OSC 9 text, so that sequence is
+/// not sent. Other terminals and platforms rely on the bell that follows.
+fn desktopNotificationSequence(
+    os_tag: std.Target.Os.Tag,
+    wt_session: ?[]const u8,
+    event: DesktopEvent,
+) ?[]const u8 {
+    if (os_tag != .windows or wt_session == null) return null;
+    return switch (event) {
+        .turn_end_success => "\x1b]777;notify;pf;Turn complete\x1b\\",
+        .turn_end_error => "\x1b]777;notify;pf;Turn failed\x1b\\",
+        .attention_required => "\x1b]777;notify;pf;pf needs your input\x1b\\",
+    };
+}
+
+test "desktop notifications target only Windows Terminal" {
+    try std.testing.expectEqualStrings(
+        "\x1b]777;notify;pf;Turn complete\x1b\\",
+        desktopNotificationSequence(.windows, "0b2f6c1e", .turn_end_success).?,
+    );
+    try std.testing.expectEqualStrings(
+        "\x1b]777;notify;pf;pf needs your input\x1b\\",
+        desktopNotificationSequence(.windows, "0b2f6c1e", .attention_required).?,
+    );
+    try std.testing.expect(desktopNotificationSequence(.windows, null, .turn_end_error) == null);
+    try std.testing.expect(desktopNotificationSequence(.linux, "0b2f6c1e", .turn_end_success) == null);
 }
 
 pub fn provider(comptime App: type) notification_contract.Provider {

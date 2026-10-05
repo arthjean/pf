@@ -13,6 +13,7 @@ pub const clipboard = host.Clipboard{
 pub const secret_store = native_secret_store.provider;
 
 fn copyToClipboard(_: ?*anyopaque, text: []const u8) host.ClipboardError!bool {
+    if (comptime builtin.os.tag == .windows) return copyToWindowsClipboard(text);
     const argv = clipboardCommand(builtin.os.tag) orelse return false;
     const io = io_mod.getIo();
     var child = std.process.spawn(io, .{
@@ -49,6 +50,59 @@ fn copyToClipboard(_: ?*anyopaque, text: []const u8) host.ClipboardError!bool {
         return error.CopyFailed;
     }
     return true;
+}
+
+/// How long a copy waits for another program to release the Windows clipboard.
+const windows_clipboard_busy_ms: i64 = 500;
+const windows_clipboard_retry_ms: u64 = 10;
+
+/// Places `text` on the Windows clipboard as `CF_UNICODETEXT`. The clipboard
+/// opens for one process at a time, so a held clipboard is retried for
+/// `windows_clipboard_busy_ms` before reporting `ClipboardBusy`.
+fn copyToWindowsClipboard(text: []const u8) host.ClipboardError!bool {
+    const win32 = @import("../shared/win32.zig");
+    const length = std.unicode.calcWtf16LeLen(text) catch {
+        debug_trace.logf("host", "clipboard copy failed reason=invalid_utf8", .{});
+        return error.CopyFailed;
+    };
+    const bytes = (length + 1) * @sizeOf(u16);
+    const memory = win32.GlobalAlloc(win32.GMEM_MOVEABLE, bytes) orelse return error.CopyFailed;
+    var owned_by_clipboard = false;
+    defer if (!owned_by_clipboard) {
+        _ = win32.GlobalFree(memory);
+    };
+    {
+        const locked = win32.GlobalLock(memory) orelse return error.CopyFailed;
+        defer _ = win32.GlobalUnlock(memory);
+        const destination: [*]u16 = @ptrCast(@alignCast(locked));
+        const written = std.unicode.wtf8ToWtf16Le(destination[0..length], text) catch return error.CopyFailed;
+        destination[written] = 0;
+    }
+
+    try openWindowsClipboard(windows_clipboard_busy_ms);
+    defer _ = win32.CloseClipboard();
+    if (!win32.EmptyClipboard().toBool()) {
+        debug_trace.logf("host", "clipboard copy failed step=empty err={t}", .{std.os.windows.GetLastError()});
+        return error.CopyFailed;
+    }
+    if (win32.SetClipboardData(win32.CF_UNICODETEXT, memory) == null) {
+        debug_trace.logf("host", "clipboard copy failed step=set err={t}", .{std.os.windows.GetLastError()});
+        return error.CopyFailed;
+    }
+    owned_by_clipboard = true;
+    return true;
+}
+
+fn openWindowsClipboard(busy_ms: i64) host.ClipboardError!void {
+    const win32 = @import("../shared/win32.zig");
+    const started_ms = io_mod.milliTimestamp();
+    while (!win32.OpenClipboard(null).toBool()) {
+        if (io_mod.milliTimestamp() - started_ms >= busy_ms) {
+            debug_trace.logf("host", "clipboard copy failed reason=busy err={t}", .{std.os.windows.GetLastError()});
+            return error.ClipboardBusy;
+        }
+        io_mod.sleep(windows_clipboard_retry_ms * std.time.ns_per_ms);
+    }
 }
 
 const ClipboardProcessResult = struct {
@@ -267,4 +321,73 @@ test "native clipboard accepts only a successful exit" {
     try std.testing.expect(!copySucceeded(.{ .signal = .TERM }));
     try std.testing.expect(!copySucceeded(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }));
     try std.testing.expect(!copySucceeded(.{ .unknown = 1 }));
+}
+
+test "Windows clipboard copy reports a clipboard another thread holds" {
+    // The Win32 clipboard exists only on Windows.
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    const win32 = @import("../shared/win32.zig");
+    const Holder = struct {
+        opened: std.atomic.Value(bool) = .init(false),
+        release: std.atomic.Value(bool) = .init(false),
+
+        fn run(self: *@This()) void {
+            // A clipboard opened without a window does not exclude other
+            // threads of this process, so the holder opens it through a
+            // message-only window, as another program's window would.
+            const class = std.unicode.utf8ToUtf16LeStringLiteral("STATIC");
+            const window = win32.CreateWindowExW(0, class, null, 0, 0, 0, 0, 0, win32.HWND_MESSAGE, null, null, null) orelse return;
+            defer _ = win32.DestroyWindow(window);
+            if (!win32.OpenClipboard(window).toBool()) return;
+            self.opened.store(true, .release);
+            while (!self.release.load(.acquire)) io_mod.sleep(5 * std.time.ns_per_ms);
+            _ = win32.CloseClipboard();
+        }
+    };
+    var holder: Holder = .{};
+    const thread = try std.Thread.spawn(.{}, Holder.run, .{&holder});
+    defer thread.join();
+    defer holder.release.store(true, .release);
+    const wait_started = io_mod.milliTimestamp();
+    while (!holder.opened.load(.acquire)) {
+        if (io_mod.milliTimestamp() - wait_started > 2_000) return error.SkipZigTest;
+        io_mod.sleep(5 * std.time.ns_per_ms);
+    }
+
+    const started_ms = io_mod.milliTimestamp();
+    try std.testing.expectError(error.ClipboardBusy, copyToClipboard(null, "held clipboard"));
+    const elapsed_ms = io_mod.milliTimestamp() - started_ms;
+    try std.testing.expect(elapsed_ms >= windows_clipboard_busy_ms);
+    try std.testing.expect(elapsed_ms < windows_clipboard_busy_ms + 1_000);
+}
+
+test "Windows clipboard copy places Unicode text and restores the previous text" {
+    // Writes the real clipboard, so it runs only on request.
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (io_mod.getenv("PF_TEST_WINDOWS_CLIPBOARD") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const previous = try readWindowsClipboardText(alloc);
+    defer if (previous) |text| alloc.free(text);
+    defer if (previous) |text| {
+        _ = copyToClipboard(null, text) catch {};
+    };
+
+    const text = "pf clipboard é ✓ 日本";
+    try std.testing.expect(try copyToClipboard(null, text));
+    const copied = (try readWindowsClipboardText(alloc)) orelse return error.TestExpectedClipboardText;
+    defer alloc.free(copied);
+    try std.testing.expectEqualStrings(text, copied);
+}
+
+/// Returns the clipboard's `CF_UNICODETEXT` as UTF-8, or null when it holds
+/// none. Test use only.
+fn readWindowsClipboardText(alloc: std.mem.Allocator) !?[]u8 {
+    const win32 = @import("../shared/win32.zig");
+    try openWindowsClipboard(windows_clipboard_busy_ms);
+    defer _ = win32.CloseClipboard();
+    const memory = win32.GetClipboardData(win32.CF_UNICODETEXT) orelse return null;
+    const locked = win32.GlobalLock(memory) orelse return null;
+    defer _ = win32.GlobalUnlock(memory);
+    const wide: [*:0]const u16 = @ptrCast(@alignCast(locked));
+    return try std.unicode.wtf16LeToWtf8Alloc(alloc, std.mem.sliceTo(wide, 0));
 }

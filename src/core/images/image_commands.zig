@@ -8,7 +8,7 @@ const edit_contract = @import("../input/editor_state.zig");
 const registered_entities = @import("../input/registered_entities.zig");
 
 /// Reported when an image clipboard request reaches a Windows build.
-const windows_clipboard_image_unavailable = "Image clipboard copy and paste are unavailable on Windows.";
+const windows_clipboard_image_unavailable = "Image paste from the clipboard is unavailable on Windows.";
 
 const InsertImageResult = enum { inserted, rejected, input_full };
 const ImageSourceLifetime = enum { retained, temporary };

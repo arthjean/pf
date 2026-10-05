@@ -1913,7 +1913,15 @@ pub fn Handlers(comptime App: type) type {
                 }, true);
                 return;
             };
-            const copied = app.clipboard().copy(last_reply) catch false;
+            const copied = app.clipboard().copy(last_reply) catch |err| copied: {
+                if (err != error.ClipboardBusy) break :copied false;
+                try app.writeDomainNotice(.{
+                    .topic = "clipboard",
+                    .tone = .@"error",
+                    .body = "The clipboard is busy in another program. Retry the copy.",
+                }, true);
+                return;
+            };
             if (!copied) {
                 try app.writeDomainNotice(.{
                     .topic = "clipboard",

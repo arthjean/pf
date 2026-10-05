@@ -10162,11 +10162,21 @@ pub const TranscriptRuntime = struct {
         self: *TranscriptRuntime,
         metrics: *Metrics,
     ) void {
-        switch (transcript_io.writeFrameBytes(self, metrics, "\x07")) {
+        self.writeNotificationSequence(metrics, "\x07");
+    }
+
+    /// Writes a complete notification escape sequence, such as a desktop
+    /// notification request, outside any frame.
+    pub fn writeNotificationSequence(
+        self: *TranscriptRuntime,
+        metrics: *Metrics,
+        sequence: []const u8,
+    ) void {
+        switch (transcript_io.writeFrameBytes(self, metrics, sequence)) {
             .complete => {},
             .partial => |partial| debug_trace.logf(
                 "notifications",
-                "terminal bell write failed accepted_bytes={d} err={s}",
+                "terminal notification write failed accepted_bytes={d} err={s}",
                 .{ partial.accepted_bytes, @errorName(partial.err) },
             ),
         }

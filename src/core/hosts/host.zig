@@ -196,7 +196,11 @@ fn unavailableSecretStoreInteractiveWrite(
     return false;
 }
 
-pub const ClipboardError = error{CopyFailed};
+pub const ClipboardError = error{
+    CopyFailed,
+    /// Another program held the clipboard for the whole retry window.
+    ClipboardBusy,
+};
 
 pub const unavailable_clipboard = Clipboard{
     .copy_fn = copyUnavailable,
