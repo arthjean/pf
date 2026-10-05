@@ -7,6 +7,8 @@
 |---------|------|--------|---------|
 | 1.0 | 2026-10-01 | Arthur Jean | Initial draft from the verified Windows audit, a native Zig 0.16 build on Windows 11, and web, documentation, and codebase research |
 | 1.1 | 2026-10-01 | Arthur Jean | EP-001 review: binary-level checks of US-002 and US-003 move to US-008, which first produces `pf.exe`; the Linux suite gate compares against the baseline |
+| 1.2 | 2026-10-05 | Arthur Jean | Q3 and Q5 decided: DPAPI on profile files; US-030 and US-031 port the detached terminal host, and US-030's exit criterion moves to the host. US-032: OSC 777 replaces OSC 9, and the image criterion covers paste |
+| 1.3 | 2026-10-05 | Arthur Jean | EP-006 review: US-028 proves user scope from the DPAPI blob's flags instead of a second Windows account, because the account binding is DPAPI's own guarantee |
 
 ## Problem Statement
 
@@ -598,7 +600,7 @@ Close the remaining feature gaps between Windows and the POSIX platforms after t
 - [ ] Given Arthur's recorded decision on Open Question Q3, when this story starts, then the backend follows that decision. This story assumes DPAPI unless the decision differs.
 - [ ] Given Windows, when the `SecretStore` (`src/core/hosts/host.zig:114`) writes a secret, then it stores the output of `CryptProtectData` with user scope and `CRYPTPROTECT_UI_FORBIDDEN` in the existing profile file layout.
 - [ ] Given an existing plaintext credential file, when pf first reads it on Windows, then it encrypts and durably replaces it, and the plaintext no longer exists on disk.
-- [ ] Given a second standard Windows account on the same machine, when it reads the credential file with read access granted, then `CryptUnprotectData` fails and no token is recovered.
+- [ ] Given a credential file written on Windows, when its DPAPI blob is inspected, then its flags hold user scope and not `CRYPTPROTECT_LOCAL_MACHINE`, so only the same Windows account can decrypt it, as [`CryptProtectData`](https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata) guarantees. Amended 2026-10-05 by Arthur: this replaces a manual check with a second Windows account, which would test DPAPI rather than pf.
 - [ ] Given decryption fails, for example over an OpenSSH key-based logon without DPAPI keys or after a profile move, when pf loads credentials, then it renames the file to a `.unreadable` backup, reports that a new sign-in is required, and never deletes the file.
 - [ ] Given Linux or macOS, when credentials are stored, then behavior is unchanged.
 
@@ -629,7 +631,7 @@ Close the remaining feature gaps between Windows and the POSIX platforms after t
 - [ ] Given the agent sends input to `python` running in a hosted session, when it reads the screen, then the REPL output appears.
 - [ ] Given a resize request, when it is applied, then `ResizePseudoConsole` changes the session size and the next screen read reflects it.
 - [ ] Given the session's shell exits, when the session is queried, then it is marked exited with the exit code.
-- [ ] Given pf exits, when its job handles close, then every process of every hosted session exits.
+- [ ] Given the terminal host exits, whether idle, stopped, or crashed, when its job handles close, then every process of every hosted session exits. Amended 2026-10-05 by the Q5 decision: hosted sessions live in the detached terminal host, as on Linux and macOS, so pf exiting alone does not end them (US-031).
 
 #### US-031: Keep hosted sessions across pf restarts on Windows
 **Description:** As a user, I want hosted terminal sessions to keep running and to be reattachable after pf restarts on Windows so that long-running work is not lost.
@@ -653,9 +655,9 @@ Close the remaining feature gaps between Windows and the POSIX platforms after t
 
 **Acceptance Criteria:**
 - [ ] Given a copy command on Windows, when it runs, then text is placed on the clipboard as `CF_UNICODETEXT` through `OpenClipboard` and `SetClipboardData`.
-- [ ] Given an image copy on Windows, when it runs, then the image is placed on the clipboard as `CF_DIB`, and the message added by US-022 is removed.
+- [ ] Given an image paste on Windows, when it runs, then pf reports "Image paste from the clipboard is unavailable on Windows." Amended 2026-10-05 by Arthur: pf has no image copy on any platform, and image paste exists only on macOS, so the US-022 message stays, worded for paste.
 - [ ] Given the clipboard is held by another process, when pf copies, then it retries for up to 500 ms and then reports that the clipboard is busy.
-- [ ] Given a turn completes while the window is unfocused, when notifications are enabled, then pf emits an OSC 9 notification on Windows Terminal, and otherwise a terminal bell.
+- [ ] Given a turn completes while notifications are enabled, when pf runs in Windows Terminal, then it emits an OSC 777 notification followed by the terminal bell, and elsewhere the bell alone. Amended 2026-10-05 by Arthur: Windows Terminal ignores OSC 9 text ([microsoft/terminal#8592](https://github.com/microsoft/terminal/issues/8592)) and shows OSC 777 as a toast only when `compatibility.allowOSC777` is enabled and its window is unfocused ([microsoft/terminal#20012](https://github.com/microsoft/terminal/pull/20012)).
 
 #### US-033: Load linked skills through symlink authorities on Windows
 **Description:** As a Windows user who links skills into a workspace, I want linked skill candidates to load and reopen as they do on Linux so that `skill_symlink_authorities` and contained links work on Windows.
@@ -669,6 +671,8 @@ Close the remaining feature gaps between Windows and the POSIX platforms after t
 - [ ] Given a link whose target lies under an external or configured symlink authority, when skills are discovered on Windows, then the linked candidate and its linked metadata load (`loadVisibleSkills discovers linked metadata through external authority`, `loadVisibleSkills discovers a linked candidate resolved via external symlink authority`).
 - [ ] Given those three tests, when this story lands, then their Windows skips are removed and they pass natively on Windows.
 - [ ] Given a link outside every authority, when skills are discovered on Windows, then it is still rejected with the same diagnostic as on Linux.
+
+**Evidence (EP-006 review, 2026-10-05):** On Windows 11, `zig build test` passed (9,478 pass, 171 skipped), and the Windows e2e subset passed all 13 files, including `windows-mcp-oauth.test.ts` and `windows-terminal-host.test.ts`. The Linux suite in WSL failed only the five baseline tests, and the Linux and macOS targets built. A ConPTY capture of a completed turn with `WT_SESSION` set holds the OSC 777 notification immediately followed by BEL. `pf status` and `pf ask` on an undecryptable credential file keep it as an `.unreadable` backup and print the edge case 18 message. `credential blob is bound to the user, not the machine` reads the flags of the blob pf writes and, as a control, of a machine-scope blob. US-029's pinned callback binds through Winsock with `SO_EXCLUSIVEADDRUSE` and returns a `std.Io.net.Server`, because a `std.Io.net` bind on Windows is shared and cannot detect a port in use. Full CI did not run.
 
 ---
 
@@ -690,7 +694,7 @@ Close the remaining feature gaps between Windows and the POSIX platforms after t
 ## Non-Functional Requirements
 
 - **Performance:** `pf.exe help` has a p50 of 40 ms or less over 20 hyperfine runs on the reference Windows 11 machine. This is an informational budget, and the Linux CI budget of 2 ms per command is unchanged. A resize renders the next frame within 500 ms. Typed input appears in the composer within 50 ms at p95, measured through the ConPTY driver.
-- **Security:** No bare executable name resolves inside the working directory (0 occurrences in the US-014 fixture test). No PowerShell command is auto-allowed by a wildcard rule (0 in the US-016 tests). A credential file that is a reparse point or has `nlink` greater than 1 is rejected (100% in the US-004 tests). From US-028, a second Windows account recovers 0 tokens from the credential file.
+- **Security:** No bare executable name resolves inside the working directory (0 occurrences in the US-014 fixture test). No PowerShell command is auto-allowed by a wildcard rule (0 in the US-016 tests). A credential file that is a reparse point or has `nlink` greater than 1 is rejected (100% in the US-004 tests). From US-028, 0 credential files are written with machine-scope DPAPI (US-028 test).
 - **Accessibility:** Every key binding available on Linux works in Windows Terminal 1.25 or later. Each exception is listed in the README Windows section. With `NO_COLOR=1`, pf emits 0 SGR color sequences in the ConPTY driver capture.
 - **Scalability:** Workspace paths up to 400 characters and file names with non-ASCII characters are created, read, edited, and canonicalized in tests (US-005, US-021).
 - **Reliability:** Durable replace retries up to 10 times within 2,000 ms on sharing violations. 0 orphaned processes remain 2 s after a timeout, cancellation, or pf exit. A console close flushes the session within 1,000 ms.
@@ -793,7 +797,9 @@ Framed as questions for engineering input:
 - **Q2 (Arthur, before US-026; reserved by CLAUDE.md, `.github/workflows/`):** What form should Windows CI take? Options: (a) add a Windows runner to `full-ci.yml` as a required job: strongest guarantee, longer CI, and the gate becomes part of the ship rule; (b) a separate informational workflow: visible signal without blocking merges; (c) local qualification only: no CI cost, no automatic protection. US-026 is blocked by this decision.
   - **Decided (Arthur, 2026-10-02):** (a), a Windows runner added to `full-ci.yml` as a required job.
 - **Q3 (Arthur, before US-028; authentication storage):** Which backend should store secrets on Windows? Options: (a) DPAPI on the existing profile files: no size limit, transparent, bound to the Windows account; (b) Credential Manager: visible in Windows settings, but limited to 2,560 bytes per secret, which some OAuth token sets exceed; (c) plaintext files under the profile ACL: parity with Linux, no protection from administrators or copied disks. The PRD assumes (a).
+  - **Decided (Arthur, 2026-10-05):** (a), DPAPI with user scope and `CRYPTPROTECT_UI_FORBIDDEN` on the existing profile files. A file that cannot be decrypted becomes a `.unreadable` backup and pf requests a new sign-in.
 - **Q4 (Arthur, after Release 1 dogfooding):** Should a follow-up PRD specify a PowerShell-aware parser so that routine PowerShell commands can use fast paths and allow rules? It depends on the review latency and cost measured in Release 1.
 - **Q5 (Arthur, before Release 3):** Is persistent hosted-session reattachment on Windows (US-031) worth its size, or is per-process session lifetime enough?
+  - **Decided (Arthur, 2026-10-05):** implement it now. US-030 and US-031 port the existing detached terminal host to Windows (ConPTY sessions, AF_UNIX endpoint) instead of adding an in-process session path that US-031 would replace. US-030's last criterion is amended accordingly.
 - **Q6 (Arthur, when Windows on ARM demand appears):** When should an `aarch64-windows-gnu` artifact ship, given that no hosted CI runner can test it?
 [/PRD]

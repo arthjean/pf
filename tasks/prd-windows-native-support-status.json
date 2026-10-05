@@ -49,10 +49,10 @@
     {
       "id": "EP-006",
       "title": "Windows parity",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "stories_total": 6,
-      "stories_done": 0
+      "stories_done": 6
     }
   ],
   "stories": [
@@ -450,37 +450,37 @@
       "id": "US-028",
       "title": "Encrypt stored credentials with DPAPI",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-004",
         "US-008"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-05",
+      "completed_at": "2026-10-05",
+      "reviewed_at": "2026-10-05"
     },
     {
       "id": "US-029",
       "title": "Complete interactive MCP OAuth on Windows",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-007",
         "US-022"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-05",
+      "completed_at": "2026-10-05",
+      "reviewed_at": "2026-10-05"
     },
     {
       "id": "US-030",
       "title": "Host terminal sessions over ConPTY",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "L",
       "blocked_by": [
@@ -488,52 +488,52 @@
         "US-015",
         "US-017"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-05",
+      "completed_at": "2026-10-05",
+      "reviewed_at": "2026-10-05"
     },
     {
       "id": "US-031",
       "title": "Keep hosted sessions across pf restarts on Windows",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "L",
       "blocked_by": [
         "US-019",
         "US-030"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-05",
+      "completed_at": "2026-10-05",
+      "reviewed_at": "2026-10-05"
     },
     {
       "id": "US-032",
       "title": "Use the Windows clipboard and notifications",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "S",
       "blocked_by": [
         "US-010"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-05",
+      "completed_at": "2026-10-05",
+      "reviewed_at": "2026-10-05"
     },
     {
       "id": "US-033",
       "title": "Load linked skills through symlink authorities on Windows",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-021"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-05",
+      "completed_at": "2026-10-05",
+      "reviewed_at": "2026-10-05"
     }
   ]
 }
