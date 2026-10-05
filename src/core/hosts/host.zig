@@ -84,6 +84,9 @@ fn ignoreTerminalTitleClear(_: ?*anyopaque) void {}
 pub const SecretStoreLoadError = std.mem.Allocator.Error || error{
     StoredKeyInsecure,
     StoredKeyUnreadable,
+    /// The stored secret is encrypted to keys this logon does not hold. It
+    /// was moved to an `.unreadable` backup, and a new sign-in is required.
+    CredentialsUndecryptable,
 };
 
 pub const SecretStoreWriteError = std.mem.Allocator.Error || error{

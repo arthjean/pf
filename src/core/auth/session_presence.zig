@@ -4,6 +4,7 @@ const host_target = @import("../hosts/target.zig");
 const io_mod = @import("../shared/io.zig");
 const profile_paths = @import("../shared/profile_paths.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
+const secret_file = @import("../shared/secret_file.zig");
 
 pub fn profileFile(
     file_name: []const u8,
@@ -92,7 +93,7 @@ fn profileFileFromHome(
         stat.nlink != 1 or
         !io_mod.isOwnerOnlyMode(stat.permissions) or
         stat.size == 0 or
-        stat.size > max_bytes)
+        stat.size > secret_file.encodedLimit(max_bytes))
     {
         return .unavailable;
     }

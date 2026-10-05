@@ -5,6 +5,7 @@ const host = @import("host.zig");
 const io_mod = @import("../shared/io.zig");
 const keychain = @import("native_keychain.zig");
 const profile_paths = @import("../shared/profile_paths.zig");
+const secret_file = @import("../shared/secret_file.zig");
 const secret = @import("../auth/secret.zig");
 
 const Allocator = std.mem.Allocator;
@@ -133,35 +134,56 @@ fn loadFromProfile(alloc: Allocator) LoadError!?[]u8 {
     };
     defer pf_dir.close(io_mod.getIo());
 
-    return loadFromDir(alloc, &pf_dir);
+    const value = try loadFromDir(alloc, &pf_dir);
+    // A reader earlier in this process moved an undecryptable key aside.
+    if (value == null and secret_file.quarantinedInProcess(alloc, pf_dir, profile_paths.api_key_file_name)) {
+        return error.CredentialsUndecryptable;
+    }
+    return value;
 }
 
 fn loadFromDir(alloc: Allocator, pf_dir: *std.Io.Dir) LoadError!?[]u8 {
-    var file = pf_dir.openFile(io_mod.getIo(), profile_paths.api_key_file_name, .{
-        .mode = .read_only,
-        .allow_directory = false,
-        .follow_symlinks = false,
-        .resolve_beneath = true,
-    }) catch |err| switch (err) {
-        error.FileNotFound => return null,
-        else => {
-            debug_trace.logf("stored_key", "load failed step=open_file err={s}", .{@errorName(err)});
+    const stored = stored: {
+        var file = pf_dir.openFile(io_mod.getIo(), profile_paths.api_key_file_name, .{
+            .mode = .read_only,
+            .allow_directory = false,
+            .follow_symlinks = false,
+            .resolve_beneath = true,
+        }) catch |err| switch (err) {
+            error.FileNotFound => return null,
+            else => {
+                debug_trace.logf("stored_key", "load failed step=open_file err={s}", .{@errorName(err)});
+                return error.StoredKeyUnreadable;
+            },
+        };
+        defer file.close(io_mod.getIo());
+
+        const stat = file.stat(io_mod.getIo()) catch |err| {
+            debug_trace.logf("stored_key", "load failed step=stat err={s}", .{@errorName(err)});
             return error.StoredKeyUnreadable;
-        },
-    };
-    defer file.close(io_mod.getIo());
+        };
+        if (stat.kind != .file or !io_mod.isOwnerOnlyMode(stat.permissions)) {
+            debug_trace.logf("stored_key", "load failed step=permissions err=StoredKeyInsecure", .{});
+            return error.StoredKeyInsecure;
+        }
 
-    const stat = file.stat(io_mod.getIo()) catch |err| {
-        debug_trace.logf("stored_key", "load failed step=stat err={s}", .{@errorName(err)});
-        return error.StoredKeyUnreadable;
+        break :stored secret_file.readStored(alloc, &file, max_key_file_bytes) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => {
+                debug_trace.logf("stored_key", "load failed step=read err={s}", .{@errorName(err)});
+                return error.StoredKeyUnreadable;
+            },
+        };
     };
-    if (stat.kind != .file or !io_mod.isOwnerOnlyMode(stat.permissions)) {
-        debug_trace.logf("stored_key", "load failed step=permissions err=StoredKeyInsecure", .{});
-        return error.StoredKeyInsecure;
-    }
-
-    const bytes = io_mod.readFileToEnd(alloc, &file, max_key_file_bytes) catch |err| switch (err) {
+    // The stored key has no writer lock, so a migration only checks that the
+    // file is unchanged before replacing it.
+    const bytes = secret_file.decode(alloc, stored, max_key_file_bytes, .{
+        .dir = pf_dir.*,
+        .name = profile_paths.api_key_file_name,
+        .lock_name = null,
+    }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
+        error.CredentialsUndecryptable => return error.CredentialsUndecryptable,
         else => {
             debug_trace.logf("stored_key", "load failed step=read err={s}", .{@errorName(err)});
             return error.StoredKeyUnreadable;
@@ -199,7 +221,7 @@ fn storeInProfile(alloc: Allocator, value: []const u8) StoreError!void {
 /// `durableReplaceVerified` creates the file at 0600 and re-stats it after the rename,
 /// so the mode this store depends on is enforced rather than assumed.
 fn storeInDir(alloc: Allocator, pf_dir: *io_mod.VerifiedDir, value: []const u8) StoreError!void {
-    io_mod.durableReplaceVerified(alloc, pf_dir, profile_paths.api_key_file_name, value) catch |err| switch (err) {
+    secret_file.replace(alloc, pf_dir, profile_paths.api_key_file_name, value) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return writeFailed("replace", err),
     };

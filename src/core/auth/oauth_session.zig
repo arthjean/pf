@@ -5,6 +5,7 @@ const host_contract = @import("../hosts/host.zig");
 const host_target = @import("../hosts/target.zig");
 const native_keychain = @import("../hosts/native_keychain.zig");
 const io_mod = @import("../shared/io.zig");
+const secret_file = @import("../shared/secret_file.zig");
 const profile_paths = @import("../shared/profile_paths.zig");
 const js_host_auth = @import("js_host_auth.zig");
 const secret = @import("secret.zig");
@@ -293,30 +294,43 @@ const KeychainObservation = union(enum) {
 };
 
 fn observeAuthFile(alloc: Allocator, pf_dir: *std.Io.Dir) !FileObservation {
-    var file = pf_dir.openFile(io_mod.getIo(), auth_file_name, .{
-        .mode = .read_only,
-        .allow_directory = false,
-        .follow_symlinks = false,
-        .resolve_beneath = true,
-    }) catch |err| switch (err) {
-        error.FileNotFound => return .absent,
-        else => {
-            debug_trace.logf("auth", "session load failed source=file step=open err={s}", .{@errorName(err)});
+    const stored = stored: {
+        var file = pf_dir.openFile(io_mod.getIo(), auth_file_name, .{
+            .mode = .read_only,
+            .allow_directory = false,
+            .follow_symlinks = false,
+            .resolve_beneath = true,
+        }) catch |err| switch (err) {
+            error.FileNotFound => return .absent,
+            else => {
+                debug_trace.logf("auth", "session load failed source=file step=open err={s}", .{@errorName(err)});
+                return .unusable;
+            },
+        };
+        defer file.close(io_mod.getIo());
+
+        const stat = file.stat(io_mod.getIo()) catch |err| {
+            debug_trace.logf("auth", "session load failed source=file step=stat err={s}", .{@errorName(err)});
             return .unusable;
-        },
-    };
-    defer file.close(io_mod.getIo());
+        };
+        if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
+            debug_trace.logf("auth", "session load failed source=file step=permissions err=InsecureAuthFile", .{});
+            return .unusable;
+        }
 
-    const stat = file.stat(io_mod.getIo()) catch |err| {
-        debug_trace.logf("auth", "session load failed source=file step=stat err={s}", .{@errorName(err)});
-        return .unusable;
+        break :stored secret_file.readStored(alloc, &file, max_auth_file_bytes) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+            else => {
+                debug_trace.logf("auth", "session load failed source=file step=read err={s}", .{@errorName(err)});
+                return .unusable;
+            },
+        };
     };
-    if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
-        debug_trace.logf("auth", "session load failed source=file step=permissions err=InsecureAuthFile", .{});
-        return .unusable;
-    }
-
-    const bytes = io_mod.readFileToEnd(alloc, &file, max_auth_file_bytes) catch |err| switch (err) {
+    const bytes = secret_file.decode(alloc, stored, max_auth_file_bytes, .{
+        .dir = pf_dir.*,
+        .name = auth_file_name,
+        .lock_name = null,
+    }) catch |err| switch (err) {
         error.OutOfMemory => return err,
         else => {
             debug_trace.logf("auth", "session load failed source=file step=read err={s}", .{@errorName(err)});
@@ -410,7 +424,7 @@ const NativeMutation = struct {
     fn saveFile(self: *Mutation, alloc: Allocator, session: Session) !void {
         const text = try stringify(alloc, session);
         defer secret.zeroAndFree(alloc, text);
-        try io_mod.durableReplaceVerified(alloc, &self.pf_dir, auth_file_name, text);
+        try secret_file.replace(alloc, &self.pf_dir, auth_file_name, text);
     }
 
     pub fn delete(self: *Mutation, alloc: Allocator) !DeleteResult {
@@ -656,7 +670,12 @@ pub fn load(alloc: Allocator) !?Session {
     };
     defer pf_dir.close(io_mod.getIo());
 
-    return loadFromDir(alloc, &pf_dir);
+    const session = try loadFromDirWithLock(alloc, &pf_dir, mutation_lock_file_name);
+    // A reader earlier in this process moved an undecryptable file aside.
+    if (session == null and secret_file.quarantinedInProcess(alloc, pf_dir, auth_file_name)) {
+        return error.CredentialsUndecryptable;
+    }
+    return session;
 }
 
 fn loadFromHost(alloc: Allocator, store: js_host_auth.SessionStore) !?Session {
@@ -665,28 +684,45 @@ fn loadFromHost(alloc: Allocator, store: js_host_auth.SessionStore) !?Session {
     return try parseStoredSession(alloc, stored.bytes);
 }
 
+/// Loads the session while the caller holds the mutation lock.
 fn loadFromDir(alloc: Allocator, pf_dir: *std.Io.Dir) !?Session {
-    var file = pf_dir.openFile(io_mod.getIo(), auth_file_name, .{
-        .mode = .read_only,
-        .allow_directory = false,
-        .follow_symlinks = false,
-        .resolve_beneath = true,
-    }) catch |err| switch (err) {
-        error.FileNotFound => return null,
-        else => {
-            debug_trace.logf("auth", "session load failed step=open_file err={s}", .{@errorName(err)});
-            return session_presence.storageError(auth_file_name, err);
-        },
+    return loadFromDirWithLock(alloc, pf_dir, null);
+}
+
+/// `lock_name` names the mutation lock to take for a legacy file migration,
+/// or is null when the caller already holds it.
+fn loadFromDirWithLock(alloc: Allocator, pf_dir: *std.Io.Dir, lock_name: ?[]const u8) !?Session {
+    const stored = stored: {
+        var file = pf_dir.openFile(io_mod.getIo(), auth_file_name, .{
+            .mode = .read_only,
+            .allow_directory = false,
+            .follow_symlinks = false,
+            .resolve_beneath = true,
+        }) catch |err| switch (err) {
+            error.FileNotFound => return null,
+            else => {
+                debug_trace.logf("auth", "session load failed step=open_file err={s}", .{@errorName(err)});
+                return session_presence.storageError(auth_file_name, err);
+            },
+        };
+        defer file.close(io_mod.getIo());
+
+        const stat = file.stat(io_mod.getIo()) catch |err| return session_presence.storageError(auth_file_name, err);
+        if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
+            debug_trace.logf("auth", "session load failed step=permissions err=InsecureAuthFile", .{});
+            return error.InsecureAuthFile;
+        }
+
+        break :stored secret_file.readStored(alloc, &file, max_auth_file_bytes) catch |err| return session_presence.storageError(auth_file_name, err);
     };
-    defer file.close(io_mod.getIo());
-
-    const stat = file.stat(io_mod.getIo()) catch |err| return session_presence.storageError(auth_file_name, err);
-    if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
-        debug_trace.logf("auth", "session load failed step=permissions err=InsecureAuthFile", .{});
-        return error.InsecureAuthFile;
-    }
-
-    const bytes = io_mod.readFileToEnd(alloc, &file, max_auth_file_bytes) catch |err| return session_presence.storageError(auth_file_name, err);
+    const bytes = secret_file.decode(alloc, stored, max_auth_file_bytes, .{
+        .dir = pf_dir.*,
+        .name = auth_file_name,
+        .lock_name = lock_name,
+    }) catch |err| switch (err) {
+        error.CredentialsUndecryptable => return err,
+        else => return session_presence.storageError(auth_file_name, err),
+    };
     defer secret.zeroAndFree(alloc, bytes);
     return try parseStoredSession(alloc, bytes);
 }
@@ -1398,14 +1434,12 @@ test "oauth session loading propagates allocation failures" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    var file = try tmp.dir.createFile(std.testing.io, auth_file_name, .{
-        .permissions = io_mod.private_file_permissions,
-    });
-    try file.writeStreamingAll(
-        std.testing.io,
-        test_session_json,
-    );
-    file.close(std.testing.io);
+    // Stored in the platform format, so no load migrates it and every
+    // allocation-failure run reads the same bytes.
+    // A durable replace syncs the directory, which needs a readable handle.
+    var dir: io_mod.VerifiedDir = .{ .dir = try tmp.dir.openDir(std.testing.io, ".", .{ .iterate = true, .follow_symlinks = false }) };
+    defer dir.close();
+    try secret_file.replace(std.testing.allocator, &dir, auth_file_name, test_session_json);
 
     try std.testing.checkAllAllocationFailures(
         std.testing.allocator,

@@ -1917,6 +1917,11 @@ pub fn Runtime(comptime App: type) type {
                     "{s}: Saved credential storage is unavailable.\nCheck credential storage, then press enter to retry. Your prompt is saved.",
                     .{source_label},
                 ),
+                .undecryptable => std.fmt.allocPrint(
+                    alloc,
+                    "{s}: Your saved credentials cannot be decrypted on this logon.\npress enter to sign in again. Your prompt is saved.",
+                    .{source_label},
+                ),
                 .persistence_uncertain => std.fmt.allocPrint(
                     alloc,
                     "{s} refresh could not be saved.\npress enter to sign in again. Your prompt is saved.",

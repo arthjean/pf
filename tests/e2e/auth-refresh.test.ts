@@ -16,6 +16,7 @@ import { runPf } from "../evals/eval-helpers";
 import {
   FAKE_GATEWAY_MODEL,
   fakeGatewayFinalText,
+  readCredentialFile,
   startFakeGateway,
 } from "./tmux-helpers";
 
@@ -287,7 +288,7 @@ test(
       expect(oauth.requests[3].body).toContain("refresh_token=first-rotated-refresh-token");
 
       const persisted = JSON.parse(
-        readFileSync(join(home, ".pf", "auth.json"), "utf8"),
+        readCredentialFile(join(home, ".pf", "auth.json")),
       );
       expect(persisted.access_token).toBe(RETRY_REFRESH_TOKEN);
       expect(persisted.refresh_token).toBe("second-rotated-refresh-token");
@@ -344,9 +345,10 @@ test(
       expect(authCheck.status).toBe("warn");
       expect(authCheck.detail).toContain("session expired");
 
-      // A read-only diagnostic must neither contact the issuer nor rewrite the session.
+      // A read-only diagnostic must neither contact the issuer nor change the session.
+      // On Windows, the first read only encrypts the plaintext file with DPAPI.
       expect(oauth.requests).toEqual([]);
-      expect(readFileSync(authPath, "utf8")).toBe(seededAuthFile);
+      expect(readCredentialFile(authPath)).toBe(seededAuthFile);
       expect(status.stdout).not.toContain("expired-access-token");
       expect(doctor.stdout).not.toContain("expired-access-token");
     } finally {
@@ -579,7 +581,7 @@ test(
       expect(teams.stderr).toBe("");
 
       const persisted = JSON.parse(
-        readFileSync(join(home, ".pf", "auth.json"), "utf8"),
+        readCredentialFile(join(home, ".pf", "auth.json")),
       );
       expect(persisted).toMatchObject({
         issuer: issuerA.issuerUrl,

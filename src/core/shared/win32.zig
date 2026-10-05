@@ -22,6 +22,37 @@ pub extern "kernel32" fn MoveFileExW(
     dwFlags: windows.DWORD,
 ) callconv(.winapi) windows.BOOL;
 
+/// A byte buffer passed to and returned by the DPAPI functions. A buffer that
+/// DPAPI returns is freed with `LocalFree`.
+pub const DATA_BLOB = extern struct {
+    cbData: windows.DWORD,
+    pbData: ?[*]u8,
+};
+
+pub const CRYPTPROTECT_UI_FORBIDDEN: windows.DWORD = 0x1;
+
+pub extern "crypt32" fn CryptProtectData(
+    pDataIn: *const DATA_BLOB,
+    szDataDescr: ?[*:0]const u16,
+    pOptionalEntropy: ?*const DATA_BLOB,
+    pvReserved: ?*anyopaque,
+    pPromptStruct: ?*anyopaque,
+    dwFlags: windows.DWORD,
+    pDataOut: *DATA_BLOB,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "crypt32" fn CryptUnprotectData(
+    pDataIn: *const DATA_BLOB,
+    ppszDataDescr: ?*?[*:0]u16,
+    pOptionalEntropy: ?*const DATA_BLOB,
+    pvReserved: ?*anyopaque,
+    pPromptStruct: ?*anyopaque,
+    dwFlags: windows.DWORD,
+    pDataOut: *DATA_BLOB,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "kernel32" fn LocalFree(hMem: ?*anyopaque) callconv(.winapi) ?*anyopaque;
+
 pub const SW_SHOWNORMAL: c_int = 1;
 pub const COINIT_APARTMENTTHREADED: windows.DWORD = 0x2;
 pub const COINIT_DISABLE_OLE1DDE: windows.DWORD = 0x4;

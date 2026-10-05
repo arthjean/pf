@@ -4,10 +4,37 @@
  * `tmux-helpers.ts` re-exports everything here, so files that drive the TUI
  * through tmux keep one import.
  */
-import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { PF_BIN, REPO_ROOT } from "../evals/eval-helpers";
 
 export { PF_BIN, REPO_ROOT };
+
+const DPAPI_HEADER = "pf-dpapi-v1\n";
+
+/**
+ * Reads a credential file as text. On Windows pf encrypts credentials with
+ * DPAPI to the current account, so an encrypted file is decrypted the same
+ * way, with pf's entropy, by the same account that runs the test.
+ */
+export function readCredentialFile(path: string): string {
+  const stored = readFileSync(path);
+  if (stored.subarray(0, DPAPI_HEADER.length).toString("latin1") !== DPAPI_HEADER) {
+    return stored.toString("utf8");
+  }
+  const script =
+    "Add-Type -AssemblyName System.Security; " +
+    "$blob = [Convert]::FromBase64String($env:PF_TEST_DPAPI_BLOB); " +
+    "$entropy = [Text.Encoding]::ASCII.GetBytes('pf.credentials.v1'); " +
+    "$plain = [Security.Cryptography.ProtectedData]::Unprotect($blob, $entropy, 'CurrentUser'); " +
+    "[Console]::Out.Write([Convert]::ToBase64String($plain))";
+  const plain = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    env: { ...process.env, PF_TEST_DPAPI_BLOB: stored.subarray(DPAPI_HEADER.length).toString("base64") },
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  return Buffer.from(plain.trim(), "base64").toString("utf8");
+}
 
 /** Fails with a build instruction when the pf binary is missing. */
 export function requirePfBinary(): string {

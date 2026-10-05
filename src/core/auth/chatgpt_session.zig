@@ -3,6 +3,7 @@ const debug_trace = @import("../shared/debug_trace.zig");
 const host_target = @import("../hosts/target.zig");
 const host = @import("../hosts/host.zig");
 const io_mod = @import("../shared/io.zig");
+const secret_file = @import("../shared/secret_file.zig");
 const profile_paths = @import("../shared/profile_paths.zig");
 const types = @import("../shared/types.zig");
 const secret = @import("secret.zig");
@@ -75,7 +76,7 @@ pub const Mutation = struct {
     pub fn save(self: *Mutation, alloc: Allocator, session: Session) !void {
         const text = try stringify(alloc, session);
         defer secret.zeroAndFree(alloc, text);
-        try io_mod.durableReplaceVerified(alloc, &self.pf_dir, auth_file_name, text);
+        try secret_file.replace(alloc, &self.pf_dir, auth_file_name, text);
     }
 
     pub fn delete(self: *Mutation) !DeleteOutcome {
@@ -110,31 +111,53 @@ pub fn load(alloc: Allocator) !?Session {
         return session_presence.storageError(auth_file_name, err);
     };
     defer pf_dir.close(io_mod.getIo());
-    return loadFromDir(alloc, &pf_dir);
+    const session = try loadFromDirWithLock(alloc, &pf_dir, mutation_lock_file_name);
+    // A reader earlier in this process moved an undecryptable file aside.
+    if (session == null and secret_file.quarantinedInProcess(alloc, pf_dir, auth_file_name)) {
+        return error.CredentialsUndecryptable;
+    }
+    return session;
 }
 
+/// Loads the session while the caller holds the mutation lock.
 fn loadFromDir(alloc: Allocator, pf_dir: *std.Io.Dir) !?Session {
-    var file = pf_dir.openFile(io_mod.getIo(), auth_file_name, .{
-        .mode = .read_only,
-        .allow_directory = false,
-        .follow_symlinks = false,
-        .resolve_beneath = true,
-    }) catch |err| switch (err) {
-        error.FileNotFound => return null,
-        else => {
-            debug_trace.logf("auth", "ChatGPT session load failed step=open_file err={s}", .{@errorName(err)});
-            return session_presence.storageError(auth_file_name, err);
-        },
+    return loadFromDirWithLock(alloc, pf_dir, null);
+}
+
+/// `lock_name` names the mutation lock to take for a legacy file migration,
+/// or is null when the caller already holds it.
+fn loadFromDirWithLock(alloc: Allocator, pf_dir: *std.Io.Dir, lock_name: ?[]const u8) !?Session {
+    const stored = stored: {
+        var file = pf_dir.openFile(io_mod.getIo(), auth_file_name, .{
+            .mode = .read_only,
+            .allow_directory = false,
+            .follow_symlinks = false,
+            .resolve_beneath = true,
+        }) catch |err| switch (err) {
+            error.FileNotFound => return null,
+            else => {
+                debug_trace.logf("auth", "ChatGPT session load failed step=open_file err={s}", .{@errorName(err)});
+                return session_presence.storageError(auth_file_name, err);
+            },
+        };
+        defer file.close(io_mod.getIo());
+
+        const stat = file.stat(io_mod.getIo()) catch |err| return session_presence.storageError(auth_file_name, err);
+        if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
+            debug_trace.logf("auth", "ChatGPT session load failed step=permissions err=InsecureAuthFile", .{});
+            return error.InsecureAuthFile;
+        }
+
+        break :stored secret_file.readStored(alloc, &file, max_auth_file_bytes) catch |err| return session_presence.storageError(auth_file_name, err);
     };
-    defer file.close(io_mod.getIo());
-
-    const stat = file.stat(io_mod.getIo()) catch |err| return session_presence.storageError(auth_file_name, err);
-    if (stat.kind != .file or stat.nlink != 1 or !io_mod.isOwnerOnlyMode(stat.permissions)) {
-        debug_trace.logf("auth", "ChatGPT session load failed step=permissions err=InsecureAuthFile", .{});
-        return error.InsecureAuthFile;
-    }
-
-    const bytes = io_mod.readFileToEnd(alloc, &file, max_auth_file_bytes) catch |err| return session_presence.storageError(auth_file_name, err);
+    const bytes = secret_file.decode(alloc, stored, max_auth_file_bytes, .{
+        .dir = pf_dir.*,
+        .name = auth_file_name,
+        .lock_name = lock_name,
+    }) catch |err| switch (err) {
+        error.CredentialsUndecryptable => return err,
+        else => return session_presence.storageError(auth_file_name, err),
+    };
     defer secret.zeroAndFree(alloc, bytes);
     return parse(alloc, bytes) catch |err| switch (err) {
         error.OutOfMemory => return err,

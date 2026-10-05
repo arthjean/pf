@@ -4932,6 +4932,7 @@ test {
     _ = @import("core/shared/text_utils.zig");
     _ = @import("core/shared/console_prompt.zig");
     _ = @import("core/shared/process_job.zig");
+    _ = @import("core/shared/secret_file.zig");
     _ = @import("core/execution/shell_selection.zig");
     _ = @import("core/tooling/tool_projection.zig");
     _ = @import("core/tooling/tool_dispatch.zig");

@@ -1564,9 +1564,13 @@ fn missingCredentialResult(
     options: RunOptions,
     provider: model_provider.ProviderId,
     preferred: ?credentials.Source,
+    failure: ?auth_runtime.CredentialFailure,
 ) !PromptRunResult {
+    // The load failure lets the message say why the credential is missing,
+    // such as one Windows can no longer decrypt.
     const status = auth_runtime.StatusSnapshot{
         .required_source = auth_runtime.requestedSource(provider, preferred),
+        .failure = failure,
     };
     const message = status.missingHelp(.cli).?;
     try options.deps.write_stderr(options.deps.stderr_ctx, "pf ask: ");
@@ -1660,10 +1664,14 @@ fn runPromptInternal(alloc: Allocator, prompt: []const u8, permission_override: 
     if (cfg.auth_mode == .local and
         !options.continue_recovery and options.resume_target == null and startup.credential == null)
     {
-        if (startup.credential_load_failure) |failure| {
-            if (auth_runtime.preparationError(auth_runtime.classifyCredentialFailure(failure.source, failure.err))) |err| return err;
+        const failure = if (startup.credential_load_failure) |loaded|
+            auth_runtime.classifyCredentialFailure(loaded.source, loaded.err)
+        else
+            null;
+        if (failure) |classified| {
+            if (auth_runtime.preparationError(classified)) |err| return err;
         }
-        return missingCredentialResult(alloc, options, startup.provider, startup.credential_source_preference);
+        return missingCredentialResult(alloc, options, startup.provider, startup.credential_source_preference, failure);
     }
 
     var owned_resumed_model: ?[]u8 = null;
@@ -1814,7 +1822,7 @@ fn runPromptInternal(alloc: Allocator, prompt: []const u8, permission_override: 
                 preferred_source,
             );
             if (routed_credential == null) {
-                return missingCredentialResult(alloc, options, ctx.provider, preferred_source);
+                return missingCredentialResult(alloc, options, ctx.provider, preferred_source, null);
             }
             break :routed &routed_credential.?;
         };

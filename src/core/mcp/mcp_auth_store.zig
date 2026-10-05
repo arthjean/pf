@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const mcp_auth = @import("mcp_auth.zig");
 const native_keychain = @import("../hosts/native_keychain.zig");
 const io_mod = @import("../shared/io.zig");
+const secret_file = @import("../shared/secret_file.zig");
 const mem_utils = @import("../shared/mem_utils.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const profile_paths = @import("../shared/profile_paths.zig");
@@ -546,26 +547,34 @@ fn loadStoreControlled(
 }
 
 fn loadFromDir(alloc: Allocator, dir: *io_mod.VerifiedDir) !?Store {
-    var file = dir.dir.openFile(
-        io_mod.getIo(),
-        profile_paths.mcp_credentials_file_name,
-        .{
-            .mode = .read_only,
-            .allow_directory = false,
-            .follow_symlinks = false,
-            .resolve_beneath = true,
-        },
-    ) catch |err| switch (err) {
-        error.FileNotFound => return null,
-        else => return err,
+    const stored = stored: {
+        var file = dir.dir.openFile(
+            io_mod.getIo(),
+            profile_paths.mcp_credentials_file_name,
+            .{
+                .mode = .read_only,
+                .allow_directory = false,
+                .follow_symlinks = false,
+                .resolve_beneath = true,
+            },
+        ) catch |err| switch (err) {
+            error.FileNotFound => return null,
+            else => return err,
+        };
+        defer file.close(io_mod.getIo());
+        const stat = try file.stat(io_mod.getIo());
+        if (stat.kind != .file or stat.nlink != 1) return error.DurablePathUnsafe;
+        if (!io_mod.isPrivateFileMode(stat.permissions)) {
+            return error.PrivateStatePermissionsUnsupported;
+        }
+        // Every load holds the store lock, so a migration needs no other lock.
+        break :stored try secret_file.readStored(alloc, &file, max_store_bytes);
     };
-    defer file.close(io_mod.getIo());
-    const stat = try file.stat(io_mod.getIo());
-    if (stat.kind != .file or stat.nlink != 1) return error.DurablePathUnsafe;
-    if (!io_mod.isPrivateFileMode(stat.permissions)) {
-        return error.PrivateStatePermissionsUnsupported;
-    }
-    const bytes = try io_mod.readFileToEnd(alloc, &file, max_store_bytes);
+    const bytes = try secret_file.decode(alloc, stored, max_store_bytes, .{
+        .dir = dir.dir,
+        .name = profile_paths.mcp_credentials_file_name,
+        .lock_name = null,
+    });
     defer secret.zeroAndFree(alloc, bytes);
     return try parseStore(alloc, bytes);
 }
@@ -711,7 +720,7 @@ fn writeStoreToFile(
 ) !void {
     const bytes = try serializeStore(alloc, store);
     defer secret.zeroAndFree(alloc, bytes);
-    try io_mod.durableReplaceVerified(
+    try secret_file.replace(
         alloc,
         dir,
         profile_paths.mcp_credentials_file_name,

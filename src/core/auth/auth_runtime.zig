@@ -56,6 +56,9 @@ pub const CredentialFailureReason = enum {
     invalid_storage,
     persistence_uncertain,
     authority_changed,
+    /// Windows cannot decrypt the saved credential on this logon. The file was
+    /// kept as an `.unreadable` backup, and a new sign-in replaces it.
+    undecryptable,
 };
 
 pub const CredentialFailure = struct {
@@ -67,7 +70,9 @@ pub const CredentialFailure = struct {
     }
 
     pub fn requiresSignIn(self: CredentialFailure) bool {
-        return self.reason == .invalid_credential or self.reason == .persistence_uncertain;
+        return self.reason == .invalid_credential or
+            self.reason == .persistence_uncertain or
+            self.reason == .undecryptable;
     }
 };
 
@@ -86,6 +91,7 @@ pub fn classifyCredentialFailure(
             error.CredentialRefreshRejected,
             error.CredentialRefreshUnavailable,
             => .invalid_credential,
+            error.CredentialsUndecryptable => .undecryptable,
             error.InvalidAuthSession,
             error.InvalidOAuthKeychainSession,
             error.InvalidOAuthStorageState,
@@ -390,13 +396,17 @@ test "requested credential source follows provider authority" {
 
 pub fn preparationError(failure: CredentialFailure) ?CredentialPreparationError {
     return switch (failure.reason) {
-        .invalid_credential => null,
+        .invalid_credential, .undecryptable => null,
         .invalid_storage => error.CredentialStorageUnavailable,
         .temporary_unavailable => error.CredentialTemporarilyUnavailable,
         .persistence_uncertain => error.CredentialRefreshPersistenceUncertain,
         .authority_changed => error.CredentialAuthorityChanged,
     };
 }
+
+/// Shown once when Windows cannot decrypt a saved credential, such as over an
+/// OpenSSH key-based logon or after a profile move.
+pub const undecryptable_notice = "Your saved credentials cannot be decrypted on this logon. Sign in again.";
 
 pub fn preparationFailureNotice(err: anyerror) ?[]const u8 {
     return switch (err) {
@@ -412,6 +422,9 @@ pub fn preparationFailureNotice(err: anyerror) ?[]const u8 {
 pub fn preparationFailureText(alloc: Allocator, provider: model_provider.ProviderId, err: anyerror) ![]u8 {
     const label = provider_catalog.label(provider);
     const failure = classifyCredentialFailure(provider_catalog.find(provider).login_source, err);
+    if (failure.reason == .undecryptable) {
+        return std.fmt.allocPrint(alloc, "{s}: {s}", .{ label, undecryptable_notice });
+    }
     const normalized = preparationError(failure) orelse return std.fmt.allocPrint(alloc, "{s} requires a new sign-in.", .{label});
     return std.fmt.allocPrint(alloc, "{s}: {s}", .{ label, preparationFailureNotice(normalized).? });
 }
@@ -1446,6 +1459,9 @@ pub const StatusSnapshot = struct {
 
     pub fn missingHelp(self: StatusSnapshot, surface: MissingHelpSurface) ?[]const u8 {
         if (self.active_source != null) return null;
+        if (self.failure) |failure| {
+            if (failure.reason == .undecryptable) return undecryptable_notice;
+        }
         if (self.stored_key_status == .unavailable) {
             if (self.required_source == .stored_key) return switch (surface) {
                 .cli => "The selected stored API key could not be read from " ++ credentials.stored_key_backend_label ++ ". Start pf and open /provider to choose an available credential; no other credential was selected.",
@@ -3318,6 +3334,18 @@ test "credential refresh failures preserve repair and retry semantics" {
         try std.testing.expectEqual(case.expected_reason, failure.reason);
         try std.testing.expectEqual(case.expected_retryable, failure.retryable());
     }
+}
+
+test "undecryptable credentials ask for a new sign-in with their own notice" {
+    const failure = classifyCredentialFailure(.chatgpt_subscription, error.CredentialsUndecryptable);
+    try std.testing.expectEqual(CredentialFailureReason.undecryptable, failure.reason);
+    try std.testing.expect(failure.requiresSignIn());
+    try std.testing.expect(preparationError(failure) == null);
+    const status = StatusSnapshot{ .failure = failure, .stored_key_status = .unavailable };
+    try std.testing.expectEqualStrings(undecryptable_notice, status.missingHelp(.cli).?);
+    const text = try preparationFailureText(std.testing.allocator, .codex, error.CredentialsUndecryptable);
+    defer std.testing.allocator.free(text);
+    try std.testing.expect(std.mem.endsWith(u8, text, undecryptable_notice));
 }
 
 test "credential failure classification keeps storage failures out of sign-in recovery" {
