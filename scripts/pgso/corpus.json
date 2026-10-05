@@ -15,6 +15,7 @@
     "web-fetch-live.test.ts": "The suite requires explicit live-network opt-in.",
     "web-search-live.test.ts": "The suite requires a real model credential and live provider responses.",
     "windows-mcp-oauth.test.ts": "The suite runs only on Windows and skips on the macOS training host.",
+    "windows-terminal-host.test.ts": "The suite requires Windows ConPTY and skips on the macOS training host.",
     "windows-tui-smoke.test.ts": "The suite requires Windows ConPTY and skips on the macOS training host."
   },
   "defaults": {

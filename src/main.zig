@@ -3429,7 +3429,7 @@ fn mainC(c_argc: c_int, c_argv: [*][*:0]c_char, c_envp: [*:null]?[*:0]c_char) !v
             });
             defer threaded.deinit();
             io_mod.setIo(threaded.io());
-            try terminal_native_session.runControlMarker(raw_args);
+            try terminal_native_session.runControlMarker(try process_args.toSlice(processAllocator()));
             return;
         }
         if (terminal_native_session.isLauncherModeRaw(raw_args)) {
@@ -4919,6 +4919,7 @@ test {
     _ = @import("core/terminal/shell_resolver.zig");
     _ = @import("core/terminal/native_session.zig");
     _ = @import("core/terminal/conpty.zig");
+    _ = @import("core/terminal/windows_socket.zig");
     _ = @import("core/terminal/recovery.zig");
     _ = @import("core/terminal/store.zig");
     _ = @import("core/terminal/host.zig");

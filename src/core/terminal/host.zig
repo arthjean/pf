@@ -4,6 +4,7 @@ const contracts = @import("contracts.zig");
 const protocol = @import("protocol.zig");
 const terminal_operation = @import("operation.zig");
 const policy = @import("host_policy.zig");
+const windows_socket = @import("windows_socket.zig");
 const native_session = @import("native_session.zig");
 const terminal_store = @import("store.zig");
 const host_capabilities = @import("../hosts/host.zig");
@@ -55,7 +56,7 @@ pub fn validateEndpointPath(path: []const u8) !void {
 fn nativeEndpointPathLimit(target: std.Target.Os.Tag) ?usize {
     return switch (target) {
         .macos => 104,
-        .linux => 108,
+        .linux, .windows => 108,
         else => null,
     };
 }
@@ -91,19 +92,35 @@ const EndpointSelection = struct {
     }
 };
 
+/// The POSIX user id that names a fallback runtime directory. Windows has no
+/// fallback, so it has no user id either.
+const Uid = if (builtin.os.tag == .windows) u32 else std.c.uid_t;
+
+fn currentUid() Uid {
+    if (comptime builtin.os.tag == .windows) return 0;
+    return std.c.getuid();
+}
+
 fn resolveEndpointSelection(
     alloc: Allocator,
     target: std.Target.Os.Tag,
     home: []const u8,
-    uid: std.c.uid_t,
+    uid: Uid,
 ) !EndpointSelection {
-    const runtime_base = runtimeBase(target) orelse
-        return error.TerminalHostUnsupported;
+    const path_limit = nativeEndpointPathLimit(target) orelse return error.TerminalHostUnsupported;
     const authority_root = try std.fs.path.join(
         alloc,
         &.{ home, profile_paths.root_dir_name, host_dir_name },
     );
     errdefer alloc.free(authority_root);
+    // Each Windows session's launcher listens beside the endpoint under a
+    // longer name, so a home too long for it has no host rather than a host
+    // whose every session fails to start.
+    if (target == .windows and
+        authority_root.len + 1 + native_session.windows_launcher_socket_name_len >= path_limit)
+    {
+        return error.NameTooLong;
+    }
     const profile_endpoint = try std.fs.path.join(
         alloc,
         &.{ authority_root, endpoint_name },
@@ -125,6 +142,9 @@ fn resolveEndpointSelection(
         },
     }
 
+    // Windows keeps the endpoint in the profile, whose ACL makes it private;
+    // a shared temporary directory would not be.
+    const runtime_base = runtimeBase(target) orelse return error.NameTooLong;
     var hasher = std.crypto.hash.sha2.Sha256.init(.{});
     hasher.update(transport_hash_context);
     hasher.update(home);
@@ -205,7 +225,7 @@ pub const Paths = struct {
             alloc,
             builtin.os.tag,
             home,
-            std.c.getuid(),
+            currentUid(),
         );
         var selection_owned = true;
         errdefer if (selection_owned) selection.deinit(alloc);
@@ -231,7 +251,7 @@ pub const Paths = struct {
         if (selection.uses_fallback) {
             transport_dir = try openRuntimeTransportDir(
                 selection.transport_root,
-                std.c.getuid(),
+                currentUid(),
             );
         }
         selection_owned = false;
@@ -265,7 +285,7 @@ pub const Paths = struct {
 
 fn openRuntimeTransportDir(
     transport_root: []const u8,
-    uid: std.c.uid_t,
+    uid: Uid,
 ) !io_mod.VerifiedDir {
     const parent_path = std.fs.path.dirname(transport_root) orelse
         return error.RuntimeDirectoryUnsafe;
@@ -281,7 +301,7 @@ fn openRuntimeTransportDir(
 fn openVerifiedPrivateRuntimeDir(
     parent: std.Io.Dir,
     name: []const u8,
-    uid: std.c.uid_t,
+    uid: Uid,
 ) !io_mod.VerifiedDir {
     const zio = io_mod.getIo();
     var dir = parent.openDir(zio, name, .{
@@ -313,13 +333,13 @@ fn openVerifiedPrivateRuntimeDir(
     return .{ .dir = dir };
 }
 
-fn verifyPrivateRuntimeDir(dir: std.Io.Dir, uid: std.c.uid_t) !void {
+fn verifyPrivateRuntimeDir(dir: std.Io.Dir, uid: Uid) !void {
     const stat = try dir.stat(io_mod.getIo());
     const owner_uid = try directoryOwner(dir);
     try validatePrivateRuntimeDir(stat, owner_uid, uid);
 }
 
-fn directoryOwner(dir: std.Io.Dir) !std.c.uid_t {
+fn directoryOwner(dir: std.Io.Dir) !Uid {
     return switch (builtin.os.tag) {
         .linux => blk: {
             const linux = std.os.linux;
@@ -359,8 +379,8 @@ fn directoryOwner(dir: std.Io.Dir) !std.c.uid_t {
 
 fn validatePrivateRuntimeDir(
     stat: std.Io.File.Stat,
-    owner_uid: std.c.uid_t,
-    uid: std.c.uid_t,
+    owner_uid: Uid,
+    uid: Uid,
 ) !void {
     if (stat.kind != .directory) return error.RuntimeDirectoryUnsafe;
     if (owner_uid != uid) return error.RuntimeDirectoryOwnerMismatch;
@@ -451,17 +471,19 @@ fn runSupported(alloc: Allocator, config: Config) !void {
     cleanupEndpoint(paths.endpointDir());
     cleanupIdentity(&paths.host_dir);
 
-    const address = try std.Io.net.UnixAddress.init(paths.endpoint_path);
-    var server = try address.listen(io_mod.getIo(), .{});
-    defer server.deinit(io_mod.getIo());
+    var server = try Listener.listen(paths.endpoint_path);
+    defer server.deinit();
     var endpoint_created = true;
     defer if (endpoint_created) cleanupEndpoint(paths.endpointDir());
-    try paths.endpointDir().dir.setFilePermissions(
-        io_mod.getIo(),
-        endpoint_name,
-        socket_permissions,
-        .{ .follow_symlinks = false },
-    );
+    if (comptime builtin.os.tag != .windows) {
+        // Windows inherits the profile directory's ACL instead of a mode.
+        try paths.endpointDir().dir.setFilePermissions(
+            io_mod.getIo(),
+            endpoint_name,
+            socket_permissions,
+            .{ .follow_symlinks = false },
+        );
+    }
     try verifyEndpointPermissions(paths.endpointDir());
 
     var instance_bytes: [16]u8 = undefined;
@@ -509,7 +531,7 @@ fn runSupported(alloc: Allocator, config: Config) !void {
     debug_trace.logf(
         "terminal_host",
         "host listening pid={d} protocol={d}-{d}",
-        .{ std.c.getpid(), config.hello.range.minimum, config.hello.range.current },
+        .{ io_mod.currentProcessId(), config.hello.range.minimum, config.hello.range.current },
     );
     maybeDelayForTest("PF_TERMINAL_TEST_STARTUP_RECOVERY_DELAY_MS");
     if (io_mod.getenv("PF_TERMINAL_TEST_STARTUP_RECOVERY_FAILURE") != null) {
@@ -652,9 +674,58 @@ const HostStartup = struct {
     accept_failed: std.atomic.Value(bool) = .init(false),
 };
 
+/// The host endpoint. Windows listens through Winsock, which names a peer's
+/// process; `std.Io.net` listens elsewhere.
+const Listener = struct {
+    server: std.Io.net.Server,
+
+    fn listen(path: []const u8) !Listener {
+        if (comptime builtin.os.tag == .windows) {
+            const handle = try windows_socket.listen(path);
+            return .{ .server = .{
+                .socket = .{ .handle = handle, .address = .{ .ip4 = .loopback(0) } },
+                .options = .{ .mode = .stream, .protocol = null },
+            } };
+        }
+        const address = try std.Io.net.UnixAddress.init(path);
+        return .{ .server = try address.listen(io_mod.getIo(), .{}) };
+    }
+
+    /// Waits one poll interval for a connection. Returns null when none
+    /// arrived.
+    fn accept(self: *Listener) !?std.Io.net.Stream {
+        if (comptime builtin.os.tag == .windows) {
+            return windows_socket.acceptTimeout(self.server.socket.handle, listener_poll_ms) catch |err| switch (err) {
+                error.ListenerClosed => error.SocketNotListening,
+                else => err,
+            };
+        }
+        if (!try listenerReady(self.server.socket.handle)) return null;
+        return try self.server.accept(io_mod.getIo());
+    }
+
+    fn deinit(self: *Listener) void {
+        if (comptime builtin.os.tag == .windows) {
+            windows_socket.closeSocket(self.server.socket.handle);
+        } else {
+            self.server.deinit(io_mod.getIo());
+        }
+        self.* = undefined;
+    }
+};
+
+/// Closes a client stream the way its listener accepted it.
+fn closeStream(stream: std.Io.net.Stream) void {
+    if (comptime builtin.os.tag == .windows) {
+        windows_socket.closeStream(stream);
+    } else {
+        stream.close(io_mod.getIo());
+    }
+}
+
 fn acceptLoop(
     alloc: Allocator,
-    server: *std.Io.net.Server,
+    server: *Listener,
     process_provider: process_provider_mod.Provider,
     hello: contracts.ProtocolHello,
     state: *HostState,
@@ -666,18 +737,7 @@ fn acceptLoop(
             state.stopping.store(true, .release);
             return;
         }
-        if (!(listenerReady(server.socket.handle) catch |err| {
-            debug_trace.logf(
-                "terminal_host",
-                "host listener failed err={s}",
-                .{@errorName(err)},
-            );
-            startup.accept_failed.store(true, .release);
-            state.stopping.store(true, .release);
-            return;
-        })) continue;
-        if (state.stopping.load(.acquire)) break;
-        var stream = server.accept(io_mod.getIo()) catch |err| switch (err) {
+        const accepted = server.accept() catch |err| switch (err) {
             error.SocketNotListening => break,
             else => {
                 debug_trace.logf(
@@ -690,8 +750,9 @@ fn acceptLoop(
                 return;
             },
         };
+        const stream = accepted orelse continue;
         if (state.stopping.load(.acquire)) {
-            stream.close(io_mod.getIo());
+            closeStream(stream);
             break;
         }
         _ = state.connected_clients.fetchAdd(1, .acq_rel);
@@ -704,7 +765,7 @@ fn acceptLoop(
             state,
             startup,
         }) catch |err| {
-            stream.close(io_mod.getIo());
+            closeStream(stream);
             _ = state.connected_clients.fetchSub(1, .acq_rel);
             state.noteChanged();
             debug_trace.logf(
@@ -791,6 +852,7 @@ fn idleOwner(state: *HostState) void {
 }
 
 fn listenerReady(handle: std.Io.net.Socket.Handle) !bool {
+    if (comptime builtin.os.tag == .windows) unreachable;
     var poll_fds = [_]std.posix.pollfd{.{
         .fd = handle,
         .events = std.posix.POLL.IN,
@@ -837,7 +899,7 @@ fn handleClient(
     state: *HostState,
     startup: *HostStartup,
 ) !void {
-    defer stream.close(io_mod.getIo());
+    defer closeStream(stream);
     if (!peerMatchesCurrentUser(stream.socket.handle)) {
         return error.ForeignTerminalHostPeer;
     }
@@ -1346,7 +1408,8 @@ fn testCorrelationFromEnvironment(name: []const u8) ?u64 {
 }
 
 fn applySocketTimeout(stream: std.Io.net.Stream) void {
-    if (comptime !isSupported()) return;
+    // Windows sockets here use overlapped I/O, which ignores send timeouts.
+    if (comptime !isSupported() or builtin.os.tag == .windows) return;
     const timeout = std.posix.timeval{ .sec = 5, .usec = 0 };
     std.posix.setsockopt(
         stream.socket.handle,
@@ -1357,6 +1420,9 @@ fn applySocketTimeout(stream: std.Io.net.Stream) void {
 }
 
 fn peerMatchesCurrentUser(handle: std.Io.net.Socket.Handle) bool {
+    if (comptime builtin.os.tag == .windows) {
+        return windows_socket.peerMatchesCurrentUser(handle);
+    }
     if (comptime builtin.os.tag == .macos) {
         var peer_uid: std.c.uid_t = undefined;
         var peer_gid: std.c.gid_t = undefined;
@@ -1428,7 +1494,10 @@ fn peerProcessOwner(
             return error.TerminalPeerIdentityUnavailable;
         }
         break :blk @intCast(credentials.pid);
-    } else return error.TerminalHostUnsupported;
+    } else if (comptime builtin.os.tag == .windows)
+        windows_socket.peerProcessId(handle) catch return error.TerminalPeerIdentityUnavailable
+    else
+        return error.TerminalHostUnsupported;
 
     var pid_buffer: [32]u8 = undefined;
     const pid_text = try std.fmt.bufPrint(&pid_buffer, "{d}", .{pid});
@@ -1529,7 +1598,7 @@ fn cleanupEndpoint(host_dir: *io_mod.VerifiedDir) void {
         endpoint_name,
         .{ .follow_symlinks = false },
     ) catch return;
-    if (stat.kind != .unix_domain_socket) return;
+    if (!isEndpointKind(stat.kind)) return;
     host_dir.dir.deleteFile(io_mod.getIo(), endpoint_name) catch {};
 }
 
@@ -1543,13 +1612,21 @@ fn cleanupIdentity(host_dir: *io_mod.VerifiedDir) void {
     host_dir.dir.deleteFile(io_mod.getIo(), identity_name) catch {};
 }
 
+/// Whether a directory entry can be the endpoint socket. Windows reports an
+/// AF_UNIX socket as a reparse point that `std.Io` does not classify, so
+/// only a directory is excluded there.
+pub fn isEndpointKind(kind: std.Io.File.Kind) bool {
+    if (comptime builtin.os.tag == .windows) return kind != .directory;
+    return kind == .unix_domain_socket;
+}
+
 fn verifyEndpointPermissions(host_dir: *io_mod.VerifiedDir) !void {
     const stat = try host_dir.dir.statFile(
         io_mod.getIo(),
         endpoint_name,
         .{ .follow_symlinks = false },
     );
-    if (stat.kind != .unix_domain_socket or
+    if (!isEndpointKind(stat.kind) or
         !io_mod.isPrivateFileMode(stat.permissions))
     {
         return error.PrivateEndpointPermissionsUnsupported;
@@ -1708,6 +1785,8 @@ test "endpoint paths honor the native sockaddr capacity" {
 
 test "endpoint selection preserves short homes and deterministically separates long homes" {
     if (comptime !isSupported()) return error.SkipZigTest;
+    // Windows has no runtime fallback; the next test covers its selection.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const short_home = "/Users/terminal-short";
     var short = try resolveEndpointSelection(
@@ -1767,11 +1846,41 @@ test "endpoint selection preserves short homes and deterministically separates l
     ));
 }
 
+test "Windows endpoint selection stays in the profile or fails" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var short = try resolveEndpointSelection(alloc, .windows, "C:\\Users\\terminal-short", 0);
+    defer short.deinit(alloc);
+    try std.testing.expect(!short.uses_fallback);
+    try std.testing.expectEqualStrings("C:\\Users\\terminal-short\\.pf\\terminal-host-v7", short.authority_root);
+    try std.testing.expectEqualStrings(short.authority_root, short.transport_root);
+    try std.testing.expectEqualStrings(
+        "C:\\Users\\terminal-short\\.pf\\terminal-host-v7\\host.sock",
+        short.endpoint_path,
+    );
+
+    // A shared temporary directory would not be private, so a home too
+    // long for an AF_UNIX path has no endpoint.
+    try std.testing.expectError(
+        error.NameTooLong,
+        resolveEndpointSelection(alloc, .windows, "C:\\profiles\\" ++ "a" ** 100, 0),
+    );
+
+    // The host endpoint would fit this home, but a session's launcher
+    // socket would not.
+    const launcher_too_long = "C:\\" ++ "a" ** 67;
+    try std.testing.expect(launcher_too_long.len + "\\.pf\\terminal-host-v7\\host.sock".len < 108);
+    try std.testing.expectError(
+        error.NameTooLong,
+        resolveEndpointSelection(alloc, .windows, launcher_too_long, 0),
+    );
+}
+
 test "endpoint selection allocation and unsupported targets fail closed" {
     const alloc = std.testing.allocator;
     try std.testing.expectError(
         error.TerminalHostUnsupported,
-        resolveEndpointSelection(alloc, .windows, "C:\\profile", 501),
+        resolveEndpointSelection(alloc, .freebsd, "/home/profile", 501),
     );
 
     const long_home = "/profiles/" ++ "x" ** 160;

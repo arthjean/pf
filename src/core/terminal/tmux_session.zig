@@ -359,6 +359,7 @@ pub const Backend = struct {
         dimensions: contracts.Dimensions,
         config: LauncherConfig,
     ) !Backend {
+        if (comptime !supported()) return error.TmuxUnavailable;
         try probe(alloc);
         var paths = try Paths.init(
             alloc,
@@ -477,6 +478,7 @@ pub const Backend = struct {
         backend_identity: []const u8,
         executable: []const u8,
     ) !Backend {
+        if (comptime !supported()) return error.TmuxUnavailable;
         try probe(alloc);
         var paths = try Paths.init(
             alloc,
@@ -709,6 +711,7 @@ pub const Backend = struct {
         self: *Backend,
         process_provider: process_provider_mod.Provider,
     ) !void {
+        if (comptime !supported()) return;
         try cleanupOwnedNamespaceWithEvidence(
             self.alloc,
             process_provider,
@@ -816,6 +819,8 @@ pub fn cleanupOwnedNamespace(
     transport_root: []const u8,
     backend_identity: []const u8,
 ) void {
+    // No tmux namespace exists where tmux is unsupported.
+    if (comptime !supported()) return;
     var backend = Backend.recover(
         alloc,
         process_provider,
@@ -836,6 +841,7 @@ pub fn cleanupOwnedNamespaceChecked(
     backend_identity: []const u8,
     authenticated_process_identity: ?AuthenticatedProcessIdentity,
 ) !void {
+    if (comptime !supported()) return;
     var paths = try Paths.init(
         alloc,
         durable_root,
@@ -1318,13 +1324,17 @@ const LauncherControl = struct {
     }
 };
 
-fn supported() bool {
-    return host_capabilities.terminalSupportForOs(builtin.os.tag).isSupported();
+/// The tmux backend needs a POSIX tmux, so Windows hosts native ConPTY
+/// sessions only.
+pub fn supported() bool {
+    return builtin.os.tag != .windows and
+        host_capabilities.terminalSupportForOs(builtin.os.tag).isSupported();
 }
 
 test "tmux implementation guard follows canonical platform support" {
     try std.testing.expectEqual(
-        host_capabilities.terminalSupportForOs(builtin.os.tag).isSupported(),
+        builtin.os.tag != .windows and
+            host_capabilities.terminalSupportForOs(builtin.os.tag).isSupported(),
         supported(),
     );
 }

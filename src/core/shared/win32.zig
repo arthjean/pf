@@ -329,6 +329,8 @@ pub extern "kernel32" fn GetProcessTimes(
     lpUserTime: *windows.FILETIME,
 ) callconv(.winapi) windows.BOOL;
 
+pub extern "kernel32" fn GetSystemTimePreciseAsFileTime(lpSystemTimeAsFileTime: *windows.FILETIME) callconv(.winapi) void;
+
 // Console
 
 pub const STD_INPUT_HANDLE: windows.DWORD = @bitCast(@as(i32, -10));
@@ -598,3 +600,88 @@ pub extern "ws2_32" fn getsockname(
 ) callconv(.winapi) i32;
 
 pub extern "ws2_32" fn closesocket(s: windows.HANDLE) callconv(.winapi) i32;
+
+pub const WSAPOLLFD = extern struct {
+    fd: windows.HANDLE,
+    events: i16,
+    revents: i16,
+};
+pub const POLLRDNORM: i16 = 0x0100;
+pub const POLLERR: i16 = 0x0001;
+pub const POLLHUP: i16 = 0x0002;
+pub const POLLNVAL: i16 = 0x0004;
+pub const WSAEWOULDBLOCK: i32 = 10035;
+pub const WSAECONNRESET: i32 = 10054;
+/// `SIO_AF_UNIX_GETPEERPID` from afunix.h: the process id of an AF_UNIX peer.
+pub const SIO_AF_UNIX_GETPEERPID: windows.DWORD = 0x58000100;
+
+pub extern "ws2_32" fn accept(
+    s: windows.HANDLE,
+    addr: ?*windows.ws2_32.sockaddr,
+    addrlen: ?*i32,
+) callconv(.winapi) windows.HANDLE;
+
+pub extern "ws2_32" fn WSAPoll(
+    fdArray: [*]WSAPOLLFD,
+    fds: u32,
+    timeout: i32,
+) callconv(.winapi) i32;
+
+pub extern "ws2_32" fn WSAIoctl(
+    s: windows.HANDLE,
+    dwIoControlCode: windows.DWORD,
+    lpvInBuffer: ?*const anyopaque,
+    cbInBuffer: windows.DWORD,
+    lpvOutBuffer: ?*anyopaque,
+    cbOutBuffer: windows.DWORD,
+    lpcbBytesReturned: *windows.DWORD,
+    lpOverlapped: ?*anyopaque,
+    lpCompletionRoutine: ?*anyopaque,
+) callconv(.winapi) i32;
+
+pub extern "ws2_32" fn recv(
+    s: windows.HANDLE,
+    buf: [*]u8,
+    len: i32,
+    flags: i32,
+) callconv(.winapi) i32;
+
+pub extern "ws2_32" fn send(
+    s: windows.HANDLE,
+    buf: [*]const u8,
+    len: i32,
+    flags: i32,
+) callconv(.winapi) i32;
+
+// Process tokens, to compare the user that owns another process.
+
+pub const TOKEN_QUERY: windows.DWORD = 0x0008;
+pub const TokenUser: u32 = 1;
+pub const SID_AND_ATTRIBUTES = extern struct {
+    Sid: *anyopaque,
+    Attributes: windows.DWORD,
+};
+
+pub extern "advapi32" fn OpenProcessToken(
+    ProcessHandle: windows.HANDLE,
+    DesiredAccess: windows.DWORD,
+    TokenHandle: *windows.HANDLE,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "advapi32" fn GetTokenInformation(
+    TokenHandle: windows.HANDLE,
+    TokenInformationClass: u32,
+    TokenInformation: ?*anyopaque,
+    TokenInformationLength: windows.DWORD,
+    ReturnLength: *windows.DWORD,
+) callconv(.winapi) windows.BOOL;
+
+pub extern "advapi32" fn EqualSid(pSid1: *anyopaque, pSid2: *anyopaque) callconv(.winapi) windows.BOOL;
+
+pub extern "ws2_32" fn connect(
+    s: windows.HANDLE,
+    name: *const windows.ws2_32.sockaddr,
+    namelen: i32,
+) callconv(.winapi) i32;
+
+pub extern "advapi32" fn ConvertSidToStringSidA(Sid: *anyopaque, StringSid: *?[*:0]u8) callconv(.winapi) windows.BOOL;

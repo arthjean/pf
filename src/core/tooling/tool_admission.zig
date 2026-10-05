@@ -5622,15 +5622,47 @@ test "TTY admission fingerprints route and explicit shell startup" {
         tty_target,
     ));
 
+    // An explicit shell must be absolute and, on Windows, of the selected
+    // dialect, so Windows uses the selected shell.
+    const shell_path = if (comptime builtin.os.tag == .windows)
+        (shell_selection.current() catch return error.SkipZigTest).path
+    else
+        "/bin/bash";
+    const shell_json = try std.json.Stringify.valueAlloc(arena, shell_path, .{});
+    const clean_shell_args = try std.fmt.allocPrint(
+        arena,
+        "{{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{{\"kind\":\"executable\",\"path\":{s},\"clean_start\":true}}}}",
+        .{shell_json},
+    );
+    const user_shell_args = try std.fmt.allocPrint(
+        arena,
+        "{{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{{\"kind\":\"executable\",\"path\":{s},\"clean_start\":false}}}}",
+        .{shell_json},
+    );
+    const encoded_shell = try std.json.Stringify.valueAlloc(
+        arena,
+        try std.fmt.allocPrint(
+            arena,
+            "{{\"kind\":\"executable\",\"path\":{s},\"clean_start\":true}}",
+            .{shell_json},
+        ),
+        .{},
+    );
+    const encoded_shell_args = try std.fmt.allocPrint(
+        arena,
+        "{{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{s}}}",
+        .{encoded_shell},
+    );
+
     const clean_shell = try runCommandContext(input, arena, .{
         .id = "tty-shell-clean",
         .name = "shell",
-        .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{\"kind\":\"executable\",\"path\":\"/bin/bash\",\"clean_start\":true}}",
+        .arguments_json = clean_shell_args,
     });
     const user_shell = try runCommandContext(input, arena, .{
         .id = "tty-shell-user",
         .name = "shell",
-        .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{\"kind\":\"executable\",\"path\":\"/bin/bash\",\"clean_start\":false}}",
+        .arguments_json = user_shell_args,
     });
     try std.testing.expect(!command_admission.AdmissionFingerprint.init(clean_shell).eql(
         command_admission.AdmissionFingerprint.init(user_shell),
@@ -5638,7 +5670,7 @@ test "TTY admission fingerprints route and explicit shell startup" {
     const encoded_clean_shell = try runCommandContext(input, arena, .{
         .id = "tty-shell-encoded",
         .name = "shell",
-        .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":\"{\\\"kind\\\":\\\"executable\\\",\\\"path\\\":\\\"/bin/bash\\\",\\\"clean_start\\\":true}\"}",
+        .arguments_json = encoded_shell_args,
     });
     try std.testing.expect(command_admission.AdmissionFingerprint.init(clean_shell).eql(
         command_admission.AdmissionFingerprint.init(encoded_clean_shell),
@@ -5646,12 +5678,12 @@ test "TTY admission fingerprints route and explicit shell startup" {
     const clean_shell_key = try permissionStateKeyForCall(input, arena, .{
         .id = "tty-shell-clean-key",
         .name = "shell",
-        .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{\"kind\":\"executable\",\"path\":\"/bin/bash\",\"clean_start\":true}}",
+        .arguments_json = clean_shell_args,
     });
     const user_shell_key = try permissionStateKeyForCall(input, arena, .{
         .id = "tty-shell-user-key",
         .name = "shell",
-        .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{\"kind\":\"executable\",\"path\":\"/bin/bash\",\"clean_start\":false}}",
+        .arguments_json = user_shell_args,
     });
     try std.testing.expect(!session_permission_state.RuleKey.eql(
         clean_shell_key,

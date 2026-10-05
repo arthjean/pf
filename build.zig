@@ -20,8 +20,20 @@ const NapiSurface = enum {
     core,
 };
 
+/// pf supports Windows 10 version 1809 or later. Zig's default Windows floor
+/// is older, and below version 1803 `std.Io.net` compiles AF_UNIX sockets out,
+/// which the terminal host needs, so a Windows target is raised to 1809.
+fn withWindowsVersionFloor(b: *std.Build, target: std.Build.ResolvedTarget) std.Build.ResolvedTarget {
+    const floor: std.Target.Os.WindowsVersion = .win10_rs5;
+    if (target.result.os.tag != .windows) return target;
+    if (@intFromEnum(target.result.os.version_range.windows.min) >= @intFromEnum(floor)) return target;
+    var query = target.query;
+    query.os_version_min = .{ .windows = floor };
+    return b.resolveTargetQuery(query);
+}
+
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    const target = withWindowsVersionFloor(b, b.standardTargetOptions(.{}));
     const optimize = b.standardOptimizeOption(.{});
     const pgso_artifact = b.option(
         PgsoArtifact,

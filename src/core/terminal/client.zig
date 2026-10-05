@@ -12,6 +12,7 @@ const process_provider_mod = @import(
     "../execution/process_provider.zig",
 );
 const ui_projection = @import("ui_projection.zig");
+const windows_socket = @import("windows_socket.zig");
 
 const Allocator = std.mem.Allocator;
 const connect_deadline_ms: i64 = 2_000;
@@ -613,11 +614,11 @@ fn exchange(
     alloc: Allocator,
     intent: *const Intent,
 ) !Completion {
-    var connected = try connectAndHandshake(
+    const connected = try connectAndHandshake(
         alloc,
         worker.runtime.process_provider,
     );
-    defer connected.stream.close(io_mod.getIo());
+    defer closeStream(connected.stream);
     if (connected.incompatibility) |incompatibility| {
         return .{
             .kind = .unavailable,
@@ -746,19 +747,12 @@ fn receiveCancellable(
         if (worker.cancelled.load(.acquire)) {
             return error.Cancelled;
         }
-        const incoming = socket.receiveTimeout(
-            io_mod.getIo(),
-            destination[offset..],
-            .{ .duration = .{
-                .clock = .awake,
-                .raw = .fromMilliseconds(50),
-            } },
-        ) catch |err| switch (err) {
+        const incoming = receiveSome(socket, destination[offset..], 50) catch |err| switch (err) {
             error.Timeout => continue,
             else => return err,
         };
-        if (incoming.data.len == 0) return error.EndOfStream;
-        offset += incoming.data.len;
+        if (incoming.len == 0) return error.EndOfStream;
+        offset += incoming.len;
     }
 }
 
@@ -792,7 +786,7 @@ fn connectAndHandshakeOnce(
         );
         return err;
     };
-    errdefer stream.close(io_mod.getIo());
+    errdefer closeStream(stream);
 
     var write_buffer: [4096]u8 = undefined;
     var writer = stream.writer(io_mod.getIo(), &write_buffer);
@@ -889,7 +883,43 @@ fn connectOrStart(
     return waitForHost(paths.endpoint_path);
 }
 
+/// Receives at least one byte within `timeout_ms`, and returns no bytes at
+/// end of stream. `std.Io.net` has no receive timeout on Windows, so Windows
+/// streams come from Winsock.
+fn receiveSome(socket: std.Io.net.Socket, destination: []u8, timeout_ms: i64) ![]u8 {
+    if (comptime builtin.os.tag == .windows) {
+        const count = try windows_socket.receiveTimeout(socket.handle, destination, timeout_ms);
+        return destination[0..count];
+    }
+    const incoming = try socket.receiveTimeout(
+        io_mod.getIo(),
+        destination,
+        .{ .duration = .{
+            .clock = .awake,
+            .raw = .fromMilliseconds(timeout_ms),
+        } },
+    );
+    return incoming.data;
+}
+
+fn closeStream(stream: std.Io.net.Stream) void {
+    if (comptime builtin.os.tag == .windows) {
+        windows_socket.closeStream(stream);
+    } else {
+        stream.close(io_mod.getIo());
+    }
+}
+
 fn tryConnect(endpoint_path: []const u8) ?std.Io.net.Stream {
+    if (comptime builtin.os.tag == .windows) {
+        // The profile's ACL keeps the endpoint private, and pf has no mode
+        // to verify there, so the host must also run as this user.
+        const stream = windows_socket.connect(endpoint_path) catch return null;
+        if (windows_socket.peerMatchesCurrentUser(stream.socket.handle)) return stream;
+        debug_trace.logf("terminal_client", "host endpoint peer is not the current user", .{});
+        windows_socket.closeStream(stream);
+        return null;
+    }
     if (comptime builtin.os.tag != .macos and builtin.os.tag != .linux) {
         const address = std.Io.net.UnixAddress.init(endpoint_path) catch return null;
         return address.connect(io_mod.getIo()) catch null;
@@ -948,6 +978,7 @@ fn waitForHost(endpoint_path: []const u8) !std.Io.net.Stream {
 fn launchHost(alloc: Allocator) !void {
     const executable = try self_exe.pathForReexec(alloc);
     defer alloc.free(executable);
+    if (comptime builtin.os.tag == .windows) return launchHostWindows(alloc, executable);
     const argv = [_][]const u8{ executable, host.internal_mode };
     const child = try std.process.spawn(io_mod.getIo(), .{
         .argv = &argv,
@@ -961,6 +992,56 @@ fn launchHost(alloc: Allocator) !void {
     });
     var reaper = try std.Thread.spawn(.{}, reapChild, .{child});
     reaper.detach();
+}
+
+/// Starts the host detached from this console, so closing the terminal
+/// window does not end it, and outside this process's job when the job
+/// allows breakaway, so a job that kills pf's tree on close spares it.
+fn launchHostWindows(alloc: Allocator, executable: []const u8) !void {
+    const windows = std.os.windows;
+    const conpty = @import("conpty.zig");
+    var command_line: std.ArrayList(u8) = .empty;
+    defer command_line.deinit(alloc);
+    try conpty.appendCommandLineArg(alloc, &command_line, executable);
+    try conpty.appendCommandLineArg(alloc, &command_line, host.internal_mode);
+    const command_w = try std.unicode.wtf8ToWtf16LeAllocZ(alloc, command_line.items);
+    defer alloc.free(command_w);
+    var startup = std.mem.zeroes(windows.STARTUPINFOW);
+    startup.cb = @sizeOf(windows.STARTUPINFOW);
+    // No standard handles: the host has no console to write to.
+    startup.dwFlags = windows.STARTF_USESTDHANDLES;
+    var breakaway = true;
+    while (true) {
+        var info: windows.PROCESS.INFORMATION = undefined;
+        if (windows.kernel32.CreateProcessW(
+            null,
+            command_w.ptr,
+            null,
+            null,
+            .FALSE,
+            .{
+                .detached_process = true,
+                .create_new_process_group = true,
+                .create_unicode_environment = true,
+                .create_breakaway_from_job = breakaway,
+            },
+            null,
+            null,
+            &startup,
+            &info,
+        ) != .FALSE) {
+            windows.CloseHandle(info.hThread);
+            windows.CloseHandle(info.hProcess);
+            return;
+        }
+        // A job that forbids breakaway denies the flag; the host then
+        // lives as long as that job does.
+        if (breakaway and windows.GetLastError() == .ACCESS_DENIED) {
+            breakaway = false;
+            continue;
+        }
+        return error.HostLaunchFailed;
+    }
 }
 
 fn reapChild(child_value: std.process.Child) void {
@@ -1027,14 +1108,7 @@ fn receiveBeforeDeadline(
         const remaining_ms = deadline_ms - io_mod.milliTimestamp();
         if (remaining_ms <= 0) return error.HostHandshakeTimeout;
         const poll_ms = @min(remaining_ms, 50);
-        const incoming = socket.receiveTimeout(
-            io_mod.getIo(),
-            destination[offset..],
-            .{ .duration = .{
-                .clock = .awake,
-                .raw = .fromMilliseconds(poll_ms),
-            } },
-        ) catch |err| switch (err) {
+        const incoming = receiveSome(socket, destination[offset..], poll_ms) catch |err| switch (err) {
             error.Timeout => continue,
             error.ConnectionResetByPeer => {
                 if (part == .header and offset == 0) {
@@ -1044,13 +1118,13 @@ fn receiveBeforeDeadline(
             },
             else => return err,
         };
-        if (incoming.data.len == 0) {
+        if (incoming.len == 0) {
             if (part == .header and offset == 0) {
                 return error.HostClosedBeforeHandshake;
             }
             return error.TruncatedFrame;
         }
-        offset += incoming.data.len;
+        offset += incoming.len;
     }
 }
 
@@ -1328,6 +1402,9 @@ test "lazy runtime has no allocation or worker before first admission" {
 
 test "stalled request cancellation emits only the targeted cancel" {
     if (comptime !host.isSupported()) return error.SkipZigTest;
+    // Windows has no socketpair; the cancellation logic is shared, and the
+    // Windows transport is covered in windows_socket.zig.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     var handles: [2]std.c.fd_t = undefined;
     if (std.c.socketpair(
         std.c.AF.UNIX,

@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const contracts = @import("contracts.zig");
 const command_environment = @import("../execution/command_environment.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -14,13 +15,46 @@ pub const ResolveError = error{
 pub const Profile = command_environment.Profile;
 pub const Environment = command_environment.Environment;
 
-const ShellKind = enum { bash, zsh };
+const ShellKind = enum { bash, zsh, powershell };
+
+/// The script language a hosted shell's bootstrap is written in.
+pub const Dialect = enum { posix, powershell };
 
 fn shellKind(path: []const u8) ?ShellKind {
     const basename = std.fs.path.basename(path);
+    if (comptime builtin.os.tag == .windows) {
+        // Windows names executables without case, with or without `.exe`.
+        const stem = if (std.ascii.endsWithIgnoreCase(basename, ".exe"))
+            basename[0 .. basename.len - ".exe".len]
+        else
+            basename;
+        if (std.ascii.eqlIgnoreCase(stem, "bash")) return .bash;
+        if (std.ascii.eqlIgnoreCase(stem, "zsh")) return .zsh;
+        if (std.ascii.eqlIgnoreCase(stem, "pwsh") or
+            std.ascii.eqlIgnoreCase(stem, "powershell")) return .powershell;
+        return null;
+    }
     if (std.mem.eql(u8, basename, "bash")) return .bash;
     if (std.mem.eql(u8, basename, "zsh")) return .zsh;
     return null;
+}
+
+fn kindDialect(kind: ShellKind) Dialect {
+    return switch (kind) {
+        .bash, .zsh => .posix,
+        .powershell => .powershell,
+    };
+}
+
+/// Windows admits a hosted command in the dialect of the shell that
+/// `shell_selection` picked, so a hosted shell of another dialect would run
+/// text that permission analysis read in the wrong language.
+fn windowsDialectAdmits(kind: ShellKind) bool {
+    const selected: Dialect = switch (shell_selection.dialect()) {
+        .posix_sh => .posix,
+        .powershell => .powershell,
+    };
+    return kindDialect(kind) == selected;
 }
 
 fn fallbackLoginShell() []const u8 {
@@ -31,11 +65,15 @@ fn supportedLoginShell(configured_login_shell: ?[]const u8) ResolveError![]const
     const path = configured_login_shell orelse return error.MissingLoginShell;
     if (!std.fs.path.isAbsolute(path)) return error.RelativeShellPath;
     if (shellKind(path) != null) return path;
+    // The Windows login shell is the `shell_selection` pick, which has no
+    // fallback of its own.
+    if (comptime builtin.os.tag == .windows) return error.UnsupportedShell;
     return fallbackLoginShell();
 }
 
 pub const Invocation = struct {
     path: []const u8,
+    kind: ShellKind = .bash,
     values: [6][]const u8 = @splat(""),
     len: usize = 0,
 
@@ -43,14 +81,27 @@ pub const Invocation = struct {
         return self.values[0..self.len];
     }
 
+    pub fn dialect(self: *const Invocation) Dialect {
+        return kindDialect(self.kind);
+    }
+
     fn append(self: *Invocation, value: []const u8) void {
         self.values[self.len] = value;
         self.len += 1;
     }
 
+    /// Runs `command` and exits with its status.
     pub fn setCommand(self: *Invocation, command: []const u8) void {
-        self.append("-c");
+        self.append(if (self.kind == .powershell) "-Command" else "-c");
         self.append(command);
+    }
+
+    /// Runs `command` at startup and stays interactive. Only PowerShell
+    /// takes one; POSIX shells receive the bootstrap as typed input.
+    pub fn setStartupCommand(self: *Invocation, command: []const u8) void {
+        std.debug.assert(self.kind == .powershell);
+        self.append("-NoExit");
+        self.setCommand(command);
     }
 };
 
@@ -77,8 +128,11 @@ pub fn resolve(
     }
 
     const kind = shellKind(selection.path) orelse return error.UnsupportedShell;
+    if (comptime builtin.os.tag == .windows) {
+        if (!windowsDialectAdmits(kind)) return error.UnsupportedShell;
+    }
 
-    var result = Invocation{ .path = selection.path };
+    var result = Invocation{ .path = selection.path, .kind = kind };
     result.append(selection.path);
     switch (kind) {
         .bash => {
@@ -98,12 +152,24 @@ pub fn resolve(
             }
             result.append("-i");
         },
+        .powershell => {
+            result.append("-NoLogo");
+            if (selection.clean_start) result.append("-NoProfile");
+        },
     }
     return result;
 }
 
+/// The user's login shell, copied into `buffer`. On Windows it is the shell
+/// that `shell_selection` picks, Git Bash or PowerShell.
 pub fn configuredLoginShellInto(buffer: []u8) ?[]const u8 {
-    if (comptime !builtin.link_libc or builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (comptime builtin.os.tag == .windows) {
+        const shell = shell_selection.current() catch return null;
+        if (shell.path.len == 0 or shell.path.len > buffer.len) return null;
+        @memcpy(buffer[0..shell.path.len], shell.path);
+        return buffer[0..shell.path.len];
+    }
+    if (comptime !builtin.link_libc or builtin.os.tag == .wasi) {
         return null;
     }
     var entry: std.c.passwd = undefined;
@@ -150,6 +216,12 @@ pub fn environmentForShellSpec(
     shell: contracts.ShellSpec,
 ) (ResolveError || Allocator.Error)!Environment {
     const invocation = try resolve(configured_login_shell, shell);
+    // The Windows login shell has no clean or user profile, as in
+    // `environment`. An explicit shell still names its path and whether it
+    // skips its profile, because both change what runs.
+    if (comptime builtin.os.tag == .windows) {
+        if (shell == .user_login) return .legacy;
+    }
     return switch (shell) {
         .user_login => .{ .user = try alloc.dupe(u8, invocation.path) },
         .executable => |value| if (value.clean_start)
@@ -164,6 +236,11 @@ pub fn profileShell(
     configured_login_shell: ?[]const u8,
     profile: Profile,
 ) (ResolveError || Allocator.Error)!contracts.ShellSpec {
+    // Every Windows profile runs the `shell_selection` pick as it starts.
+    if (comptime builtin.os.tag == .windows) {
+        _ = try supportedLoginShell(configured_login_shell);
+        return .user_login;
+    }
     return switch (profile) {
         .clean => blk: {
             const path = try supportedLoginShell(configured_login_shell);
@@ -246,6 +323,23 @@ pub fn buildBootstrap(
     nonce: []const u8,
     command_path: ?[]const u8,
 ) Allocator.Error![]u8 {
+    return buildBootstrapFor(alloc, .posix, executable, control_path, nonce, command_path);
+}
+
+/// The script a hosted shell runs first: it reports the shell ready, and
+/// with `command_path`, reads the command, reports it started, runs it, and
+/// exits with its status. Caller owns the returned text.
+pub fn buildBootstrapFor(
+    alloc: Allocator,
+    dialect: Dialect,
+    executable: []const u8,
+    control_path: []const u8,
+    nonce: []const u8,
+    command_path: ?[]const u8,
+) Allocator.Error![]u8 {
+    if (dialect == .powershell) {
+        return buildPowershellBootstrap(alloc, executable, control_path, nonce, command_path);
+    }
     var output: std.ArrayList(u8) = .empty;
     errdefer output.deinit(alloc);
 
@@ -277,10 +371,115 @@ pub fn buildBootstrap(
     return output.toOwnedSlice(alloc);
 }
 
+fn buildPowershellBootstrap(
+    alloc: Allocator,
+    executable: []const u8,
+    control_path: []const u8,
+    nonce: []const u8,
+    command_path: ?[]const u8,
+) Allocator.Error![]u8 {
+    var output: std.ArrayList(u8) = .empty;
+    errdefer output.deinit(alloc);
+
+    try output.appendSlice(alloc, "Set-PSDebug -Off; ");
+    if (command_path) |path| {
+        try output.appendSlice(alloc, "try { $pf_terminal_command = [System.IO.File]::ReadAllText(");
+        try appendPowershellWord(&output, alloc, path);
+        try output.appendSlice(alloc, ") } catch { exit 125 }; ");
+    }
+    try appendPowershellMarker(&output, alloc, executable, control_path, nonce, "shell-ready");
+    if (command_path) |_| {
+        try output.appendSlice(alloc, "; ");
+        try appendPowershellMarker(&output, alloc, executable, control_path, nonce, "command-started");
+        // The status rule of `powershellEncodedCommandAlloc`: the last native
+        // exit code, or 1 when the last pipeline failed without one.
+        try output.appendSlice(
+            alloc,
+            "; $global:LASTEXITCODE = 0; Invoke-Expression $pf_terminal_command; " ++
+                "if (-not $?) { if ($global:LASTEXITCODE) { exit $global:LASTEXITCODE } else { exit 1 } }; " ++
+                "exit $global:LASTEXITCODE\n",
+        );
+    } else {
+        try output.append(alloc, '\n');
+    }
+    return output.toOwnedSlice(alloc);
+}
+
+fn appendPowershellMarker(
+    output: *std.ArrayList(u8),
+    alloc: Allocator,
+    executable: []const u8,
+    control_path: []const u8,
+    nonce: []const u8,
+    event: []const u8,
+) Allocator.Error!void {
+    try output.appendSlice(alloc, "& ");
+    try appendPowershellWord(output, alloc, executable);
+    inline for (.{
+        "--pf-internal-terminal-control",
+        control_path,
+        nonce,
+        event,
+    }) |word| {
+        try output.append(alloc, ' ');
+        try appendPowershellWord(output, alloc, word);
+    }
+    try output.appendSlice(alloc, "; if ($LASTEXITCODE -ne 0) { exit 125 }");
+}
+
+/// Quotes `word` as a PowerShell verbatim string. PowerShell also ends such
+/// a string at the typographic single quotes U+2018 to U+201B, so every one
+/// of them doubles like an apostrophe.
+fn appendPowershellWord(
+    output: *std.ArrayList(u8),
+    alloc: Allocator,
+    word: []const u8,
+) Allocator.Error!void {
+    try output.append(alloc, '\'');
+    var index: usize = 0;
+    while (index < word.len) {
+        if (word[index] == '\'') {
+            try output.appendSlice(alloc, "''");
+            index += 1;
+            continue;
+        }
+        if (index + 3 <= word.len and word[index] == 0xE2 and word[index + 1] == 0x80 and
+            word[index + 2] >= 0x98 and word[index + 2] <= 0x9B)
+        {
+            try output.appendSlice(alloc, word[index .. index + 3]);
+            try output.appendSlice(alloc, word[index .. index + 3]);
+            index += 3;
+            continue;
+        }
+        try output.append(alloc, word[index]);
+        index += 1;
+    }
+    try output.append(alloc, '\'');
+}
+
 pub fn buildSourceCommand(
     alloc: Allocator,
     bootstrap_path: []const u8,
 ) Allocator.Error![]u8 {
+    return buildSourceCommandFor(alloc, .posix, bootstrap_path);
+}
+
+/// The command that runs the bootstrap at `bootstrap_path`: typed input for
+/// a POSIX shell, and a `-Command` argument for PowerShell, which reads the
+/// file as text so the execution policy for script files does not apply.
+pub fn buildSourceCommandFor(
+    alloc: Allocator,
+    dialect: Dialect,
+    bootstrap_path: []const u8,
+) Allocator.Error![]u8 {
+    if (dialect == .powershell) {
+        var powershell: std.ArrayList(u8) = .empty;
+        errdefer powershell.deinit(alloc);
+        try powershell.appendSlice(alloc, "Invoke-Expression ([System.IO.File]::ReadAllText(");
+        try appendPowershellWord(&powershell, alloc, bootstrap_path);
+        try powershell.appendSlice(alloc, "))");
+        return powershell.toOwnedSlice(alloc);
+    }
     var output: std.ArrayList(u8) = .empty;
     errdefer output.deinit(alloc);
     try output.appendSlice(alloc, ". ");
@@ -368,27 +567,33 @@ test "resolver makes clean startup explicit" {
 
 test "shell environments bind executable path and startup mode" {
     const alloc = std.testing.allocator;
+    const bash_path = if (comptime builtin.os.tag == .windows)
+        "C:\\Program Files\\Git\\bin\\bash.exe"
+    else
+        "/bin/bash";
+    shell_selection.test_dialect = .posix_sh;
+    defer shell_selection.test_dialect = null;
     const clean = try environmentForShellSpec(
         alloc,
         null,
-        .{ .executable = .{ .path = "/bin/bash", .clean_start = true } },
+        .{ .executable = .{ .path = bash_path, .clean_start = true } },
     );
     defer switch (clean) {
         .clean => |path| alloc.free(@constCast(path)),
         else => {},
     };
-    try std.testing.expectEqualStrings("/bin/bash", clean.clean);
+    try std.testing.expectEqualStrings(bash_path, clean.clean);
 
     const user = try environmentForShellSpec(
         alloc,
         null,
-        .{ .executable = .{ .path = "/bin/bash" } },
+        .{ .executable = .{ .path = bash_path } },
     );
     defer switch (user) {
         .user => |path| alloc.free(@constCast(path)),
         else => {},
     };
-    try std.testing.expectEqualStrings("/bin/bash", user.user);
+    try std.testing.expectEqualStrings(bash_path, user.user);
     try std.testing.expect(!clean.eql(user));
 }
 
@@ -408,6 +613,8 @@ test "resolver rejects missing relative and unsupported shells" {
 }
 
 test "login shell resolution falls back without accepting explicit unsupported shells" {
+    // The Windows login shell is the `shell_selection` pick, with no fallback.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const fallback = try resolve("/opt/homebrew/bin/fish", .user_login);
     try std.testing.expectEqualStrings(fallbackLoginShell(), fallback.path);
     if (builtin.os.tag == .macos) {
@@ -584,5 +791,77 @@ test "bootstrap construction cleans every allocation failure" {
         std.testing.allocator,
         checkBootstrapAllocationFailures,
         .{},
+    );
+}
+
+test "Windows resolves Git Bash and PowerShell in the selected dialect only" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    defer shell_selection.test_dialect = null;
+    shell_selection.test_dialect = .powershell;
+    var pwsh = try resolve(null, .{ .executable = .{ .path = "C:\\Program Files\\PowerShell\\7\\pwsh.exe" } });
+    try std.testing.expectEqual(Dialect.powershell, pwsh.dialect());
+    pwsh.setStartupCommand("Write-Output ready");
+    try std.testing.expectEqualSlices(
+        []const u8,
+        &.{ "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-NoLogo", "-NoExit", "-Command", "Write-Output ready" },
+        pwsh.argv(),
+    );
+    var clean = try resolve(null, .{ .executable = .{ .path = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\PowerShell.EXE", .clean_start = true } });
+    clean.setCommand("exit 3");
+    try std.testing.expectEqualSlices(
+        []const u8,
+        &.{ "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\PowerShell.EXE", "-NoLogo", "-NoProfile", "-Command", "exit 3" },
+        clean.argv(),
+    );
+    try std.testing.expectError(
+        error.UnsupportedShell,
+        resolve(null, .{ .executable = .{ .path = "C:\\Program Files\\Git\\bin\\bash.exe" } }),
+    );
+    try std.testing.expectError(
+        error.UnsupportedShell,
+        resolve(null, .{ .executable = .{ .path = "C:\\Windows\\System32\\cmd.exe" } }),
+    );
+
+    shell_selection.test_dialect = .posix_sh;
+    const bash = try resolve("C:\\Program Files\\Git\\bin\\bash.exe", .user_login);
+    try std.testing.expectEqual(Dialect.posix, bash.dialect());
+    try std.testing.expectEqualSlices(
+        []const u8,
+        &.{ "C:\\Program Files\\Git\\bin\\bash.exe", "--login", "-i" },
+        bash.argv(),
+    );
+    try std.testing.expectError(
+        error.UnsupportedShell,
+        resolve(null, .{ .executable = .{ .path = "C:\\Program Files\\PowerShell\\7\\pwsh.exe" } }),
+    );
+    try std.testing.expectEqual(
+        Environment.legacy,
+        try environmentForShellSpec(std.testing.allocator, "C:\\Program Files\\Git\\bin\\bash.exe", .user_login),
+    );
+    try std.testing.expectEqual(
+        contracts.ShellSpec.user_login,
+        try profileShell(std.testing.allocator, "C:\\Program Files\\Git\\bin\\bash.exe", .clean),
+    );
+}
+
+test "PowerShell bootstrap quotes verbatim strings and keeps the exit status" {
+    const alloc = std.testing.allocator;
+    const commandless = try buildBootstrapFor(alloc, .powershell, "C:\\pf's\\pf.exe", "C:\\x\u{2019}y\\c.sock", "nonce", null);
+    defer alloc.free(commandless);
+    try std.testing.expectEqualStrings(
+        "Set-PSDebug -Off; & 'C:\\pf''s\\pf.exe' '--pf-internal-terminal-control' " ++
+            "'C:\\x\u{2019}\u{2019}y\\c.sock' 'nonce' 'shell-ready'; if ($LASTEXITCODE -ne 0) { exit 125 }\n",
+        commandless,
+    );
+    const command = try buildBootstrapFor(alloc, .powershell, "C:\\pf.exe", "C:\\c.sock", "nonce", "C:\\cmd");
+    defer alloc.free(command);
+    try std.testing.expect(std.mem.find(u8, command, "ReadAllText('C:\\cmd')") != null);
+    try std.testing.expect(std.mem.find(u8, command, "'command-started'") != null);
+    try std.testing.expect(std.mem.endsWith(u8, command, "exit $global:LASTEXITCODE\n"));
+    const source = try buildSourceCommandFor(alloc, .powershell, "C:\\boot'strap");
+    defer alloc.free(source);
+    try std.testing.expectEqualStrings(
+        "Invoke-Expression ([System.IO.File]::ReadAllText('C:\\boot''strap'))",
+        source,
     );
 }
