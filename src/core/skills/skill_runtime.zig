@@ -653,7 +653,8 @@ fn pathInsideConfiguredSymlinkAuthorities(canonical_path: []const u8) bool {
     return false;
 }
 
-/// Parses PF_SKILL_SYMLINK_AUTHORITIES (colon-separated absolute paths) into
+/// Parses PF_SKILL_SYMLINK_AUTHORITIES (absolute paths separated like `PATH`,
+/// `;` on Windows and `:` elsewhere) into
 /// owned duplicates. Returns an empty slice when the variable is unset or
 /// contains no valid absolute paths. Relative entries and entries containing
 /// `..` components are silently skipped. The caller must free each entry and
@@ -668,7 +669,7 @@ fn externalSymlinkAuthorities(alloc: Allocator) ![][]const u8 {
         authorities.deinit(alloc);
     }
 
-    var it = std.mem.tokenizeScalar(u8, raw, ':');
+    var it = std.mem.tokenizeScalar(u8, raw, std.fs.path.delimiter);
     while (it.next()) |entry| {
         const trimmed = std.mem.trim(u8, entry, " \t");
         if (trimmed.len == 0) continue;
@@ -5190,8 +5191,6 @@ test "linked metadata FIFO is rejected before descriptor open" {
 }
 
 test "loadVisibleSkills discovers and reopens a contained linked workspace candidate" {
-    // Reopening linked skill candidates on Windows is a product gap, filed as US-033.
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5237,7 +5236,7 @@ test "loadVisibleSkills discovers and reopens a contained linked workspace candi
         "home/outside-skill/SKILL.md",
         "---\nname: linked-skill\ndescription: outside\n---\n\nOUTSIDE_BODY_MUST_NOT_LOAD\n",
     );
-    try tmp.dir.deleteFile(io_mod.getIo(), "home/workspace/.codex/skills/linked-skill");
+    try io_mod.testDeleteDirSymLink(tmp.dir, "home/workspace/.codex/skills/linked-skill");
     try createTempSymlinkOrSkip(
         &tmp,
         "../../../outside-skill",
@@ -5801,18 +5800,22 @@ const TestEnviron = struct {
     }
 };
 
-test "externalSymlinkAuthorities parses colon-separated absolute paths" {
+test "externalSymlinkAuthorities parses PATH-separated absolute paths" {
     const alloc = std.testing.allocator;
 
     const env = try TestEnviron.install(alloc);
     defer env.deinit();
-    try env.put("PF_SKILL_SYMLINK_AUTHORITIES", "/nix/store:/opt/skills: relative :/bad/../path");
+    const first, const second, const raw = if (comptime builtin.os.tag == .windows)
+        .{ "C:\\nix\\store", "D:\\skills", "C:\\nix\\store;D:\\skills; relative ;C:\\bad\\..\\path" }
+    else
+        .{ "/nix/store", "/opt/skills", "/nix/store:/opt/skills: relative :/bad/../path" };
+    try env.put("PF_SKILL_SYMLINK_AUTHORITIES", raw);
 
     const authorities = try externalSymlinkAuthorities(alloc);
     defer freeExternalAuthorities(alloc, authorities);
     try std.testing.expectEqual(@as(usize, 2), authorities.len);
-    try std.testing.expectEqualStrings("/nix/store", authorities[0]);
-    try std.testing.expectEqualStrings("/opt/skills", authorities[1]);
+    try std.testing.expectEqualStrings(first, authorities[0]);
+    try std.testing.expectEqualStrings(second, authorities[1]);
 }
 
 test "externalSymlinkAuthorities returns empty when unset" {
@@ -5826,8 +5829,6 @@ test "externalSymlinkAuthorities returns empty when unset" {
 }
 
 test "loadVisibleSkills discovers linked metadata through external authority" {
-    // Reopening linked skill candidates on Windows is a product gap, filed as US-033.
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5871,8 +5872,6 @@ test "loadVisibleSkills discovers linked metadata through external authority" {
 }
 
 test "loadVisibleSkills discovers a linked candidate resolved via external symlink authority" {
-    // Reopening linked skill candidates on Windows is a product gap, filed as US-033.
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
