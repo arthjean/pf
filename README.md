@@ -132,13 +132,19 @@ Set `PF_WINDOWS_SHELL` to `bash` to require Git Bash, to `powershell` to skip it
 
 Under Git Bash, permission analysis works as on Linux and macOS. pf does not parse PowerShell, so under PowerShell every command needs an exact approval of that command or a configured rule that names it exactly; in `auto` mode, each one goes through the security review. Wildcard allow rules and the automatic approval of routine read-only commands never apply to PowerShell commands.
 
+### Interactive sessions
+
+Interactive programs that the `shell` tool runs with a terminal, such as REPLs, run in a Windows pseudo console (ConPTY) under the selected Git Bash or PowerShell. A detached terminal host owns these sessions, so they survive the pf process that started them and a later pf run, such as `pf ask --resume last`, continues them. Each session runs inside a Job Object that only the host holds: when the host stops, every process of its sessions stops with it, and those sessions are reported as lost. The host listens on an AF_UNIX socket inside `%USERPROFILE%\.pf` and accepts only processes of the same Windows account. Windows has no tmux, so every session uses this host.
+
+### Credentials and notifications
+
+Stored credentials, such as sign-in sessions, API keys, and MCP OAuth tokens, are encrypted with DPAPI to your Windows account, so another account or a copy of the disk cannot read them. A file that cannot be decrypted on the current logon, for example over an OpenSSH key-based logon or after a profile move, is kept as a `.unreadable` backup next to the original, and pf asks you to sign in again.
+
+Turn notifications ring the terminal bell, as on Linux. In Windows Terminal, pf also requests a desktop notification, which Windows Terminal shows while its window is unfocused when `compatibility.allowOSC777` is enabled in its settings.
+
 ### Not yet available on Windows
 
-- Hosted terminal sessions: the `terminal` tool, which runs interactive programs such as REPLs
-- Interactive OAuth authorization for remote MCP servers
-- Clipboard copy, image paste from the clipboard, and desktop notifications
-- Skill directories that a skill root reaches through a symlink
-- Encryption of stored credentials: they are protected by your profile's file permissions, as on Linux
+- Image paste from the clipboard
 - `pf slack install`
 - The full output of a truncated command in a session that is not saved, such as `pf ask --no-save`: saved sessions keep it
 - Release downloads and `pf upgrade`: build from source

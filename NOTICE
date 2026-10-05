@@ -26,7 +26,12 @@ and has been modified since. Notable modifications:
 - pf builds and runs natively on Windows x86_64: profile and temp paths,
   private state, the console UI, command execution through Git Bash or
   PowerShell inside Job Objects, line-ending-preserving edits, and
-  workspace containment are ported to Windows.
+  workspace containment are ported to Windows. On Windows, stored
+  credentials are encrypted with DPAPI, interactive MCP OAuth binds its
+  callback port exclusively, the clipboard and desktop notifications use
+  Win32 and Windows Terminal, and the detached terminal host runs
+  interactive sessions in ConPTY pseudo consoles over a Winsock AF_UNIX
+  endpoint.
 
 "fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
 where this code comes from.
