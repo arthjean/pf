@@ -23,6 +23,9 @@ and has been modified since. Notable modifications:
   and their signature names the commit they were built from.
 - pf does not distribute the JavaScript SDK: the npm publishing workflow and
   the example applications are removed.
+- The one-command Slack MCP preset of fx (`pf mcp add slack`), which relies
+  on the fx Slack app and its bridge on fx.sh, is not ported. Only its
+  message for a declined MCP authorization is.
 - Provisional, until the held fx changes listed in UPSTREAM.md are decided:
   after `pf upgrade` relaunches the interactive shell, pf does not add
   `--sessions-v2` to the relaunch, so a sessions v2 session reopens on the

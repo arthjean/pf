@@ -1271,6 +1271,8 @@ Port the last five fx merges after the shell snapshot (`/home/arthur/dev/fx@6bdd
   - D. Skip the preset and hand-port only the generic `McpAuthorizationDenied` message.
 
   Pre-decision state: skip; US-009 starts from `/home/arthur/dev/fx@73308320`.
+
+  **Answered 2026-10-06: D.** Arthur does not use Slack; a Discord integration, if any, needs its own PRD outside this sync.
 - **Q2 (Arthur, before US-014): Ultrafast mode (fx #1112, `/home/arthur/dev/fx@88e66581`, and fx #1159, `/home/arthur/dev/fx@9d7937d5`).** An opt-in, higher-priced OpenAI tier through Vercel AI Gateway, with routing forced to OpenAI. Options:
   - Port as is (off by default, profile-only).
   - Port with reduced copy: same code and CLI help as "port as is"; README and sdk/README keep fx's Ultrafast text without "Gateway metadata currently marks Astra eligible" (`/home/arthur/dev/fx@88e66581:README.md:103`) and without any further sentence Arthur names, with one NOTICE bullet.

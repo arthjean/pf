@@ -1350,6 +1350,8 @@ pub fn authentication_error_message(err: anyerror) []const u8 {
             ) catch "The OAuth callback port is in use. Close the program using it and retry";
         },
         error.McpAuthorizationCallbackTimedOut => "Authorization was not completed in time. The server remains unauthorized",
+        // UPSTREAM.md records where this message comes from.
+        error.McpAuthorizationDenied => "Authorization was declined. Run the connection command again to retry",
         // The store was kept as an `.unreadable` backup, so a retry starts a
         // new authorization.
         error.CredentialsUndecryptable => "Your saved MCP credentials cannot be decrypted on this logon. Retry to authorize again",
@@ -3233,6 +3235,13 @@ test "interactive callback on Windows reports the end of the authorization windo
         awaitInteractiveCallbackWindows(std.testing.allocator, .{ &listener, null }, .{}, 300),
     );
     try std.testing.expect(io_mod.milliTimestamp() - started_ms < 2_000);
+}
+
+test "a declined authorization tells the user how to retry" {
+    try std.testing.expectEqualStrings(
+        "Authorization was declined. Run the connection command again to retry",
+        authentication_error_message(error.McpAuthorizationDenied),
+    );
 }
 
 test "pinned callback port conflict names the port" {

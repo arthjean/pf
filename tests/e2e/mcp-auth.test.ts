@@ -958,6 +958,10 @@ describe("MCP remote authentication lifecycle", () => {
       } else {
         expect(result.stdout).not.toContain("Authenticated MCP server");
       }
+      if (scenario === "denied") {
+        expect(result.code).not.toBe(0);
+        expect(result.stderr).toContain("Authorization was declined. Run the connection command again to retry");
+      }
       expect(await postCallback(body).catch(() => null)).toBe(null);
     }, 20_000);
   }

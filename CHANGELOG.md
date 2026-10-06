@@ -19,6 +19,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 ### Improvements
 
 - **Upgrades:** `pf upgrade` reports that no release channel is available, and automatic upgrades are off until Paneflow Agent publishes its own releases.
+- **MCP authorization messages:** When you decline an MCP server's authorization in the browser, pf says so and tells you to run the connection command again, instead of printing an error name.
 - **Grok models:** Models of your Grok subscription that xAI's public catalog omits, or that it cannot describe while it is unavailable, are listed without image input instead of being hidden.
 
 ### Bug Fixes

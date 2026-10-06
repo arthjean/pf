@@ -13,7 +13,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 
 | fx merge | fx PR | Open Question | Revisited by |
 |---|---|---|---|
-| `73308320925d5c31b4f57b875f07e77eb8b051d6` | #1101 | Q1 | US-028 |
+| `73308320925d5c31b4f57b875f07e77eb8b051d6` | #1101 | Q1, answered D: skip the Slack preset; denied message ported by hand | permanent |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the Open Question that blocks it, and the story that revisits it.
 
