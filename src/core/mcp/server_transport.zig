@@ -244,7 +244,9 @@ fn connectServerHttp(
     };
 
     var next_request_id: u64 = 1;
-    if (try protocol_negotiation.startupMode(server.config.env, io_mod.getenv(protocol_negotiation.protocol_version_environment)) == .legacy) {
+    // Host-channel servers support only the modern stateless protocol.
+    const host_channel = server.config.acp_server_id != null;
+    if (!host_channel and try protocol_negotiation.startupMode(server.config.env, io_mod.getenv(protocol_negotiation.protocol_version_environment)) == .legacy) {
         _ = try server_auth.refreshSharedCredentials(alloc, server, post_control);
         return connectServerLegacyHttp(alloc, server, tool_registry, used_tool_names, attempt_control, &next_request_id, legacy_streamable_http.preferred_version);
     }
@@ -341,7 +343,15 @@ fn connectServerHttp(
         .{},
     ) catch return error.McpInvalidJson;
     defer parsed_discover.deinit();
-    switch (try classifyHttpDiscoveryResponse(parsed_discover.value)) {
+    const discovery = try classifyHttpDiscoveryResponse(parsed_discover.value);
+    if (host_channel and discovery != .modern) {
+        server.setFailed(
+            alloc,
+            "MCP server does not support protocol version " ++ modern_protocol_version,
+        );
+        return error.McpUnsupportedProtocolVersion;
+    }
+    switch (discovery) {
         .modern => {},
         .legacy_fallback => return connectServerLegacyHttp(
             alloc,
@@ -928,6 +938,7 @@ fn spawnStdioServer(alloc: Allocator, server: *McpServer, argv: []const []const 
         .stdout = .pipe,
         .stderr = .pipe,
         .environ_map = if (server.env_map != null) &server.env_map.? else null,
+        .cwd = if (server.config.cwd) |cwd| .{ .path = cwd } else .inherit,
         .pgid = if (builtin.os.tag == .windows) null else 0,
     };
     // On Windows the server runs in its own Job Object, so a launcher such as

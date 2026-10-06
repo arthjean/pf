@@ -17,7 +17,7 @@
     {
       "id": "EP-002",
       "title": "ACP and sessions v2",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "stories_total": 5,
       "stories_done": 0
@@ -104,14 +104,14 @@
       "id": "US-005",
       "title": "Port ACP embedder gaps, cancelled-turn steering, and the FIFO test fix",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-002",
         "US-004"
       ],
-      "started_at": null,
+      "started_at": "2026-10-06T16:56:12+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -119,13 +119,13 @@
       "id": "US-006",
       "title": "Port the sessions v2 store for pf ask and refuse it on Windows",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-005"
       ],
-      "started_at": null,
+      "started_at": "2026-10-06T17:12:22+02:00",
       "completed_at": null,
       "reviewed_at": null
     },

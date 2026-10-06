@@ -95,6 +95,8 @@ pf builds as a native binary or WebAssembly. Applications embedding pf can provi
 | `createPfAgent()` | Embed the agent core in a JavaScript host with `pf-core.wasm`. |
 | `createPfTerminal()` | Embed the interactive terminal with `pf-term.wasm`. |
 
+ACP clients can keep their MCP tools loaded on every turn, steer a running turn, supply a session system prompt, serve MCP servers over the ACP connection, and choose each session's workspace. See [ACP embedding](CONTRIBUTING.md#acp-embedding).
+
 pf does not distribute a JavaScript SDK. The [SDK sources](sdk/README.md) build the `libpf` package from this repository for pf's own tests and benchmarks, and the WebAssembly SDK is experimental. To embed an agent in a JavaScript application from npm, use the SDK that the upstream [fx](https://github.com/vercel-labs/fx) project publishes; it embeds that project's agent, not pf.
 
 ## Slack workspace installation
