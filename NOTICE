@@ -23,6 +23,10 @@ and has been modified since. Notable modifications:
   and their signature names the commit they were built from.
 - pf does not distribute the JavaScript SDK: the npm publishing workflow and
   the example applications are removed.
+- Provisional, until the held fx changes listed in UPSTREAM.md are decided:
+  after `pf upgrade` relaunches the interactive shell, pf does not add
+  `--sessions-v2` to the relaunch, so a sessions v2 session reopens on the
+  default store unless `PF_SESSIONS_V2` is set.
 - pf builds and runs natively on Windows x86_64: profile and temp paths,
   private state, the console UI, command execution through Git Bash or
   PowerShell inside Job Objects, line-ending-preserving edits, and

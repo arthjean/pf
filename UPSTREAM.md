@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `d44cd84ae19c8b642797f431a04df6e53c66a13e` |
+| Last ported | `14893f6460dcba305c5e11d510f5f303eee3b574` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -17,7 +17,9 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 
 ## Held
 
-None.
+| fx merge | fx PR | Held | Hold commit | Open Question | Revisited by |
+|---|---|---|---|---|---|
+| `14893f6460dcba305c5e11d510f5f303eee3b574` | #1082 | The upgrade relaunch argv block and `writeUpgradeRelaunchFailure` in `src/core/app/app_entry_runtime.zig`, the unit test "a v2 handoff relaunches and hints with --sessions-v2", and the relaunch argv expectation in `tests/e2e/tui-resume.test.ts` | pending | Q4 | US-028 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 

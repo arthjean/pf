@@ -13,6 +13,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 ### New Features
 
 - **Sessions v2 (experimental):** `pf ask --sessions-v2` or `PF_SESSIONS_V2=1` saves the session in an append-only store under `~/.pf/sessions/v2/`, so a killed `pf ask` keeps its prompt and finished tool calls. Windows refuses it with an error.
+- **Sessions v2 everywhere:** With `--sessions-v2` or `PF_SESSIONS_V2=1`, the interactive shell, `pf sessions`, `pf session`, and `pf doctor` use the sessions v2 store, and `pf acp` uses it with `PF_SESSIONS_V2=1`. Windows refuses it with an error.
 - **ACP embedding:** ACP clients can steer a running turn with `_meta.pf.steer`, supply a session system prompt, keep their MCP tools loaded on every turn, serve MCP servers over the ACP connection, and choose each session's workspace with `cwd`.
 
 ### Improvements

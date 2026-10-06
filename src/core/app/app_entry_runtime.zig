@@ -458,30 +458,20 @@ fn runInteractiveWithDeps(comptime App: type, comptime cooperative: bool, app: *
         if (handoff_value) |value| {
             var handoff = value;
             defer handoff.deinit(alloc);
-            var argv: [6][]const u8 = undefined;
-            var argc: usize = 0;
-            argv[argc] = request.executablePath();
-            argc += 1;
-            // A v2 session resumes only with the flag that saved it.
-            if (handoff.sessions_v2) {
-                argv[argc] = cli_surface.sessions_v2_arg;
-                argc += 1;
-            }
-            for ([_][]const u8{ "resume", handoff.session_id, cli_surface.upgrade_relaunch_arg }) |arg| {
-                argv[argc] = arg;
-                argc += 1;
-            }
-            if (request.previousRevision()) |revision| {
-                argv[argc] = revision;
-                argc += 1;
-            }
-            const argv_slice = argv[0..argc];
+            var argv = [_][]const u8{
+                request.executablePath(),
+                "resume",
+                handoff.session_id,
+                cli_surface.upgrade_relaunch_arg,
+                request.previousRevision() orelse "",
+            };
+            const argv_slice = if (request.previousRevision() == null) argv[0..4] else argv[0..5];
             const replace_err = deps.replace_process(
                 deps.replace_ctx,
                 io_mod.getIo(),
                 .{ .argv = argv_slice },
             );
-            writeUpgradeRelaunchFailure(deps, replace_err, handoff.session_id, handoff.sessions_v2);
+            writeUpgradeRelaunchFailure(deps, replace_err, handoff.session_id);
         } else {
             writeStderr(
                 deps,
@@ -555,13 +545,12 @@ fn writeUpgradeRelaunchFailure(
     deps: RunDeps,
     err: std.process.ReplaceError,
     session_id: []const u8,
-    sessions_v2: bool,
 ) void {
     var buffer: [768]u8 = undefined;
     const message = std.fmt.bufPrint(
         &buffer,
-        "pf: upgrade installed, but relaunch failed: {s}\nContinue session with: pf {s}--resume {s}\n",
-        .{ @errorName(err), if (sessions_v2) "--sessions-v2 " else "", session_id },
+        "pf: upgrade installed, but relaunch failed: {s}\nContinue session with: pf --resume {s}\n",
+        .{ @errorName(err), session_id },
     ) catch "pf: upgrade installed, but relaunch failed; run `pf doctor`.\n";
     writeStderr(deps, message);
 }
@@ -1187,26 +1176,6 @@ test "app entry bounds graceful-exit SIGINT suppression to handoff lifetime" {
 
     _ = std.c.raise(std.posix.SIG.INT);
     try std.testing.expectEqual(@as(usize, 1), test_sigint_count.load(.seq_cst));
-}
-
-test "a v2 handoff relaunches and hints with --sessions-v2" {
-    const alloc = std.testing.allocator;
-    var capture = TestCapture.init(.{ .interactive = .{} });
-    defer capture.deinit();
-    capture.resume_handoff_id = "session-123";
-    capture.resume_handoff_sessions_v2 = true;
-    capture.upgrade_relaunch_path = "/tmp/pf-upgraded";
-
-    const outcome = try runWithDeps(TestApp, alloc, &.{}, testConfig(), capture.deps());
-
-    try std.testing.expectEqual(@as(u8, 1), outcome.exit);
-    try std.testing.expectEqual(@as(usize, 5), capture.replace_arg_count);
-    try std.testing.expectEqualStrings("/tmp/pf-upgraded", capture.replaceArg(0));
-    try std.testing.expectEqualStrings("--sessions-v2", capture.replaceArg(1));
-    try std.testing.expectEqualStrings("resume", capture.replaceArg(2));
-    try std.testing.expectEqualStrings("session-123", capture.replaceArg(3));
-    try std.testing.expectEqualStrings("--upgrade-relaunch", capture.replaceArg(4));
-    try std.testing.expect(std.mem.find(u8, capture.stderr.written(), "pf --sessions-v2 --resume session-123") != null);
 }
 
 test "app entry relaunches only after teardown with the validated handoff" {
