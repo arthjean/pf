@@ -1008,6 +1008,9 @@ pub const DurableOps = struct {
     ctx: ?*anyopaque = null,
     sync_file: *const fn (?*anyopaque, std.Io.File) anyerror!void = defaultSyncFile,
     sync_dir: *const fn (?*anyopaque, std.Io.Dir) anyerror!void = defaultSyncDir,
+    /// When set, a replace that fails before its rename also records the
+    /// error that stopped it, which `DurableReplacePreRenameFailed` omits.
+    pre_rename_cause: ?*?anyerror = null,
 };
 
 fn defaultTryLock(_: ?*anyopaque, file: std.Io.File) anyerror!bool {
@@ -1101,6 +1104,24 @@ fn openOrCreateVerifiedPrivateChild(parent: std.Io.Dir, name: []const u8) !Verif
     return .{ .dir = dir };
 }
 
+/// Opens an existing private folder, checked as
+/// `openOrCreateVerifiedPrivateDir` checks it, without creating it: null
+/// when it is missing.
+pub fn openVerifiedPrivateDirIfPresent(parent: *VerifiedDir, name: []const u8) !?VerifiedDir {
+    try validateRelativeLeaf(name);
+    var dir = parent.dir.openDir(getIo(), name, .{
+        .iterate = true,
+        .follow_symlinks = false,
+    }) catch |err| switch (err) {
+        error.FileNotFound => return null,
+        error.SymLinkLoop, error.NotDir => return error.DurablePathUnsafe,
+        else => return err,
+    };
+    errdefer dir.close(getIo());
+    try verifyPrivateDir(try dir.stat(getIo()));
+    return .{ .dir = dir };
+}
+
 pub fn openOrCreateVerifiedPrivateDir(parent: *VerifiedDir, name: []const u8) !VerifiedDir {
     return openOrCreateVerifiedPrivateChild(parent.dir, name);
 }
@@ -1134,6 +1155,11 @@ pub fn durableReplaceVerified(
     return durableReplaceVerifiedWithOps(alloc, dir, name, bytes, .{});
 }
 
+fn preRenameFailed(ops: DurableOps, cause: anyerror) error{DurableReplacePreRenameFailed} {
+    if (ops.pre_rename_cause) |slot| slot.* = cause;
+    return error.DurableReplacePreRenameFailed;
+}
+
 pub fn durableReplaceVerifiedWithOps(
     alloc: std.mem.Allocator,
     dir: *VerifiedDir,
@@ -1145,7 +1171,7 @@ pub fn durableReplaceVerifiedWithOps(
     try validateRelativeLeaf(name);
     validateReplaceTarget(dir.dir, name) catch |err| switch (err) {
         error.DurablePathUnsafe, error.AccessDenied => return err,
-        else => return error.DurableReplacePreRenameFailed,
+        else => return preRenameFailed(ops, err),
     };
 
     var random_bytes: [16]u8 = undefined;
@@ -1163,19 +1189,19 @@ pub fn durableReplaceVerifiedWithOps(
         .exclusive = true,
         .permissions = private_file_permissions,
         .resolve_beneath = true,
-    }) catch return error.DurableReplacePreRenameFailed;
+    }) catch |err| return preRenameFailed(ops, err);
     temp_exists = true;
     defer file.close(getIo());
 
     ensurePrivateFile(file) catch |err| switch (err) {
         error.DurablePathUnsafe, error.PrivateStatePermissionsUnsupported => return err,
-        else => return error.DurableReplacePreRenameFailed,
+        else => return preRenameFailed(ops, err),
     };
-    file.writeStreamingAll(getIo(), bytes) catch return error.DurableReplacePreRenameFailed;
-    ops.sync_file(ops.ctx, file) catch return error.DurableReplacePreRenameFailed;
+    file.writeStreamingAll(getIo(), bytes) catch |err| return preRenameFailed(ops, err);
+    ops.sync_file(ops.ctx, file) catch |err| return preRenameFailed(ops, err);
     renameReplacing(alloc, dir.dir, temp_name, name) catch |err| switch (err) {
         error.DurableReplaceTargetBusy, error.OutOfMemory => return err,
-        else => return error.DurableReplacePreRenameFailed,
+        else => return preRenameFailed(ops, err),
     };
     temp_exists = false;
 
@@ -2174,6 +2200,29 @@ test "durable replace reports pre-rename failure without changing target" {
     const bytes = try readFileToEnd(alloc, &file, 16);
     defer alloc.free(bytes);
     try std.testing.expectEqualStrings("old", bytes);
+}
+
+test "durable replace can record what stopped it before the rename" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var dir = VerifiedDir{ .dir = try tmp.dir.openDir(getIo(), ".", .{ .iterate = true, .follow_symlinks = false }) };
+    defer dir.close();
+    var state = DurableFailureState{ .fail_temp_sync = true };
+    var cause: ?anyerror = null;
+    const ops = DurableOps{ .ctx = &state, .sync_file = testDurableSyncFile, .pre_rename_cause = &cause };
+    try std.testing.expectError(
+        error.DurableReplacePreRenameFailed,
+        durableReplaceVerifiedWithOps(alloc, &dir, "marker", "new", ops),
+    );
+    try std.testing.expectEqual(@as(?anyerror, error.InjectedSyncFailure), cause);
+    try std.testing.expectError(error.FileNotFound, dir.dir.statFile(getIo(), "marker", .{ .follow_symlinks = false }));
+
+    // A replace that succeeds records nothing.
+    cause = null;
+    try durableReplaceVerifiedWithOps(alloc, &dir, "marker", "new", .{ .pre_rename_cause = &cause });
+    try std.testing.expectEqual(@as(?anyerror, null), cause);
 }
 
 test "durable replace reports post-rename sync failure as indeterminate" {

@@ -65,6 +65,7 @@ export const MIRRORED_ENV_KEYS = [
   "PF_GATEWAY_CHAT_URL",
   "PF_MAX_AGENT_STEPS",
   "PF_MODEL",
+  "PF_SESSIONS_V2",
 ] as const;
 
 export function canonicalSubagentIdForStore(childId: string): string {
