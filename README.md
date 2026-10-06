@@ -150,6 +150,7 @@ Turn notifications ring the terminal bell, as on Linux. In Windows Terminal, pf 
 - `pf slack install`
 - The full output of a truncated command in a session that is not saved, such as `pf ask --no-save`: saved sessions keep it
 - Release downloads and `pf upgrade`: build from source
+- Sessions v2 (`--sessions-v2`, `PF_SESSIONS_V2`): pf exits with an error and keeps saving sessions in the default store
 
 ### Key bindings in Windows Terminal
 

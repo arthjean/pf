@@ -31,7 +31,7 @@ and has been modified since. Notable modifications:
   callback port exclusively, the clipboard and desktop notifications use
   Win32 and Windows Terminal, and the detached terminal host runs
   interactive sessions in ConPTY pseudo consoles over a Winsock AF_UNIX
-  endpoint.
+  endpoint. Sessions v2 compiles on Windows but is refused there.
 
 "fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
 where this code comes from.

@@ -119,7 +119,7 @@
       "id": "US-006",
       "title": "Port the sessions v2 store for pf ask and refuse it on Windows",
       "epic": "EP-002",
-      "status": "IN_PROGRESS",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
@@ -133,13 +133,13 @@
       "id": "US-007",
       "title": "Port sessions v2 for session commands, doctor, ACP, and the app",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-006"
       ],
-      "started_at": null,
+      "started_at": "2026-10-06T18:23:37+02:00",
       "completed_at": null,
       "reviewed_at": null
     },

@@ -77,6 +77,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.addImport("build_options", build_options.createModule());
+    const session_manager = addSessionManager(b, exe.root_module, target, optimize, null);
 
     b.installArtifact(exe);
 
@@ -100,9 +101,23 @@ pub fn build(b: *std.Build) void {
         "PF_TEST_PRODUCT_EXE",
         b.getInstallPath(.bin, exe.out_filename),
     );
+    // The session boundary test walks the source tree from here.
+    run_exe_tests.setEnvironmentVariable("PF_TEST_SOURCE_ROOT", b.pathFromRoot("src"));
+
+    // The session manager's own tests, as pf compiles it (no hooks).
+    const session_manager_tests = b.addTest(.{
+        .root_module = session_manager,
+        .filters = test_filters,
+    });
+
+    const run_session_manager_tests = b.addRunArtifact(session_manager_tests);
+    const session_manager_test_step = b.step("test-session-manager", "Run the session manager's tests");
+    session_manager_test_step.dependOn(&run_session_manager_tests.step);
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_exe_tests.step);
+    // pf refuses sessions v2 on Windows, so its store's tests run elsewhere.
+    if (target.result.os.tag != .windows) test_step.dependOn(&run_session_manager_tests.step);
 
     if (wasm_surface != .none) {
         addWasmArtifact(b, wasm_surface, git_commit, app_version, update_channel);
@@ -384,6 +399,7 @@ fn addWasmArtifact(
     });
     if (surface == .core) wasm_exe.stack_size = 1024 * 1024;
     wasm_exe.root_module.addImport("build_options", wasm_options.createModule());
+    _ = addSessionManager(b, wasm_exe.root_module, wasm_target, .ReleaseSmall, true);
 
     const install_wasm = b.addInstallArtifact(wasm_exe, .{});
     const wasm_step = b.step(name ++ "-wasm", description);
@@ -421,6 +437,7 @@ fn addNapiArtifact(
         }),
     });
     lib.root_module.addImport("build_options", napi_options.createModule());
+    _ = addSessionManager(b, lib.root_module, target, .ReleaseSafe, null);
     const node_include = b.option(
         []const u8,
         "node-include-dir",
@@ -457,6 +474,32 @@ fn readGitCommit(b: *std.Build) []const u8 {
     if (code != 0) return "unknown";
     const trimmed = std.mem.trim(u8, out, " \t\r\n");
     return b.allocator.dupe(u8, trimmed) catch "unknown";
+}
+
+/// The session manager as its own module, rooted at its API. It imports
+/// nothing but its own options, and a file cannot belong to two modules, so
+/// pf reaches it only through `@import("session_manager")`.
+fn addSessionManager(
+    b: *std.Build,
+    importer: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    single_threaded: ?bool,
+) *std.Build.Module {
+    const options = b.addOptions();
+    options.addOption(bool, "hooks", false);
+    options.addOption([]const u8, "trace_dir", b.getInstallPath(.prefix, "session-manager-traces"));
+    options.addOption([]const u8, "src_dir", b.pathFromRoot("src/core/session_manager"));
+    const module = b.createModule(.{
+        .root_source_file = b.path("src/core/session_manager/api.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .single_threaded = single_threaded,
+    });
+    module.addImport("build_options", options.createModule());
+    importer.addImport("session_manager", module);
+    return module;
 }
 
 fn readAppVersion(b: *std.Build) []const u8 {
