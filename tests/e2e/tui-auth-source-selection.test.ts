@@ -6610,7 +6610,7 @@ tmuxTest(
 );
 
 tmuxTest(
-  "logout removes an pf login rejected for unsafe permissions",
+  "logout removes a pf login rejected for unsafe permissions",
   async () => {
     home = mkdtempSync(join(tmpdir(), "pf-tui-logout-rejected-login-"));
     stderrPath = join(home, "stderr.log");

@@ -1464,7 +1464,7 @@ test "a failed pf-login refresh is still reported when nothing else resolves" {
     try std.testing.expectEqual(StoredKeyReadStatus.not_found, resolution.stored_key_status);
 }
 
-/// A HOME holding an pf login whose session is expired and whose refresh token
+/// A HOME holding a pf login whose session is expired and whose refresh token
 /// the issuer rejects, which is what an expired or revoked login looks like on
 /// disk. Paired with `oauth_transport.unavailable_provider`, the refresh fails.
 const ExpiredPfLoginFixture = struct {
@@ -1574,7 +1574,7 @@ test "an invalid pf login refresh retires the rejected session" {
     try std.testing.expect(persisted == null);
 }
 
-test "an pf login refresh without a rotated refresh token retires the session" {
+test "a pf login refresh without a rotated refresh token retires the session" {
     const alloc = std.testing.allocator;
     var fixture = try ExpiredPfLoginFixture.install(alloc);
     defer fixture.deinit();
@@ -1619,7 +1619,7 @@ test "a malformed successful pf login refresh retires the session" {
     try std.testing.expect(persisted == null);
 }
 
-test "an pf login refresh retires the consumed token when durable replacement fails" {
+test "a pf login refresh retires the consumed token when durable replacement fails" {
     // Makes the credential file read-only through Permissions.setReadOnly, which does not compile on Windows in Zig 0.16.0.
     if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;

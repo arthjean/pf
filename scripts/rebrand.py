@@ -32,6 +32,8 @@ SKIP_FILES = {
     "UPSTREAM.md",
     "scripts/rebrand.py",
     # PRDs plan pf's divergence from fx and name it on purpose.
+    "tasks/prd-fx-sync-0-0-13-status.json",
+    "tasks/prd-fx-sync-0-0-13.md",
     "tasks/prd-pf-distribution.md",
     "tasks/prd-windows-native-support.md",
 }
@@ -41,12 +43,15 @@ RETARGETS = [
     # Product identity sent to third parties points at the product site.
     (r"(?<=[+\" ])https://github\.com/vercel-labs/fx(?=[\"')])", "https://paneflow.dev/agent"),
     (r"You are fx, a local coding CLI assistant", "You are Paneflow Agent (pf), a local coding CLI assistant"),
+    (r"You are fx, a coding agent with tool access", "You are Paneflow Agent (pf), a coding agent with tool access"),
     # pf signs macOS binaries under its own identifier.
     (r"com\.vercel\.fx", "dev.paneflow.agent"),
     # A renamed Zig package needs its own fingerprint.
     (r"\.fingerprint = 0x2ca027d00bcd652c", ".fingerprint = 0xca37af64c5d0d74e"),
     # Digests pinned over text that the rename changes.
     (r"51b79260638620ff5f046a835b16f37d50dead5156206b600d0357177edf23d7", "69ffaae21a60b322fb800934b40dcb2d982733d0b2941ce2f18e371af8a3b1a8"),
+    (r"44e5ac3bfa303d0686f51387c19cb0adab415694ecf48380e3a51b130a7cf99f", "69af750994791f830db305a896b760bdd85b43a5d278c7513fc517b6a37dedf6"),
+    (r"ca8b5aa265c6318fbd0604879fb2626826d9fcb83fa5d335dc0371fec7286b3f", "791976077208397ed5eb292eb6ef841b2424b5f817d2b9225367b68bad7fdfc4"),
     (r"5029829df4ea080a7c21701c0185b777d21fd42d1b79a7a957605e508f73fe03", "f4020f9dd07c6d277aa7f073ee1de9ac83b3a8946c1bc7fa3e84d768260f8bec"),
     (r"0x15, 0xa6, 0x34, 0x7e, 0xb5, 0xad, 0x37, 0xc6,", "0xf8, 0xea, 0x45, 0xb9, 0xdd, 0x40, 0x11, 0x11,"),
     (r"0x5c, 0x75, 0x59, 0xd2, 0xd0, 0xa5, 0x13, 0xb7,", "0x95, 0xb7, 0x7a, 0x27, 0x83, 0x14, 0xcc, 0x0e,"),
@@ -65,6 +70,7 @@ PROTECTED = [
     # Attribution that names fx on purpose.
     r"\[fx\](?=\(https://github\.com/vercel-labs/fx\))",
     r"the fx Slack app",
+    r"fx Client ID",
     # Repository names parsed from those fixtures.
     r"\"fx\", [A-Za-z_.?]*repo_name\)",
     # Package lock integrity hashes.
@@ -81,10 +87,16 @@ RULES = [
     (r"releases\.fx\.sh", "releases.paneflow.dev/agent"),
     (r"https?://fx\.sh", "https://paneflow.dev/agent"),
     (r"(?<![A-Za-z0-9.-])fx\.sh(?![A-Za-z0-9])", "paneflow.dev/agent"),
+    # The article follows the name: "an fx session" becomes "a pf session".
+    (r"\b([Aa])n fx(?![A-Za-z0-9])", r"\1 pf"),
     (r"libfx", "libpf"),
     (r"LIBFX", "LIBPF"),
     (r"Libfx", "Libpf"),
     (r"fxtape", "pftape"),
+    (r"FXSNAP", "PFSNAP"),
+    (r"fxsnap", "pfsnap"),
+    # Fixture names and shell aliases such as fxbig, fxll, or fxb_a.
+    (r"(?<![A-Za-z0-9])fx(?=(?:a|big|small|late|grid|ll)\b|b_[af])", "pf"),
     (r"'f', 'x'", "'p', 'f'"),
     (r"(?<![A-Z])Fx(?![a-z])", "Pf"),
     # Escapes such as \n, \000, \x00, or a CSI sequence glue a letter to the name.
@@ -189,6 +201,12 @@ def tracked_files():
     return [p for p in git("ls-files", "-z").decode().split("\0") if p]
 
 
+def worktree_files():
+    """Tracked and untracked files, without ignored ones."""
+    listed = git("ls-files", "-z", "--cached", "--others", "--exclude-standard").decode().split("\0")
+    return list(dict.fromkeys(p for p in listed if p))
+
+
 def cmd_apply(_args):
     changed = moved = 0
     for path in tracked_files():
@@ -214,9 +232,10 @@ def cmd_apply(_args):
 
 def cmd_check(_args):
     hits = 0
-    for path in tracked_files():
+    for path in worktree_files():
         file = ROOT / path
-        if path in SKIP_FILES or file.is_symlink():
+        # A tracked file can be missing from the worktree while a conflict is resolved.
+        if path in SKIP_FILES or file.is_symlink() or not file.is_file():
             continue
         text = decode(file.read_bytes())
         if text is None:
@@ -243,7 +262,14 @@ def cmd_filter(_args):
 
 def cmd_port(args):
     upstream = Path(args.upstream).resolve()
-    names = git("diff", "--name-status", "--no-renames", args.start, args.end, cwd=upstream).decode()
+    if not upstream.is_dir():
+        sys.exit(f"rebrand.py port: no fx clone at {upstream}; clone fx there or pass --upstream")
+    # Fail before writing anything when the clone lacks FROM or TO.
+    diff = ["diff", "--name-status", "--no-renames", args.start, args.end]
+    listed = subprocess.run(["git", *diff], cwd=upstream, capture_output=True)
+    if listed.returncode:
+        sys.exit(f"rebrand.py port: `git {' '.join(diff)}` failed in {upstream}: {listed.stderr.decode().strip()}")
+    names = listed.stdout.decode()
     conflicts = []
     for entry in names.splitlines():
         status, path = entry.split("\t", 1)
@@ -274,8 +300,11 @@ def cmd_port(args):
             if status != "A":
                 conflicts.append(f"{dest.relative_to(ROOT)}: changed upstream but missing in pf")
                 continue
+            mode = git("ls-tree", args.end, "--", path, cwd=upstream).split(b" ", 1)[0]
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(payload)
+            dest.chmod(0o755 if mode == b"100755" else 0o644)
+            git("add", str(dest.relative_to(ROOT)))
             print(f"add    {dest.relative_to(ROOT)}")
             continue
         if binary:
@@ -306,7 +335,7 @@ def main():
     port = commands.add_parser("port")
     port.add_argument("start", metavar="FROM")
     port.add_argument("end", metavar="TO")
-    port.add_argument("--upstream", default=str(ROOT.parent / "fx-upstream"))
+    port.add_argument("--upstream", default=str(ROOT.parent / "fx"), help="local fx clone (default: ../fx)")
     port.set_defaults(run=cmd_port)
     args = parser.parse_args()
     sys.exit(args.run(args) or 0)

@@ -93,6 +93,8 @@ EXCLUDED_E2E_TESTS = (
     "tui-render-live-stress.test.ts",
     "web-fetch-live.test.ts",
     "web-search-live.test.ts",
+    "windows-mcp-oauth.test.ts",
+    "windows-terminal-host.test.ts",
     "windows-tui-smoke.test.ts",
 )
 

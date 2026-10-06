@@ -1,0 +1,456 @@
+{
+  "prd": {
+    "file": "tasks/prd-fx-sync-0-0-13.md",
+    "title": "fx Sync to /home/arthur/dev/fx@9d7937d5 (fx 0.0.13 and four later PRs)",
+    "created_at": "2026-10-06",
+    "status": "READY"
+  },
+  "epics": [
+    {
+      "id": "EP-001",
+      "title": "Port groundwork",
+      "status": "DONE",
+      "priority": "P0",
+      "stories_total": 4,
+      "stories_done": 4
+    },
+    {
+      "id": "EP-002",
+      "title": "ACP and sessions v2",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 5,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-003",
+      "title": "Compaction, images, and Ultrafast",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 8,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-004",
+      "title": "Startup, exit, and in-process terminals",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 6,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-005",
+      "title": "Release tail, CI, and closure",
+      "status": "TODO",
+      "priority": "P1",
+      "stories_total": 6,
+      "stories_done": 0
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Repair the CI manifests and record the pre-port baseline",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [],
+      "started_at": "2026-10-06T14:18:03+02:00",
+      "completed_at": "2026-10-06T16:03:35+02:00",
+      "reviewed_at": "2026-10-06T16:03:35+02:00"
+    },
+    {
+      "id": "US-002",
+      "title": "Extend the rename rules for the fx range",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-001"
+      ],
+      "started_at": "2026-10-06T14:21:20+02:00",
+      "completed_at": "2026-10-06T16:03:35+02:00",
+      "reviewed_at": "2026-10-06T16:03:35+02:00"
+    },
+    {
+      "id": "US-003",
+      "title": "Make the port tool stage added files with their modes",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [],
+      "started_at": "2026-10-06T14:18:03+02:00",
+      "completed_at": "2026-10-06T16:03:35+02:00",
+      "reviewed_at": "2026-10-06T16:03:35+02:00"
+    },
+    {
+      "id": "US-004",
+      "title": "Port from /home/arthur/dev/fx and record skipped and held changes",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-003"
+      ],
+      "started_at": "2026-10-06T14:24:19+02:00",
+      "completed_at": "2026-10-06T16:03:35+02:00",
+      "reviewed_at": "2026-10-06T16:03:35+02:00"
+    },
+    {
+      "id": "US-005",
+      "title": "Port ACP embedder gaps, cancelled-turn steering, and the FIFO test fix",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-002",
+        "US-004"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-006",
+      "title": "Port the sessions v2 store for pf ask and refuse it on Windows",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-005"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-007",
+      "title": "Port sessions v2 for session commands, doctor, ACP, and the app",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-006"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-008",
+      "title": "Port or skip the Slack MCP preset",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "S",
+      "blocked_by": [
+        "US-007"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-009",
+      "title": "Port shared v2 replay and the Grok catalog tolerance",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-008"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-010",
+      "title": "Validate assumption: v1 compaction checkpoints written by pf d7ceb0e load after the compactor rewrite",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-009"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-011",
+      "title": "Port the turn-by-turn compaction ledger and the compactor boundary",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-010"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-012",
+      "title": "Port raw libpf image bytes with the SDK in lockstep",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-011"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-013",
+      "title": "Port v2 blobs, compaction hardening, and the Base64 decode fix",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-012"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-014",
+      "title": "Port or skip Ultrafast mode",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "M",
+      "blocked_by": [
+        "US-013"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-015",
+      "title": "Port or skip the CI unit test timeout",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P2",
+      "size": "XS",
+      "blocked_by": [
+        "US-014"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-016",
+      "title": "Keep a running step's text when a v2 turn crashes",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "XS",
+      "blocked_by": [
+        "US-015"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-017",
+      "title": "Let models recover oversized images",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-016"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-018",
+      "title": "Draw the first frame before slow startup work",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-017"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-019",
+      "title": "Title a crashed first v2 turn and fix compaction check sources",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-018"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-020",
+      "title": "Exit without waiting on MCP servers or the usage ledger",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-019"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-021",
+      "title": "Port shell snapshots and in-process terminals",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-014",
+        "US-020"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-022",
+      "title": "Run in-process ConPTY terminals on Windows",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-021"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-023",
+      "title": "Retire the detached terminal host from docs and the Windows PRD",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "S",
+      "blocked_by": [
+        "US-022"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-024",
+      "title": "Port or skip the 0.0.13 version bump",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P2",
+      "size": "XS",
+      "blocked_by": [
+        "US-023"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-025",
+      "title": "Preserve completed native HTTP responses and use a fast memset",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-024"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-026",
+      "title": "Port or skip the Linux-first CI",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "L",
+      "blocked_by": [
+        "US-025"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-027",
+      "title": "Port or skip cooperative fast warmup",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "XS",
+      "blocked_by": [
+        "US-026"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-028",
+      "title": "Apply held hunks and deferred fx changes once decided",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P1",
+      "size": "M",
+      "blocked_by": [
+        "US-027"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-029",
+      "title": "Prove the synced tree end to end",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-027"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    }
+  ]
+}

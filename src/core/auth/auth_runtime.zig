@@ -3504,7 +3504,7 @@ test "auth runtime never admits a teamless pf login credential" {
     try std.testing.expect(runtime.gatewayCredential() == null);
 }
 
-test "auth runtime withholds an pf credential across its expiry boundary" {
+test "auth runtime withholds a pf credential across its expiry boundary" {
     const alloc = std.testing.allocator;
     var runtime: Runtime = .{};
     defer runtime.deinit(alloc);

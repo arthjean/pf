@@ -6,8 +6,8 @@ This repository is Paneflow Agent, shipped as the `pf` binary. It started from `
 
 ### Porting fx changes
 
-- `UPSTREAM.md` records the fx base commit and the last fx commit ported into pf. Track fx in a separate clone at `../fx-upstream`, never as a remote of this repository.
-- Port a range with `python3 scripts/rebrand.py port <last-ported> <target>`. It renames each changed fx file with the same rules as this repository and 3-way merges it into the worktree, leaving conflict markers where pf diverged. Resolve them, run the checks below, and update `UPSTREAM.md` in the same commit.
+- `UPSTREAM.md` records the fx base commit, the last fx merge ported into pf, and the fx merges and hunks that are skipped or held. Track fx in a separate clone at `../fx`, never as a remote of this repository.
+- Port one slice of contiguous first-parent fx merges at a time with `python3 scripts/rebrand.py port <last-ported> <merge>`. It renames each changed fx file with the same rules as this repository and 3-way merges it into the worktree, leaving conflict markers where pf diverged. Resolve them, run the checks below, and update `UPSTREAM.md` in the same commit.
 - Every rename rule lives in `scripts/rebrand.py`. When fx introduces a spelling the rules miss, fix the rule instead of hand-editing the port. `python3 scripts/rebrand.py check` must pass.
 
 ### Kept as fx on purpose
