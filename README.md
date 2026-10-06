@@ -26,6 +26,8 @@ Sign in with one of:
 - `pf login grok`: Grok subscription (xAI OAuth)
 - `pf setup`: AI Gateway API key
 
+pf loads Grok models from your subscription's live catalog, so new supported models appear without a static model list. Public xAI metadata enriches image support but does not filter subscription models.
+
 Then start the interactive shell from a project:
 
 ```bash
