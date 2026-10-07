@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   PF_BIN,
@@ -4534,10 +4534,13 @@ describe("acp: model-independent", () => {
         );
         // Every saved file, on either session backend: the scan must see the
         // saved tool result, and nothing may hold the credential.
+        // pf: Windows enforces the live session's byte-range lock on its
+        // empty session.lock, so reading it fails with EBUSY there.
         const pfDir = join(root.home, ".pf");
         const saved = (readdirSync(pfDir, { recursive: true }) as string[])
           .map((name) => join(pfDir, name))
           .filter((path) => statSync(path).isFile())
+          .filter((path) => process.platform !== "win32" || basename(path) !== "session.lock")
           .map((path) => readFileSync(path, "utf8"));
         expect(saved.some((text) => text.includes(`${MODERN_HTTP_TOOL_RESULT}:authenticated`))).toBe(true);
         for (const text of saved) expect(text).not.toContain(bearer);

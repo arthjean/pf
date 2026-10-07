@@ -1538,6 +1538,9 @@ test "app entry maps unavailable session state to one expected startup failure" 
 }
 
 test "app entry names a v2 storage fault at startup, and v1 keeps the bare error" {
+    // On Windows `session_adapter.enabled` is false, so the app never takes
+    // the v2 path; the CLI refuses sessions v2 before the app starts.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const cases = [_]struct {
         init_error: anyerror,

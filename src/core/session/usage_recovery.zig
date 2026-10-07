@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const debug_trace = @import("../shared/debug_trace.zig");
 const io_mod = @import("../shared/io.zig");
 const session = @import("session.zig");
@@ -579,6 +580,8 @@ test "recovery marker distinguishes checkpoints around a crash boundary" {
 }
 
 test "a v2 session's usage marker is judged from its own log" {
+    // Writes v2 sessions, which pf refuses on Windows.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const io = io_mod.getIo();
     var tmp = std.testing.tmpDir(.{});

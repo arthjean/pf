@@ -2319,7 +2319,15 @@ test "preferences round trip through v1's decoder" {
 }
 
 test "the switch is the flag or PF_SESSIONS_V2" {
+    // `enabled` is false on Windows by design, where pf refuses sessions v2.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     try testing.expect(enabled(true));
+}
+
+/// pf: tests that write v2 sessions skip on Windows, where pf refuses
+/// sessions v2 and the store's crash-safety protocol is not ported.
+fn skipV2StoreOnWindows() !void {
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
 }
 
 /// A HOME in a temp folder with an adapter store over it.
@@ -2359,6 +2367,7 @@ fn assistantTurn(user: []const u8, reply: []const u8) types.HistoryTurn {
 }
 
 test "a new session commits turns, and resume gives them back with its settings" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2411,6 +2420,7 @@ fn childSeed(model: []u8, instructions: []const u8) Seed {
 }
 
 test "a child opens under the id its parent names, and its parent folds its lines (D22, D34)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2472,6 +2482,7 @@ test "a child opens under the id its parent names, and its parent folds its line
 }
 
 test "the manager guards child lines, and a child without a log reopens under its id (D22, D34)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2495,6 +2506,7 @@ test "the manager guards child lines, and a child without a log reopens under it
 }
 
 test "a copy of a parent's children frees every part when memory runs out" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2525,6 +2537,7 @@ fn countItems(manager: *sm.Manager, id: []const u8, item_type: []const u8) !usiz
 }
 
 test "streamed pieces are written once, and the commit adds only the rest" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2560,6 +2573,7 @@ test "any I/O fault may have left a write in the log" {
 }
 
 test "a running tool call is saved once, and resume answers it as possibly run" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2599,6 +2613,7 @@ test "a running tool call is saved once, and resume answers it as possibly run" 
 }
 
 test "a crash answers only the running calls its turn does not already hold" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2637,6 +2652,7 @@ test "a crash answers only the running calls its turn does not already hold" {
 }
 
 test "a finished turn keeps no trace of its running calls" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2662,6 +2678,7 @@ test "a finished turn keeps no trace of its running calls" {
 }
 
 test "the history visit shows every turn, even those a compaction summarized" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2731,6 +2748,7 @@ test "the history visit shows every turn, even those a compaction summarized" {
 }
 
 test "a tool result backed only by its command replay streams as it commits" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2785,6 +2803,7 @@ test "a tool result's rebuild time alone does not supersede its stream" {
 }
 
 test "a streamed turn that differs from its commit is superseded, never mixed" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2806,6 +2825,7 @@ test "a streamed turn that differs from its commit is superseded, never mixed" {
 }
 
 test "a turn ended by a close or a crash comes back interrupted" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2847,6 +2867,7 @@ test "a turn ended by a close or a crash comes back interrupted" {
 }
 
 test "resume after a compaction starts with its summary and keeps the retained turn" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2873,6 +2894,7 @@ test "resume after a compaction starts with its summary and keeps the retained t
 }
 
 test "resume refuses a session whose compaction line is damaged" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2904,6 +2926,7 @@ test "resume refuses a session whose compaction line is damaged" {
 }
 
 test "pf session lists every turn with each summary where it happened, as v1 counts it (D32)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2954,6 +2977,7 @@ test "pf session lists every turn with each summary where it happened, as v1 cou
 }
 
 test "a piece above the inline limit goes to a blob and comes back whole" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -2975,6 +2999,7 @@ test "a piece above the inline limit goes to a blob and comes back whole" {
 }
 
 test "usage is durable before its marker goes, and resume restores it" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -3030,6 +3055,7 @@ test "a failed resume reports v1's error names" {
 }
 
 test "a resumed session gives v1's state and the title the user chose" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -3057,6 +3083,7 @@ test "a resumed session gives v1's state and the title the user chose" {
 }
 
 test "the picker lists saved root sessions newest first, without the open one" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -3098,6 +3125,7 @@ test "the picker lists saved root sessions newest first, without the open one" {
 }
 
 test "-c resumes the session this host last opened" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -3138,6 +3166,7 @@ fn filesExist(t: *TestHome, id: []const u8) bool {
 }
 
 test "a session that never reached the disk takes its side folder, and a saved one keeps it" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
