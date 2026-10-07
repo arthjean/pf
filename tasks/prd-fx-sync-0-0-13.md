@@ -7,6 +7,7 @@
 |---------|------|--------|---------|
 | 1.0 | 2026-10-06 | Arthur Jean | Initial draft from a full-range dry-run port, 41 adversarially verified reports (one per fx PR, per conflict cluster, and per cross-cutting risk), four themed cross-checks with sequential throwaway ports and Windows cross-compiles, and a port plan reviewed for ordering, build soundness, and governance |
 | 1.1 | 2026-10-06 | Arthur Jean | Baseline at d7ceb0e recorded (US-001) |
+| 1.2 | 2026-10-07 | Arthur Jean | EP-002 review: US-006's read-only v2 root reports `AccessDenied` after fx #1082, as fx does; US-007's sessions v2 `tui-resume.test.ts` run is compared with fx@dcf9287b's own v2 failures, recorded under Quality Gates |
 
 ## Problem Statement
 
@@ -191,6 +192,30 @@ Each slice commit also updates `UPSTREAM.md`. Each slice handoff records the str
 | E2E | `tests/e2e/review-model-override.test.ts` | review model override > a failing Jev evaluation endpoint holds the action instead of executing unreviewed | The fake gateway answers twice with one `Response`, and Bun 1.4.2 raises `ERR_BODY_ALREADY_USED` (`POST /v4/ai/evaluation-model failed`) |
 
 Cross-target builds of the same tree: `zig build -Dtarget=x86_64-windows-gnu`, `zig build -Dtarget=aarch64-macos`, `zig build -Dwasm-surface=core -Doptimize=ReleaseSmall` and `zig build -Dwasm-surface=term` exit 0. `zig build test -Dtarget=x86_64-windows-gnu` compiles both test executables and exits 1 only with `unable to spawn foreign binary`. Node: `/usr/bin/node` is v22.23.1, and no Node 24 is installed on this host, so the SDK lanes that need Node 24 cannot run here. Identity values: `git grep -nE '"(originator|referrer|x-grok-client-identifier)"' -- src/core/auth src/gateway` finds 6 production sites, each with the value `"pf"`: `src/core/auth/chatgpt_oauth.zig:711`, `src/core/auth/grok_oauth.zig:775`, `src/gateway/openai_codex.zig:249`, `src/gateway/openai_codex_models.zig:199`, `src/gateway/xai_grok.zig:238` and `src/gateway/xai_grok_models.zig:215`.
+
+**Sessions v2 reference for `tui-resume.test.ts` (recorded by the EP-002 review):** measured on 2026-10-07 on the same host with an isolated `HOME`, `XDG_CONFIG_HOME`, `TMPDIR` and `TMUX_TMPDIR` under `/dev/shm`. A `zig build` of `/home/arthur/dev/fx@dcf9287b`, extracted with `git archive`, ran `FX_SESSIONS_V2=1 bun test --max-concurrency 1 tui-resume.test.ts`: 46 passed and 21 failed. Most of these tests read v1 files under `~/.fx/sessions/<id>/` (`events.jsonl`, `logs/commands`, `tool-results`) or seed v1 sessions, which sessions v2 neither writes nor imports, so they fail in fx itself. A pf run of `PF_SESSIONS_V2=1 bun test tui-resume.test.ts` regresses only when it fails a test outside this set, named here as the pf rename gives them:
+
+- suspended sessions retain exclusive writer ownership until close
+- resume publication preserves history from a low native cursor
+- resumed compaction handoffs stay internal after legacy conversion and restart
+- cap-crossing command output stays durable while grouped compact returns to input
+- active command overflow marks Ctrl-O incomplete until terminal replay attaches
+- cancelled cap-crossing command keeps grouped rows stable and Ctrl-O opens its artifact
+- cancelled below-cap command exposes its TERM tail only through Ctrl-O
+- Ctrl-O restores wrapped primary rows after resize without losing the draft
+- recorded file diffs survive resume and retain their Ctrl-O detail
+- spilled diff snapshots stay out of events.jsonl and reload on resume
+- missing diff artifact degrades to the inline preview on resume
+- resume compacts a legacy log with inline diff snapshots
+- cancelled command presentation survives a distinct-process resume
+- latest and picker resume preserve conversations beside incomplete session creation
+- manual compaction keeps earlier small-session messages visible after resume
+- Ctrl-O rebuilds its page when a saved tool result disappears
+- resumed tool history survives continuation
+- resumed tool history survives continuation after full detail resize
+- remembered continuation restores the selected conversation without discovery
+- resumed command rows reclip to live width after the session moved workspaces
+- manual upgrade output links stable notes and dev changes (passes in pf, whose upgrade fixture differs)
 
 ## Epics & User Stories
 
@@ -421,7 +446,7 @@ Port the eight first-parent fx merges in `/home/arthur/dev/fx@1b1f9af1..dcf9287b
 - [ ] Given a v2 session, when `./zig-out/bin/pf ask --json --resume-id <v2-id> "..."` runs without the flag, then it exits 1 with error `SessionNotFound` and the v2 session is unchanged.
 - [ ] Given a v2 session that another pf process holds, when a second process resumes it, then it fails with `SessionBusy` after the 2-second lock wait (`/home/arthur/dev/fx@d44cd84a:src/core/session_manager/api.zig:82`).
 - [ ] Given `HOME` unset on Linux and v2 enabled, when a new `pf ask` runs, then pf prints `pf ask: warning: session persistence unavailable; error=HomeNotSet; continuing without saving` and still answers (`/home/arthur/dev/fx@d44cd84a:src/core/cli/cli_ask.zig:1064-1070`).
-- [ ] Given `~/.pf/sessions/v2` set to 0500, when a new `pf ask --sessions-v2 --json` runs, then pf exits 1 with error `Io` before any model request and writes nothing under `~/.pf/sessions/v2`.
+- [ ] Given `~/.pf/sessions/v2` set to 0500, when a new `pf ask --sessions-v2 --json` runs, then pf exits 1 before any model request and writes nothing under `~/.pf/sessions/v2`. The error is `Io` at this slice (`/home/arthur/dev/fx@d44cd84a:tests/e2e/sessions-v2.test.ts:548`) and `AccessDenied` once US-007 ports fx #1082 (`/home/arthur/dev/fx@14893f64:tests/e2e/sessions-v2.test.ts:729`).
 - [ ] Given `AGENTS.md` "Configuration and State" (`AGENTS.md:119-133`), when the slice lands, then it gains one sentence saying that `--sessions-v2` or `PF_SESSIONS_V2` opts into an append-only store under `~/.pf/sessions/v2/`, with side files under `~/.pf/session-files/<id>/` and usage markers under `~/.pf/usage-recovery-v2/`, and that Windows refuses it.
 - [ ] Given the Windows docs, when the slice lands, then README "Not yet available on Windows" (`README.md:145`) lists sessions v2 (`--sessions-v2`, `PF_SESSIONS_V2`), and the Windows bullet of `NOTICE` (`NOTICE:26-34`) gains the clause that sessions v2 compiles on Windows but is refused there.
 - [ ] Given `CHANGELOG.md`, when the slice lands, then "## Unreleased" gains a New Features entry **Sessions v2 (experimental)** that names `pf ask --sessions-v2` and `PF_SESSIONS_V2` and says Windows refuses it.
@@ -454,7 +479,7 @@ Port the eight first-parent fx merges in `/home/arthur/dev/fx@1b1f9af1..dcf9287b
 - [ ] Given the hold, when UPSTREAM.md is read, then the "Held" row gives `14893f6460dcba305c5e11d510f5f303eee3b574` (`/home/arthur/dev/fx@14893f64`), fx #1082, the held hunks (the relaunch argv block and `writeUpgradeRelaunchFailure` in `src/core/app/app_entry_runtime.zig`, the unit test, and the tui-resume argv expectation), the hold commit as `pending`, Q4, and US-028, as US-004's procedure prescribes, and NOTICE carries the provisional held-items bullet naming the relaunch argv.
 - [ ] Given Q4 answered "port as-is" before this story starts, when the slice is committed, then commit B is not made; if it is answered later, US-028 reverts B, and if it is answered "hold", US-028 marks the entry permanent. This story does not wait for Q4.
 - [ ] Given Linux, when `zig build test-session-manager` and `zig build test -Dtest-filter=session_adapter -Dtest-filter=doctor -Dtest-filter=child_state -Dtest-filter="durable replace" -Dtest-filter="app entry" --summary all` run, then both pass, the filtered run reports more tests than a filter that matches no test name, and the wasm `core` and `term` surfaces build as in US-006.
-- [ ] Given an isolated `HOME` and `XDG_CONFIG_HOME`, when `cd tests/e2e && bun test sessions-v2.test.ts session-recovery.test.ts acp.test.ts cli.test.ts tui-resume.test.ts` and `PF_SESSIONS_V2=1 bun test tui-resume.test.ts` run, then they pass except tests that fail identically in the US-001 baseline.
+- [ ] Given an isolated `HOME` and `XDG_CONFIG_HOME`, when `cd tests/e2e && bun test sessions-v2.test.ts session-recovery.test.ts acp.test.ts cli.test.ts tui-resume.test.ts` and `PF_SESSIONS_V2=1 bun test tui-resume.test.ts` run, then they pass except tests that fail identically in the US-001 baseline, and the `PF_SESSIONS_V2=1` run fails no test outside the sessions v2 reference recorded under Quality Gates.
 - [ ] Given `PF_SESSIONS_V2=1 ./zig-out/bin/pf` in tmux at a width that fits the hint on one row, when a prompt is sent, the session is renamed with `/rename`, and pf quits, then pf prints `Continue session with: pf --sessions-v2 --resume <id>` (`/home/arthur/dev/fx@14893f64:src/ui/render.zig:795-797`), and `./zig-out/bin/pf --sessions-v2 -c` reopens that session with its history and new title.
 - [ ] Given that v2 session, when `./zig-out/bin/pf --sessions-v2 sessions`, `./zig-out/bin/pf --sessions-v2 session last`, and `./zig-out/bin/pf --sessions-v2 session <id>` run, then the list shows it, `session last` prints its summary, and `session <id>` prints every turn.
 - [ ] Given that v2 session, when `./zig-out/bin/pf --sessions-v2 session recover <id>` runs, then it prints a new session id whose history ends at the last good turn.
