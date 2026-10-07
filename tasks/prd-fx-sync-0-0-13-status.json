@@ -20,7 +20,7 @@
       "status": "IN_REVIEW",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 0
+      "stories_done": 3
     },
     {
       "id": "EP-003",
@@ -104,7 +104,7 @@
       "id": "US-005",
       "title": "Port ACP embedder gaps, cancelled-turn steering, and the FIFO test fix",
       "epic": "EP-002",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
@@ -112,8 +112,8 @@
         "US-004"
       ],
       "started_at": "2026-10-06T16:56:12+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-06T21:53:35+02:00",
+      "reviewed_at": "2026-10-06T21:53:35+02:00"
     },
     {
       "id": "US-006",
@@ -127,7 +127,7 @@
       ],
       "started_at": "2026-10-06T17:12:22+02:00",
       "completed_at": null,
-      "reviewed_at": null
+      "reviewed_at": "2026-10-06T21:53:35+02:00"
     },
     {
       "id": "US-007",
@@ -141,35 +141,35 @@
       ],
       "started_at": "2026-10-06T18:23:37+02:00",
       "completed_at": null,
-      "reviewed_at": null
+      "reviewed_at": "2026-10-06T21:53:35+02:00"
     },
     {
       "id": "US-008",
       "title": "Port or skip the Slack MCP preset",
       "epic": "EP-002",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": [
         "US-007"
       ],
       "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-06T21:53:35+02:00",
+      "reviewed_at": "2026-10-06T21:53:35+02:00"
     },
     {
       "id": "US-009",
       "title": "Port shared v2 replay and the Grok catalog tolerance",
       "epic": "EP-002",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-008"
       ],
       "started_at": "2026-10-06T18:58:05+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-06T21:53:35+02:00",
+      "reviewed_at": "2026-10-06T21:53:35+02:00"
     },
     {
       "id": "US-010",
