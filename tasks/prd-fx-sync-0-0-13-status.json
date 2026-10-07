@@ -17,10 +17,10 @@
     {
       "id": "EP-002",
       "title": "ACP and sessions v2",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 4
+      "stories_done": 5
     },
     {
       "id": "EP-003",
@@ -133,15 +133,15 @@
       "id": "US-007",
       "title": "Port sessions v2 for session commands, doctor, ACP, and the app",
       "epic": "EP-002",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-006"
       ],
       "started_at": "2026-10-06T18:23:37+02:00",
-      "completed_at": null,
-      "reviewed_at": "2026-10-07T09:59:48+02:00"
+      "completed_at": "2026-10-07T18:45:29+02:00",
+      "reviewed_at": "2026-10-07T18:45:29+02:00"
     },
     {
       "id": "US-008",

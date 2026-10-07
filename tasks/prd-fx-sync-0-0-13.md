@@ -8,6 +8,7 @@
 | 1.0 | 2026-10-06 | Arthur Jean | Initial draft from a full-range dry-run port, 41 adversarially verified reports (one per fx PR, per conflict cluster, and per cross-cutting risk), four themed cross-checks with sequential throwaway ports and Windows cross-compiles, and a port plan reviewed for ordering, build soundness, and governance |
 | 1.1 | 2026-10-06 | Arthur Jean | Baseline at d7ceb0e recorded (US-001) |
 | 1.2 | 2026-10-07 | Arthur Jean | EP-002 review: US-006's read-only v2 root reports `AccessDenied` after fx #1082, as fx does; US-007's sessions v2 `tui-resume.test.ts` run is compared with fx@dcf9287b's own v2 failures, recorded under Quality Gates |
+| 1.3 | 2026-10-07 | Arthur Jean | EP-002 review: US-007's Windows host run recorded under Quality Gates; v2-backed unit tests skip on Windows, and the ACP bearer test skips the live `session.lock` there |
 
 ## Problem Statement
 
@@ -216,6 +217,8 @@ Cross-target builds of the same tree: `zig build -Dtarget=x86_64-windows-gnu`, `
 - remembered continuation restores the selected conversation without discovery
 - resumed command rows reclip to live width after the session moved workspaces
 - manual upgrade output links stable notes and dev changes (passes in pf, whose upgrade fixture differs)
+
+**Windows host run for US-007 (recorded by the EP-002 review):** on 2026-10-07, on Arthur's Windows 11 host (Zig 0.16.0, Bun 1.4.2), in the working tree of `add401a` plus the uncommitted Windows test skips this review verified and the acp.test.ts fix below. `zig build` and `zig build conpty-driver` succeed. `zig build test` passes 9,519 of 9,718 tests with 199 skipped. Without the skips, 25 tests fail there, all brought in by this epic's ports: 21 in `session_adapter.zig` that write v2 sessions or assert `enabled(true)`, plus "app entry names a v2 storage fault at startup, and v1 keeps the bare error", "a v2 session's usage marker is judged from its own log", and "v2 children live in the parent's log and come back after a reopen (D22)". Each now skips on Windows with a reason comment. With `TEMP=C:\pfe2e-tmp`, `bun windows-subset.ts` passes 13 of 13 files. Its one failure before the fix, "ACP bearer headers authenticate HTTP without persisting the credential", came from fx #1082's scan of every file under `~/.pf`: Windows enforces the live session's byte-range lock on the empty `session.lock`, so the read fails with `EBUSY`, and the scan now skips that file on Windows. `pf.exe ask --sessions-v2 hi`, `PF_SESSIONS_V2=TRUE pf.exe ask hi`, `pf.exe --sessions-v2`, `PF_SESSIONS_V2=1 pf.exe`, `pf.exe --sessions-v2 sessions`, `session last`, `doctor`, and `PF_SESSIONS_V2=1 pf.exe acp` each exit 1 with the refusal message and write nothing under the profile. `pf.exe --sessions-v2 help` and `pf.exe --sessions-v2 acp` run without a refusal. Against the fake gateway, `pf.exe ask hi` and `pf.exe ask --resume last "again"` save and resume one v1 session, and the second request carries the first turn. `pf.exe acp` started from PowerShell with `HOME` unset starts the profile server from `%USERPROFILE%\.pf\mcp.json` only for the `session/new` that sets `_meta.pf.profileMcpServers: true`.
 
 ## Epics & User Stories
 
