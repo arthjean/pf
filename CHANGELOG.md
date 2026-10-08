@@ -27,5 +27,6 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 
 ### Bug Fixes
 
+- **Crash recovery on sessions v2:** Text the agent streamed before a tool call survives a crash or a killed process, and is sent once when the session resumes.
 - **Damaged compaction checkpoints:** A compaction checkpoint whose saved counts are out of range no longer stops pf; new records are numbered after the saved ones.
 - **Steering after a cancel:** Steering typed right after a tool result survives a canceled turn and appears exactly once when the session resumes.
