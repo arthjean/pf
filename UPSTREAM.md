@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `88e66581ec5462e0a1502d472f9447399d4f5ada` |
+| Last ported | `3cc5ddfb668a43a11ce15511d00dbb915dd681bd` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -15,6 +15,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 |---|---|---|---|
 | `73308320925d5c31b4f57b875f07e77eb8b051d6` | #1101 | Q1, answered D: skip the Slack preset; denied message ported by hand | permanent |
 | `88e66581ec5462e0a1502d472f9447399d4f5ada` | #1112 | Q2: Ultrafast mode, skipped until answered; fx #1159 (`9d7937d5e5a0bab70953bd8dfbe5c12e7e074da2`) is skipped with it in US-027 | US-028 |
+| `3cc5ddfb668a43a11ce15511d00dbb915dd681bd` | #1122 | Q6 part 2: raises the ReleaseSafe unit-test timeout in `.github/workflows/ci.yml` from 900 to 1500 seconds. fx #1114 (`0a798c935e1176da62448beb8d9f6716529cb850`) already has 1500 in its base, so porting it alone keeps pf's 900: US-026 or US-028 must port fx #1122 | US-028 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the Open Question that blocks it, and the story that revisits it.
 
