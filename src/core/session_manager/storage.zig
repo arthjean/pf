@@ -22,6 +22,8 @@ pub const Fault = if (hooks) @import("storage_fault.zig").Fault else void;
 
 pub const folder_mode: std.posix.mode_t = 0o700;
 pub const file_mode: std.posix.mode_t = 0o600;
+/// A blob never changes once written, and a tool may open it by path (D49).
+pub const blob_mode: std.posix.mode_t = 0o400;
 
 /// Windows has no mode bits, and pf refuses sessions v2 there, so the store
 /// only has to compile for Windows; `fromMode` does not exist on that target.
@@ -165,6 +167,16 @@ pub const Storage = struct {
     /// Creates a new file `0600`, opened for reading and writing. Fails with
     /// AlreadyExists if the name exists, including as a symlink.
     pub fn createFile(s: Storage, dir: Dir, name: []const u8) Error!File {
+        return s.createFileMode(dir, name, file_mode);
+    }
+
+    /// As `createFile`, but `0400`: the returned handle still writes the new
+    /// file, and nothing can open it for writing afterwards (D49).
+    pub fn createReadOnlyFile(s: Storage, dir: Dir, name: []const u8) Error!File {
+        return s.createFileMode(dir, name, blob_mode);
+    }
+
+    fn createFileMode(s: Storage, dir: Dir, name: []const u8, mode: std.posix.mode_t) Error!File {
         try s.alive();
         try s.mutate();
         assertComponent(name);
@@ -172,7 +184,7 @@ pub const Storage = struct {
             .read = true,
             .truncate = false,
             .exclusive = true,
-            .permissions = modePermissions(file_mode),
+            .permissions = modePermissions(mode),
             .resolve_beneath = true,
         }) catch |err| return translate(err);
         if (hooks) if (s.fault) |f| {
@@ -447,6 +459,24 @@ test "folders are 0700 and files are 0600" {
     try testing.expectEqual(@as(std.posix.mode_t, folder_mode), (try s.stat(root, "session")).mode);
     try testing.expectEqual(@as(std.posix.mode_t, file_mode), (try s.stat(sub, "log.jsonl")).mode);
     try testing.expectEqual(Kind.directory, (try s.stat(root, "session")).kind);
+}
+
+test "a read-only file is written through its own handle and opens read-only only" {
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    const s: Storage = .{ .io = testing.io };
+    const root = testRoot(&tmp);
+    const file = try s.createReadOnlyFile(root, "blob");
+    try s.writeAt(file, "body", 0);
+    try s.sync(file);
+    s.closeFile(file);
+    try testing.expectEqual(@as(std.posix.mode_t, blob_mode), (try s.stat(root, "blob")).mode);
+    try testing.expectError(error.Refused, s.openFile(root, "blob", .read_write));
+    const again = try s.openFile(root, "blob", .read_only);
+    defer s.closeFile(again);
+    var buffer: [4]u8 = undefined;
+    try testing.expectEqual(@as(usize, 4), try s.readAt(again, &buffer, 0));
+    try testing.expectEqualStrings("body", &buffer);
 }
 
 test "openRoot creates the root 0700 and refuses a symlinked root" {

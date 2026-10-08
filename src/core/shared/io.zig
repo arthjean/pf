@@ -896,6 +896,10 @@ pub const private_dir_permissions: std.Io.File.Permissions =
 /// Permissions for creating a private file.
 pub const private_file_permissions: std.Io.File.Permissions =
     if (is_windows) .default_file else .fromMode(0o600);
+/// Permissions for creating a private file that is never written again,
+/// such as a sessions v2 blob.
+pub const private_read_only_file_permissions: std.Io.File.Permissions =
+    if (is_windows) .default_file else .fromMode(0o400);
 
 /// Returns whether a file has exactly the private file mode (0600). Always
 /// true on Windows.

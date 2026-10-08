@@ -23,7 +23,9 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **MCP authorization messages:** When you decline an MCP server's authorization in the browser, pf says so and tells you to run the connection command again, instead of printing an error name.
 - **Grok models:** Models of your Grok subscription that xAI's public catalog omits, or that it cannot describe while it is unavailable, are listed without image input instead of being hidden.
 - **Context compaction:** Compaction keeps your messages and the assistant's final replies word for word, and saves every compacted turn, tool call, and earlier compaction under an ID such as `M3`, `T12`, or `L2` that the agent can open or search with `read_tool_result`. Sessions compacted by an earlier pf build keep resuming, but a pf build from before this change cannot read checkpoints written after it.
+- **Sessions v2 storage:** With `--sessions-v2`, tool results, tool images, command output, and web downloads are kept once each as read-only blobs named by their digest, prompt images stay inside their turn, and terminal state moves to `~/.pf/terminal/<id>`. Resume, `pf doctor`, and `pf session recover` report a lost blob as damage.
 
 ### Bug Fixes
 
+- **Damaged compaction checkpoints:** A compaction checkpoint whose saved counts are out of range no longer stops pf; new records are numbered after the saved ones.
 - **Steering after a cancel:** Steering typed right after a tool result survives a canceled turn and appears exactly once when the session resumes.
