@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -100,3 +100,75 @@ for (const userHeavy of [false, true]) test(`automatic compaction preserves task
     else { writeFileSync(join(root, "requests.json"), JSON.stringify(bodies, null, 2)); console.error(`compaction evidence retained: ${root}`); }
   }
 }, 90_000);
+
+const compactionV1 = resolve(import.meta.dir, "fixtures/compaction-v1/sessions");
+const compactionV1Session = readdirSync(compactionV1)[0]!;
+const compactionV1Line = /> pf-compaction-state-v1 (\S+) (\d+) ([a-f0-9]{64})\n/;
+
+// Fails, naming the file, when a stored body no longer matches the checkpoint
+// line or the state JSON that recorded it.
+function verifyCompactionV1(sessionDir: string) {
+  const rows = readFileSync(join(sessionDir, "events.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const checkpoint = rows.find(row => row.event?.context_checkpoint)?.event.context_checkpoint;
+  const line = compactionV1Line.exec(checkpoint?.summary ?? "");
+  if (!line) throw new Error(`${sessionDir}/events.jsonl has no pf-compaction-state-v1 checkpoint`);
+  const check = (handle: string, bytes: number, sha256: string) => {
+    const body = readFileSync(join(sessionDir, "tool-results", handle));
+    if (body.length !== bytes || digest(body) !== sha256) throw new Error(`fixture file tool-results/${handle} no longer matches its recorded size and SHA-256`);
+    return body;
+  };
+  const state = JSON.parse(check(line[1]!, Number(line[2]), line[3]!).toString());
+  expect(state.archives.length).toBeGreaterThan(0);
+  for (const archive of state.archives) check(archive.handle, archive.bytes, archive.sha256);
+  return { rows, line: line[0].slice(2, -1), state };
+}
+
+test("a checkpoint written by pf d7ceb0e resumes with its user message and state line", async () => {
+  const fixture = verifyCompactionV1(join(compactionV1, compactionV1Session));
+  const originalUser = fixture.rows.find(row => row.event?.user)!.event.user.text;
+  expect(fixture.state.users).toEqual([originalUser]);
+  const root = mkdtempSync(join(tmpdir(), "pf-compaction-v1-")), home = join(root, "home"), cwd = join(root, "workspace");
+  mkdirSync(join(home, ".pf/sessions"), { recursive: true, mode: 0o700 });
+  mkdirSync(cwd, { mode: 0o700 });
+  cpSync(join(compactionV1, compactionV1Session), join(home, ".pf/sessions", compactionV1Session), { recursive: true });
+  const restrict = (dir: string) => {
+    chmodSync(dir, 0o700);
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) restrict(join(dir, entry.name));
+      else chmodSync(join(dir, entry.name), 0o600);
+    }
+  };
+  restrict(join(home, ".pf/sessions"));
+  const model = "fixture/compaction-v1";
+  writeFileSync(join(home, ".pf/settings.json"), JSON.stringify({ model, auto_upgrade: false }), { mode: 0o600 });
+  const bodies: string[] = [];
+  const gateway = startDynamicFakeGateway((body: string) => {
+    bodies.push(body);
+    return fakeGatewayFinalText("FIXTURE_RESUMED");
+  }, { models: [{ id: model, type: "language", tags: ["tool-use"], context_window: 48_000, max_tokens: 4096 }] });
+  const env = {
+    PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, TMPDIR: root, XDG_CONFIG_HOME: join(root, "xdg"),
+    AI_GATEWAY_API_KEY: "synthetic-compaction-v1", PF_DISABLE_KEYCHAIN: "1", PF_E2E_DISABLE_DOTENV: "1",
+    PF_AUTO_UPGRADE: "0", PF_SOUND: "0", PF_MODEL: model,
+    PF_GATEWAY_BASE_URL: gateway.baseUrl, PF_GATEWAY_CHAT_URL: gateway.chatUrl,
+    PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl, PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
+  };
+  let passed = false;
+  try {
+    const stdout = join(root, "resume.stdout"), stderr = join(root, "resume.stderr");
+    const child = Bun.spawn([binary, "ask", "--json", "--resume-id", compactionV1Session, "What did I ask first?"], { cwd, env, stdin: "ignore", stdout: Bun.file(stdout), stderr: Bun.file(stderr) });
+    const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    try { expect(await child.exited).toBe(0); } finally { clearTimeout(timer); }
+    expect(readFileSync(stderr, "utf8")).toBe("");
+    expect(JSON.parse(readFileSync(stdout, "utf8")).output).toBe("FIXTURE_RESUMED");
+    const texts = JSON.parse(bodies[0]!).prompt.flatMap((message: { content: unknown }) =>
+      typeof message.content === "string" ? [message.content] : (message.content as Array<{ text?: string }>).map(part => part.text ?? ""));
+    expect(texts.some((text: string) => text.includes(originalUser))).toBe(true);
+    expect(texts.some((text: string) => text.includes(fixture.line))).toBe(true);
+    passed = true;
+  } finally {
+    gateway.stop();
+    if (passed) rmSync(root, { recursive: true, force: true });
+    else { writeFileSync(join(root, "requests.json"), JSON.stringify(bodies, null, 2)); console.error(`compaction-v1 evidence retained: ${root}`); }
+  }
+}, 60_000);

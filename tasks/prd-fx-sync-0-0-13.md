@@ -9,6 +9,7 @@
 | 1.1 | 2026-10-06 | Arthur Jean | Baseline at d7ceb0e recorded (US-001) |
 | 1.2 | 2026-10-07 | Arthur Jean | EP-002 review: US-006's read-only v2 root reports `AccessDenied` after fx #1082, as fx does; US-007's sessions v2 `tui-resume.test.ts` run is compared with fx@dcf9287b's own v2 failures, recorded under Quality Gates |
 | 1.3 | 2026-10-07 | Arthur Jean | EP-002 review: US-007's Windows host run recorded under Quality Gates; v2-backed unit tests skip on Windows, and the ACP bearer test skips the live `session.lock` there |
+| 1.4 | 2026-10-08 | Arthur Jean | US-010: the d7ceb0e compaction checkpoint fixture is statically compatible with fx's legacy state reader, recorded under Assumptions |
 
 ## Problem Statement
 
@@ -136,6 +137,7 @@ Key findings that informed this PRD:
 - The target stays `/home/arthur/dev/fx@9d7937d5`. Later fx merges go to a follow-up PRD. Verified on 2026-10-06: `git -C /home/arthur/dev/fx log -1 origin/main` is `9d7937d5`.
 - The per-slice conflict sets measured by sequential throwaway ports stay valid under the US-002 rules. Rule changes alter base and theirs for every port, so US-002 lands before any port.
 - v1 compaction checkpoints written by pf d7ceb0e resume after fx #1062 (`/home/arthur/dev/fx@34f1ed14`). This is statically compatible and validated by US-010.
+  - **Result (US-010, 2026-10-08): statically compatible, no adaptation.** The fixture `tests/e2e/fixtures/compaction-v1/` checkpoint line reads `> pf-compaction-state-v1 <handle> 452 <sha256>`: the tag that `/home/arthur/dev/fx@34f1ed14:src/core/compactor/checkpoint.zig:206` declares, `fx-compaction-state-v1 ` renamed by the existing rules to `pf-compaction-state-v1 `, then a handle, a decimal byte count and a 64-hex SHA-256, separated by single spaces and ending at the line's newline. `legacyStateRef` (`:209-221`) tokenizes exactly those three fields and ignores any further one. The state JSON holds `version`, `summary`, `users` and `archives`; `parseLegacyState` (`:227-248`) checks the byte count and digest, reads `summary` and `users`, and ignores `version` and `archives` through `ignore_unknown_fields`. No rule in `scripts/rebrand.py` and no pf change in `src/core/compactor/checkpoint.zig` is needed.
 - fx's in-process ConPTY path runs, resizes, and ends within the 900 ms console-close budget on Windows (`src/core/app/app_lifecycle.zig:120`). The critics only cross-compiled it, so US-022 validates it on a Windows host, with fallback A'.
 - Arthur has a Windows 11 host for runtime validation (Windows PRD). No macOS host is known, so macOS-only paths (the fx #1127 Keychain worker, `/home/arthur/dev/fx@0994a057`, and the macOS N-API load) may stay unverified.
 - No current Paneflow flow drives ACP sessions, so the ACP default changes of fx #1094 (`/home/arthur/dev/fx@d9f77663`) break no client today.
