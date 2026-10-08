@@ -4578,6 +4578,7 @@ test "trace notice distinguishes Markdown file outcomes without a feedback CTA" 
 }
 
 test "trace compaction summary renders recorded events without file tracing" {
+    const compactor = @import("../compactor/compactor.zig");
     const alloc = std.testing.allocator;
     diagnostics.resetForTest();
     defer diagnostics.resetForTest();
@@ -4587,8 +4588,8 @@ test "trace compaction summary renders recorded events without file tracing" {
     try writeCompactionSummary(&empty.writer, alloc);
     try std.testing.expect(std.mem.find(u8, empty.written(), "\n## Context Compaction\n(none recorded)\n") != null);
 
-    diagnostics.traceCompactionEvent(.{ .turn_id = 10, .step_id = 176 }, .decision, "decision=compact estimated_tokens={d}", .{279466});
-    diagnostics.traceCompactionFailure(.{ .turn_id = 10 }, .retention_exhausted, "estimated_tokens={d}", .{59000});
+    compactor.traceEvent(.{ .turn_id = 10, .step_id = 176 }, .decision, "decision=compact estimated_tokens={d}", .{279466});
+    compactor.traceFailure(.{ .turn_id = 10 }, .retention_exhausted, "estimated_tokens={d}", .{59000});
 
     var out: std.Io.Writer.Allocating = .init(alloc);
     defer out.deinit();
@@ -4599,7 +4600,7 @@ test "trace compaction summary renders recorded events without file tracing" {
 
     diagnostics.resetForTest();
     for (0..diagnostics.compaction_ring_capacity + 3) |index| {
-        diagnostics.traceCompactionEvent(.{ .turn_id = 11 }, .decision, "decision=compact index={d}", .{index});
+        compactor.traceEvent(.{ .turn_id = 11 }, .decision, "decision=compact index={d}", .{index});
     }
     var wrapped: std.Io.Writer.Allocating = .init(alloc);
     defer wrapped.deinit();
