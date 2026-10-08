@@ -114,20 +114,12 @@ pub const Summarizer = struct {
             if (err == error.Cancelled or err == error.OutOfMemory) return err;
             primary_error = err;
         }
-        // Only the gateway can route to another model family with this
-        // credential. Elsewhere an empty reply becomes the summary step's
+        // pf holds the retry on another model family until the user can
+        // choose it, so a summary never reaches a provider the user did not
+        // pick. On every provider an empty reply becomes the summary step's
         // EmptySummary error.
-        if (self.caller.provider != .gateway) {
-            if (primary_error) |err| return err;
-            return alloc.dupe(u8, "");
-        }
-        const fallback = fallbackModel(prompt.model);
-        trace.info(self.trace_ctx, .log, "fallback model={s} after={s}", .{
-            fallback,
-            if (primary_error) |err| @errorName(err) else "empty_summary",
-        });
-        self.fallback_used = fallback;
-        return self.ask(alloc, prompt, fallback);
+        if (primary_error) |err| return err;
+        return alloc.dupe(u8, "");
     }
 
     /// One summary request to `model_name`, at its lowest reasoning.
@@ -207,30 +199,31 @@ const ScriptedCaller = struct {
     }
 };
 
-test "a failed or empty summary falls back to another family at its lowest reasoning" {
+test "a failed or empty summary stays on the conversation's model on every provider" {
     var cancel = std.atomic.Value(bool).init(false);
     const prompt: summarize.Prompt = .{ .model = "anthropic/claude-opus-5.5", .system = "s", .user = "u" };
-    for ([_]?[]const u8{ null, " \n" }) |first| {
-        var scripted: ScriptedCaller = .{ .replies = &.{ first, "summary" } };
-        defer scripted.calls.deinit(std.testing.allocator);
-        var summarizer: Summarizer = .{ .caller = scripted.caller(.gateway), .cancel_flag = &cancel, .trace_ctx = .{} };
+    for ([_]model_provider.ProviderId{ .gateway, .codex }) |provider| {
+        var failed: ScriptedCaller = .{ .replies = &.{ null, "summary" } };
+        defer failed.calls.deinit(std.testing.allocator);
+        var summarizer: Summarizer = .{ .caller = failed.caller(provider), .cancel_flag = &cancel, .trace_ctx = .{} };
         const summary_model = summarizer.model();
-        const text = try summary_model.summarize_fn(summary_model.context, std.testing.allocator, prompt);
+        try std.testing.expectError(error.ModelFailed, summary_model.summarize_fn(summary_model.context, std.testing.allocator, prompt));
+        try std.testing.expectEqual(@as(usize, 1), failed.calls.items.len);
+        try std.testing.expect(failed.calls.items[0].reasoning.?.eql(types.ReasoningEffort.literal("low")));
+        try std.testing.expect(summarizer.fallback_used == null);
+
+        // An empty reply comes back empty, which the summary step turns into
+        // EmptySummary.
+        var empty: ScriptedCaller = .{ .replies = &.{ " \n", "summary" } };
+        defer empty.calls.deinit(std.testing.allocator);
+        var empty_summarizer: Summarizer = .{ .caller = empty.caller(provider), .cancel_flag = &cancel, .trace_ctx = .{} };
+        const empty_model = empty_summarizer.model();
+        const text = try empty_model.summarize_fn(empty_model.context, std.testing.allocator, prompt);
         defer std.testing.allocator.free(text);
-        try std.testing.expectEqualStrings("summary", text);
-        try std.testing.expectEqualStrings("openai/gpt-6-sol", summarizer.fallback_used.?);
-        try std.testing.expectEqual(@as(usize, 2), scripted.calls.items.len);
-        try std.testing.expect(scripted.calls.items[0].reasoning.?.eql(types.ReasoningEffort.literal("low")));
-        try std.testing.expectEqualStrings("openai/gpt-6-sol", scripted.calls.items[1].model);
-        try std.testing.expect(scripted.calls.items[1].reasoning.?.eql(types.ReasoningEffort.literal("none")));
+        try std.testing.expectEqualStrings("", text);
+        try std.testing.expectEqual(@as(usize, 1), empty.calls.items.len);
+        try std.testing.expectEqualStrings("anthropic/claude-opus-5.5", empty.calls.items[0].model);
     }
-    // Only the gateway can reach another family.
-    var direct: ScriptedCaller = .{ .replies = &.{null} };
-    defer direct.calls.deinit(std.testing.allocator);
-    var summarizer: Summarizer = .{ .caller = direct.caller(.codex), .cancel_flag = &cancel, .trace_ctx = .{} };
-    const summary_model = summarizer.model();
-    try std.testing.expectError(error.ModelFailed, summary_model.summarize_fn(summary_model.context, std.testing.allocator, prompt));
-    try std.testing.expectEqual(@as(usize, 1), direct.calls.items.len);
 }
 
 test "a request after the conversation goes to its own model only, with the agent's settings" {

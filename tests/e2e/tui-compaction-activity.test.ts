@@ -409,8 +409,9 @@ describe.skipIf(!tmuxAvailable())("tui: compaction activity", () => {
         await terminal.waitForPane((pane) => !ACTIVITY.test(pane) && pane.includes(feedback) && hasEmptyComposer(pane), 15_000);
         expect(f.durable()).toBe(0);
         expect(f.counts().ordinary).toBe(f.seedTurns);
-        // A failed or empty summary is retried once on the fallback model.
-        expect(f.counts().summaries).toBe(outcome === "cancel" ? 1 : 2);
+        // pf holds the retry on another model family, so a failed or empty
+        // summary is asked for once.
+        expect(f.counts().summaries).toBe(1);
         const afterFailure = f.counts();
         if (outcome === "cancel") f.summaryHold.dispose();
         await terminal.sendKeys("Escape");

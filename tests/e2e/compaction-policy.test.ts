@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 process.env.PF_E2E_DISABLE_DOTENV = "1";
-const { fakeGatewayFinalText, startDynamicFakeGateway } = await import("./tmux-helpers");
+const { fakeGatewayFinalText, fakeGatewayToolCall, startDynamicFakeGateway } = await import("./tmux-helpers");
 const binary = resolve(import.meta.dir, "../../zig-out/bin/pf");
 const checkpointMarker = "pf-compactor-v1\n";
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -145,14 +145,14 @@ function verifyCompactionV1(sessionDir: string) {
   return { rows, line: line[0].slice(2, -1), state };
 }
 
-test("a checkpoint written by pf d7ceb0e resumes with its user message and state line", async () => {
-  const fixture = verifyCompactionV1(join(compactionV1, compactionV1Session));
-  const originalUser = fixture.rows.find(row => row.event?.user)!.event.user.text;
-  expect(fixture.state.users).toEqual([originalUser]);
+// A fresh profile holding a copy of the fixture, with 0700 directories and
+// 0600 files, and a fake gateway that answers through `reply`.
+function resumeCompactionV1(reply: (request: any, body: string) => Response, prepare?: (sessionDir: string) => void) {
   const root = mkdtempSync(join(tmpdir(), "pf-compaction-v1-")), home = join(root, "home"), cwd = join(root, "workspace");
+  const sessionDir = join(home, ".pf/sessions", compactionV1Session);
   mkdirSync(join(home, ".pf/sessions"), { recursive: true, mode: 0o700 });
   mkdirSync(cwd, { mode: 0o700 });
-  cpSync(join(compactionV1, compactionV1Session), join(home, ".pf/sessions", compactionV1Session), { recursive: true });
+  cpSync(join(compactionV1, compactionV1Session), sessionDir, { recursive: true });
   const restrict = (dir: string) => {
     chmodSync(dir, 0o700);
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -161,13 +161,14 @@ test("a checkpoint written by pf d7ceb0e resumes with its user message and state
     }
   };
   restrict(join(home, ".pf/sessions"));
+  prepare?.(sessionDir);
   const model = "fixture/compaction-v1";
   writeFileSync(join(home, ".pf/settings.json"), JSON.stringify({ model, auto_upgrade: false }), { mode: 0o600 });
   const bodies: string[] = [];
   const gateway = startDynamicFakeGateway((body: string) => {
     bodies.push(body);
-    return fakeGatewayFinalText("FIXTURE_RESUMED");
-  }, { models: [{ id: model, type: "language", tags: ["tool-use"], context_window: 48_000, max_tokens: 4096 }] });
+    return reply(JSON.parse(body), body);
+  }, { models: [{ id: model, type: "language", tags: ["tool-use"], context_window: 128_000, max_tokens: 8192 }] });
   const env = {
     PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, TMPDIR: root, XDG_CONFIG_HOME: join(root, "xdg"),
     AI_GATEWAY_API_KEY: "synthetic-compaction-v1", PF_DISABLE_KEYCHAIN: "1", PF_E2E_DISABLE_DOTENV: "1",
@@ -175,22 +176,100 @@ test("a checkpoint written by pf d7ceb0e resumes with its user message and state
     PF_GATEWAY_BASE_URL: gateway.baseUrl, PF_GATEWAY_CHAT_URL: gateway.chatUrl,
     PF_E2E_GATEWAY_CHAT_URL: gateway.chatUrl, PF_E2E_GATEWAY_MODELS_URL: `${gateway.baseUrl}/coding-agent/v1/models`,
   };
+  let step = 0;
+  return {
+    root, sessionDir, bodies,
+    async ask(prompt: string, extraEnv: Record<string, string> = {}) {
+      const stdout = join(root, `ask-${++step}.stdout`), stderr = join(root, `ask-${step}.stderr`);
+      const child = Bun.spawn([binary, "ask", "--json", "--resume-id", compactionV1Session, prompt], { cwd, env: { ...env, ...extraEnv }, stdin: "ignore", stdout: Bun.file(stdout), stderr: Bun.file(stderr) });
+      const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+      try { expect(await child.exited).toBe(0); } finally { clearTimeout(timer); }
+      return { result: JSON.parse(readFileSync(stdout, "utf8")), stderr: readFileSync(stderr, "utf8") };
+    },
+    finish(passed: boolean) {
+      gateway.stop();
+      if (passed) rmSync(root, { recursive: true, force: true });
+      else { writeFileSync(join(root, "requests.json"), JSON.stringify(bodies, null, 2)); console.error(`compaction-v1 evidence retained: ${root}`); }
+    },
+  };
+}
+
+const promptTexts = (body: string): string[] => JSON.parse(body).prompt.flatMap((message: { content: unknown }) =>
+  typeof message.content === "string" ? [message.content] : (message.content as Array<{ text?: string; output?: { value?: string } }>).map(part => part.text ?? part.output?.value ?? ""));
+
+test("a checkpoint written by pf d7ceb0e resumes with its user message and state line", async () => {
+  const fixture = verifyCompactionV1(join(compactionV1, compactionV1Session));
+  const legacy: string = fixture.rows.find(row => row.event?.context_checkpoint).event.context_checkpoint.summary;
+  const originalUser = fixture.rows.find(row => row.event?.user)!.event.user.text;
+  expect(fixture.state.users).toEqual([originalUser]);
+  const run = resumeCompactionV1(() => fakeGatewayFinalText("FIXTURE_RESUMED"));
   let passed = false;
   try {
-    const stdout = join(root, "resume.stdout"), stderr = join(root, "resume.stderr");
-    const child = Bun.spawn([binary, "ask", "--json", "--resume-id", compactionV1Session, "What did I ask first?"], { cwd, env, stdin: "ignore", stdout: Bun.file(stdout), stderr: Bun.file(stderr) });
-    const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
-    try { expect(await child.exited).toBe(0); } finally { clearTimeout(timer); }
-    expect(readFileSync(stderr, "utf8")).toBe("");
-    expect(JSON.parse(readFileSync(stdout, "utf8")).output).toBe("FIXTURE_RESUMED");
-    const texts = JSON.parse(bodies[0]!).prompt.flatMap((message: { content: unknown }) =>
-      typeof message.content === "string" ? [message.content] : (message.content as Array<{ text?: string }>).map(part => part.text ?? ""));
-    expect(texts.some((text: string) => text.includes(originalUser))).toBe(true);
-    expect(texts.some((text: string) => text.includes(fixture.line))).toBe(true);
+    const { result, stderr } = await run.ask("What did I ask first?");
+    expect(stderr).toBe("");
+    expect(result.output).toBe("FIXTURE_RESUMED");
+    const texts = promptTexts(run.bodies[0]!);
+    expect(texts.some(text => text.includes(originalUser))).toBe(true);
+    expect(texts.some(text => text.includes(fixture.line))).toBe(true);
+    // A checkpoint from before the compactor rewrite has no rendered text, so
+    // its handoff reaches the model unchanged.
+    expect(texts.some(text => text.includes(legacy))).toBe(true);
     passed = true;
-  } finally {
-    gateway.stop();
-    if (passed) rmSync(root, { recursive: true, force: true });
-    else { writeFileSync(join(root, "requests.json"), JSON.stringify(bodies, null, 2)); console.error(`compaction-v1 evidence retained: ${root}`); }
-  }
+  } finally { run.finish(passed); }
 }, 60_000);
+
+for (const damaged of [false, true]) test(`a checkpoint written by pf d7ceb0e folds into the next compaction${damaged ? " as raw text when its state file is damaged" : " and its archive stays readable"}`, async () => {
+  const fixture = verifyCompactionV1(join(compactionV1, compactionV1Session));
+  const legacy: string = fixture.rows.find(row => row.event?.context_checkpoint).event.context_checkpoint.summary;
+  const originalUser = fixture.rows.find(row => row.event?.user)!.event.user.text;
+  const archive = fixture.state.archives[0];
+  const stateHandle = compactionV1Line.exec(legacy)![1]!;
+  const run = resumeCompactionV1((request, body) => {
+    const last = request.prompt.at(-1);
+    const lastText = Array.isArray(last.content) ? last.content[0]?.text ?? "" : last.content;
+    if (lastText.startsWith("You write compaction notes")) return fakeGatewayFinalText("Earlier:\nThe user asked to keep café and the original constraint; the verified value is 73.");
+    if (lastText === "Read the first source archive." && !body.includes("\"archive-read-1\"")) {
+      return fakeGatewayToolCall("archive-read-1", "read_tool_result", { request: { handle: archive.handle, start_byte: 1, byte_count: 65_536 } });
+    }
+    return fakeGatewayFinalText("FIXTURE_CONTINUED");
+  }, damaged ? sessionDir => {
+    // A throwaway copy whose state file no longer matches its checkpoint line.
+    const path = join(sessionDir, "tool-results", stateHandle), bytes = readFileSync(path);
+    bytes[10]! ^= 1;
+    writeFileSync(path, bytes);
+  } : undefined);
+  let passed = false;
+  try {
+    expect((await run.ask("Read the first source archive.")).result.output).toBe("FIXTURE_CONTINUED");
+    const read = run.bodies.find(body => body.includes("\"archive-read-1\"") && body.includes("<tool_result handle="))!;
+    const page = promptTexts(read).find(text => text.startsWith(`<tool_result handle="${archive.handle}"`))!;
+    expect(page).toContain(`start_byte="1" end_byte="${archive.bytes}" total_bytes="${archive.bytes}">\n`);
+    const bytes = Buffer.from(page.slice(page.indexOf(">\n") + 2, page.lastIndexOf("\n</tool_result>")));
+    expect(bytes.length).toBe(archive.bytes);
+    expect(digest(bytes)).toBe(archive.sha256);
+
+    // A low threshold for this launch only crosses the compaction point.
+    const compacted = await run.ask("Continue after the compaction.", { PF_AUTO_COMPACT_PERCENT: "20" });
+    expect(compacted.stderr).toBe("");
+    expect(compacted.result.output).toBe("FIXTURE_CONTINUED");
+    const rows = readFileSync(join(run.sessionDir, "events.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
+    const checkpoints = rows.filter(row => row.event?.context_checkpoint).map(row => row.event.context_checkpoint.summary as string);
+    expect(checkpoints).toHaveLength(2);
+    expect(checkpoints[0]).toBe(legacy);
+    expect(checkpoints[1]!.startsWith(checkpointMarker)).toBe(true);
+    const payload = JSON.parse(checkpoints[1]!.slice(checkpointMarker.length));
+    expect(payload.ledger_count).toBe(1);
+    // The d7ceb0e compaction is the earlier compaction this one folds, saved
+    // whole as L1: its summary and user message come from the state file, or
+    // the raw handoff stands in for them when the state file is damaged.
+    const earlier = readFileSync(join(run.sessionDir, "tool-results", "compacted-L1.txt"), "utf8");
+    if (damaged) {
+      expect(earlier).toContain(`Earlier summary:\n${legacy.trimEnd()}`);
+      expect(earlier).not.toContain(`User:\n${originalUser}\n`);
+    } else {
+      expect(earlier).toContain(`Earlier summary:\n${fixture.state.summary}\n`);
+      expect(earlier).toContain(`User:\n${originalUser}\n`);
+    }
+    passed = true;
+  } finally { run.finish(passed); }
+}, 90_000);

@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `dcf9287b9c4f7092032949dfc5bb8ca40f8abc78` |
+| Last ported | `11d34250f376954938215ea96189b791dfe4f61c` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -22,6 +22,8 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 | fx merge | fx PR | Held | Hold commit | Open Question | Revisited by |
 |---|---|---|---|---|---|
 | `14893f6460dcba305c5e11d510f5f303eee3b574` | #1082 | The upgrade relaunch argv block and `writeUpgradeRelaunchFailure` in `src/core/app/app_entry_runtime.zig`, the unit test "a v2 handoff relaunches and hints with --sessions-v2", and the relaunch argv expectation in `tests/e2e/tui-resume.test.ts` | `fa515c535aa555ebf8252e962670961fc0e50d38` | Q4 | US-028 |
+| `34f1ed14de47760b44d628ec2d5eb28055b9adf0` | #1062 | The AI Gateway compaction summary fallback to another model family in `src/core/compactor/model.zig`, the unit tests "a failed or empty summary falls back to another family at its lowest reasoning" in `src/core/compactor/model.zig` and "compaction writes the summary with the least reasoning each model accepts" in `src/core/agent/runtime/tests/gateway_flow.zig`, and the retry expectations in `tests/e2e/tui-compaction-activity.test.ts` and `tests/e2e/gateway-stream-lifecycle.test.ts`, which pf rewrites to expect the primary error, and the README sentence on the retry | `pending` | Q3 | US-028 |
+| `34f1ed14de47760b44d628ec2d5eb28055b9adf0` | #1062 | The "Check compactor boundary" steps and the lint-scripts entry in `.github/workflows/ci.yml` and `.github/workflows/full-ci.yml`, and the CI wording on the compactor boundary check in `AGENTS.md` and `CONTRIBUTING.md` | `pending` | Q6 | US-028 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 

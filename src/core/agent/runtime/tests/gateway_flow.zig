@@ -3006,7 +3006,7 @@ test "processQueuedPrompt compacts with the selected working model" {
     try std.testing.expectEqual(@as(usize, 0), unavailable_gateway.request_models.items.len);
 }
 
-test "compaction writes the summary with the least reasoning each model accepts" {
+test "compaction writes the summary with the least reasoning the model accepts and stops on its error" {
     const alloc = std.testing.allocator;
     const old_assistant = try alloc.alloc(u8, 96_000);
     defer alloc.free(old_assistant);
@@ -3025,7 +3025,8 @@ test "compaction writes the summary with the least reasoning each model accepts"
         .{ .model = model, .capabilities = .{ .context_window = 32_000, .max_output_tokens = 16_000, .reasoning_efforts = .fromSlice(&primary_efforts) } },
         .{ .model = "openai/gpt-6-sol", .capabilities = .{ .context_window = 400_000, .max_output_tokens = 16_000, .reasoning_efforts = .fromSlice(&fallback_efforts) } },
     };
-    // The conversation's model fails the summary, so the fallback writes it.
+    // The conversation's model fails the summary. pf holds the retry on
+    // another model family, so the turn stops with the primary error.
     const completions = [_]FakeCompletion{
         .{ .status = .bad_request, .err_body = "{\"error\":{\"message\":\"summary rejected\"}}" },
         .{ .content = "The earlier assistant work is summarized." },
@@ -3040,7 +3041,7 @@ test "compaction writes the summary with the least reasoning each model accepts"
     var fixture = PromptFixture{};
     var config = fixture.config();
     config.effort = effort("xhigh");
-    // Strict routing is the user's choice, so the fallback keeps it too.
+    // Strict routing is the user's choice, so the summary keeps it too.
     const only_bedrock = [_][]const u8{"bedrock"};
     config.provider_order = &only_bedrock;
     config.provider_strict = true;
@@ -3048,20 +3049,14 @@ test "compaction writes the summary with the least reasoning each model accepts"
     job.model = @constCast(model);
     job.history = &history;
 
-    try runFakePrompt(&gateway, &hooks, config, job);
+    try std.testing.expectError(error.ModelFailed, runFakePrompt(&gateway, &hooks, config, job));
 
-    try std.testing.expectEqual(@as(usize, 3), gateway.request_bodies.items.len);
+    try std.testing.expectEqual(@as(usize, 1), gateway.request_bodies.items.len);
     try std.testing.expectEqualStrings(model, gateway.request_models.items[0]);
     try expectBodyContains(&gateway, 0, "\"reasoning\":\"low\"");
     try expectBodyNotContains(&gateway, 0, "xhigh");
     try expectBodyContains(&gateway, 0, "\"only\":[\"bedrock\"]");
-    try std.testing.expectEqualStrings("openai/gpt-6-sol", gateway.request_models.items[1]);
-    try expectBodyContains(&gateway, 1, "\"reasoning\":\"none\"");
-    try expectBodyContains(&gateway, 1, "\"only\":[\"bedrock\"]");
-    // The conversation itself keeps its own effort.
-    try std.testing.expectEqualStrings(model, gateway.request_models.items[2]);
-    try expectBodyContains(&gateway, 2, "\"reasoning\":\"xhigh\"");
-    try std.testing.expectEqualStrings("Done", hooks.finish_assistant_text.?);
+    try std.testing.expect(hooks.finish_assistant_text == null);
 }
 
 test "processQueuedPrompt projects bounded output limits into gateway requests" {

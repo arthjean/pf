@@ -6297,6 +6297,12 @@ printf '%s' ${JSON.stringify(trailingMarker)} > ${JSON.stringify(effectPath)}
           expect(pane).not.toContain("request failed:");
           expect(pane).toContain("RETRIEVAL_TURN_COMPLETE");
           if (trigger === "manual") {
+            // pf holds the retry on another model family, so the empty
+            // summary fails this compaction and the user runs it again.
+            await tui.sendText("/compact");
+            await tui.waitForPane((text) => compactionIdle(text) && text.includes("Compaction failed. Try /compact again."), 20000);
+            await tui.sendKeys("Escape");
+            await tui.waitForPane((text) => compactionIdle(text) && !text.includes("Compaction failed."), 5000);
             await compactAndWait(tui, root, 20000);
           }
           expect(compactions).toBe(2);
@@ -6335,7 +6341,9 @@ printf '%s' ${JSON.stringify(trailingMarker)} > ${JSON.stringify(effectPath)}
           expect(JSON.parse(resumed.stdout).final_output).toBe("RETRIEVAL_RESTART_COMPLETE");
           expect(gateway.requests).toHaveLength(8);
           expect(readFileSync(join(root.workspace, "effects.txt"), "utf8")).toBe("once\n");
-          expect(readFileSync(tracePath, "utf8")).not.toContain("event=transaction_failed");
+          // Only the manual compaction that the empty summary failed is traced
+          // as failed.
+          expect(readFileSync(tracePath, "utf8").split("event=transaction_failed").length - 1).toBe(trigger === "manual" ? 1 : 0);
         } finally {
           await tui?.kill();
           gateway.stop();
@@ -6834,17 +6842,16 @@ printf '%s' ${JSON.stringify(trailingMarker)} > ${JSON.stringify(effectPath)}
         expect(readFileSync(tracePath, "utf8")).not.toContain(
           "[context_compaction] event=installed",
         );
-        responses.push(fakeGatewayFinalText(""), fakeGatewayFinalText(""));
+        responses.push(fakeGatewayFinalText(""));
         await tui.sendText("/compact");
         await tui.waitForPane(
           (pane) => pane.includes("Compaction failed. Try /compact again.") && compactionIdle(pane),
           15_000,
         );
-        // An empty summary is retried once on the fallback model with the same prompt.
-        expect(gateway.requests).toHaveLength(7);
-        expect(JSON.parse(gateway.requests[6]!.body).prompt).toEqual(JSON.parse(gateway.requests[5]!.body).prompt);
+        // pf holds the retry on another model family, so an empty summary
+        // fails the compaction after one request.
+        expect(gateway.requests).toHaveLength(6);
         expect(gateway.requests[5]!.headers.get("ai-language-model-id")).toBe(MODEL);
-        expect(gateway.requests[6]!.headers.get("ai-language-model-id")).toBe("anthropic/claude-sonnet-5");
         expect(readFileSync(eventsPath, "utf8")).toBe(beforeFailure);
         const afterFailure = await runPf(["session", "--id", sessionId, "--json"], {
           cwd: root.workspace, env: { HOME: root.home },
@@ -7360,20 +7367,17 @@ printf '%s' ${JSON.stringify(trailingMarker)} > ${JSON.stringify(effectPath)}
       const serializedError = JSON.stringify(output);
       expect(result.code).toBe(1);
       expect(output.exit_code).toBe(1);
-      // The summary and its fallback are both rejected, so the turn fails
-      // without running the completed tool again.
+      // The summary is rejected, and pf holds the retry on another model
+      // family, so the turn fails without running the completed tool again.
       expect(serializedError).toContain("ModelFailed");
       expect(output.tool_calls).toHaveLength(1);
       expect(output.tool_calls[0]?.name).toBe("shell");
       expect(output.tool_calls[0]?.status).toBe("success");
       expect(readFileSync(sideEffectPath, "utf8")).toBe("once\n");
-      expect(gateway.requestCount()).toBe(4);
-      for (const index of [2, 3]) {
-        const summaryRequest = JSON.parse(gateway.requests[index]!.body);
-        expect(summaryRequest.tools).toEqual([]);
-        expect(summaryRequest.toolChoice).toEqual({ type: "none" });
-      }
-      expect(gateway.requests[3]!.headers.get("ai-language-model-id")).toBe("anthropic/claude-sonnet-5");
+      expect(gateway.requestCount()).toBe(3);
+      const summaryRequest = JSON.parse(gateway.requests[2]!.body);
+      expect(summaryRequest.tools).toEqual([]);
+      expect(summaryRequest.toolChoice).toEqual({ type: "none" });
     } finally {
       gateway.stop();
       rmSync(root.root, { recursive: true, force: true });

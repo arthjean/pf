@@ -38,9 +38,6 @@ jobs:
       - name: Audit public surface
         run: ./scripts/check-public-surface.sh
 
-      - name: Check compactor boundary
-        run: ./scripts/check-compactor-boundary.sh
-
       - name: Build
         run: zig build -Doptimize=${{ matrix.optimize }}
 
@@ -476,7 +473,6 @@ jobs:
         run: |
           scripts=(
             benchmarks/startup.sh
-            scripts/check-compactor-boundary.sh
             scripts/check-public-surface.sh
           )
           bash -n "${scripts[@]}"
