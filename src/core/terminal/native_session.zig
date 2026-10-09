@@ -1088,7 +1088,8 @@ const SupportedRegistry = struct {
     /// Ends every terminal this process owns, without a prompt. Each live
     /// process group is hung up and given at most `exit_grace_ms` in total,
     /// then killed, and its record is marked lost so a resumed session shows
-    /// it as ended. Backend threads are joined within `exit_join_ms`.
+    /// it as ended. On Windows each session's job is terminated at once
+    /// instead. Backend threads are joined within `exit_join_ms`.
     ///
     /// Returns whether every backend finished, which `deinit` requires.
     /// Otherwise the registry must stay allocated until process exit.
@@ -1108,6 +1109,32 @@ const SupportedRegistry = struct {
             self.releaseReference(index, session);
         };
 
+        if (comptime is_windows) {
+            // A console has no hangup worth waiting for: terminating each
+            // session's job ends the shell and everything it started at once.
+            var ended: usize = 0;
+            for (pinned) |maybe_session| {
+                const session = maybe_session orelse continue;
+                if (session.terminateJobForExit()) ended += 1;
+            }
+            if (ended != 0) {
+                debug_trace.logf("terminal", "ended {d} terminal(s) for process exit", .{ended});
+            }
+        } else {
+            hangUpThenKillForExit(&pinned);
+        }
+        const join_deadline = io_mod.milliTimestamp() + exit_join_ms;
+        var finished = true;
+        for (pinned) |maybe_session| {
+            const session = maybe_session orelse continue;
+            if (!session.finalizeBackendBefore(join_deadline)) finished = false;
+        }
+        return finished;
+    }
+
+    /// POSIX exit: hangs up every live process group, waits at most
+    /// `exit_grace_ms` for them, then kills what is left.
+    fn hangUpThenKillForExit(pinned: *const [max_sessions]?*Session) void {
         var hung_up: usize = 0;
         for (pinned) |maybe_session| {
             const session = maybe_session orelse continue;
@@ -1115,7 +1142,7 @@ const SupportedRegistry = struct {
         }
         if (hung_up != 0) {
             const grace_deadline = io_mod.milliTimestamp() + exit_grace_ms;
-            while ((anyLive(&pinned) or anyExitTreeAlive(&pinned)) and
+            while ((anyLive(pinned) or anyExitTreeAlive(pinned)) and
                 io_mod.milliTimestamp() < grace_deadline)
             {
                 io_mod.sleep(wait_poll_ns);
@@ -1130,13 +1157,6 @@ const SupportedRegistry = struct {
                 .{hung_up},
             );
         }
-        const join_deadline = io_mod.milliTimestamp() + exit_join_ms;
-        var finished = true;
-        for (pinned) |maybe_session| {
-            const session = maybe_session orelse continue;
-            if (!session.finalizeBackendBefore(join_deadline)) finished = false;
-        }
-        return finished;
     }
 
     fn anyLive(pinned: *const [max_sessions]?*Session) bool {
@@ -2477,6 +2497,23 @@ const Session = struct {
             }
         }
         return true;
+    }
+
+    /// Windows exit: terminates the session's job without a grace period,
+    /// including after the shell exited while processes it started still
+    /// run in the job, and records a terminal still running as lost.
+    /// Returns whether the terminal was still running.
+    fn terminateJobForExit(self: *Session) bool {
+        comptime std.debug.assert(is_windows);
+        const zio = io_mod.getIo();
+        self.timeout_done.set(zio);
+        self.mutex.lockUncancelable(zio);
+        const live = self.lifecycle == .starting or self.lifecycle == .running;
+        if (live) self.ending_with_owner = true;
+        if (self.windows_launcher) |launcher| _ = launcher.signal(.kill);
+        self.mutex.unlock(zio);
+        if (live) self.markLost();
+        return live;
     }
 
     fn recordProcessTreeForExit(self: *Session) ?process_tree.Tracker {

@@ -40,7 +40,7 @@ export const WINDOWS_E2E_FILES: readonly string[] = [
   "web-search-permission-progress.test.ts",
   // Interactive terminal through ConPTY
   "windows-tui-smoke.test.ts",
-  // Hosted terminal sessions in the detached host through ConPTY
+  // Interactive terminal sessions in ConPTY pseudo consoles inside pf
   "windows-terminal-host.test.ts",
   // Verified self-update and the Windows ctrl+g relaunch through ConPTY
   "upgrade-verification.test.ts",

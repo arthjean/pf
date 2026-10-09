@@ -1,12 +1,13 @@
 /**
- * Hosted terminal sessions on Windows. `pf ask` drives the shell tool with
- * `tty: true` through a fake gateway, so each session runs in the detached
- * terminal host behind ConPTY, in the shell that `shell_selection` picks.
+ * Interactive terminal sessions on Windows. `pf ask` drives the shell tool
+ * with `tty: true` through a fake gateway, so each session runs in a ConPTY
+ * pseudo console inside the pf process, in a Job Object that pf holds, in
+ * the shell that `shell_selection` picks. Every session ends when pf exits.
  * The suite runs only on Windows.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runPf } from "../evals/eval-helpers";
@@ -42,21 +43,8 @@ function createProfile() {
     join(home, ".pf", "settings.json"),
     JSON.stringify({ permission_mode: "yolo", yolo_acknowledged: true, permission: {} }) + "\n",
   );
-  cleanup.push(() => {
-    stopHost(home);
-    rmSync(root, { recursive: true, force: true });
-  });
+  cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   return { root, home, workspace: realpathSync(workspace) };
-}
-
-function hostIdentity(home: string): { pid: string } | null {
-  const path = join(home, ".pf", "terminal-host-v7", "host.json");
-  if (!existsSync(path)) return null;
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as { pid: string };
-  } catch {
-    return null;
-  }
 }
 
 function processRunning(pid: number): boolean {
@@ -65,15 +53,6 @@ function processRunning(pid: number): boolean {
     return true;
   } catch {
     return false;
-  }
-}
-
-function stopHost(home: string) {
-  const identity = hostIdentity(home);
-  if (identity) {
-    try {
-      process.kill(Number(identity.pid), "SIGKILL");
-    } catch {}
   }
 }
 
@@ -106,7 +85,7 @@ async function ask(
   profile: ReturnType<typeof createProfile>,
   responses: FakeGatewayResponse[],
   args: string[] = [],
-  extraEnv: Record<string, string> = {},
+  extraEnv: Record<string, string | undefined> = {},
 ) {
   const gateway = startFakeGateway(responses);
   cleanup.push(() => gateway.stop());
@@ -124,7 +103,6 @@ async function ask(
       PF_E2E_GATEWAY_CREDITS_URL: undefined,
       PF_MODEL: FAKE_GATEWAY_MODEL,
       PF_AUTO_UPGRADE: "0",
-      PF_TERMINAL_HOST_IDLE_MS: "60000",
       ...extraEnv,
     },
     timeoutMs: TIMEOUT,
@@ -155,7 +133,7 @@ function pythonAvailable(): boolean {
   }
 }
 
-describe.skipIf(!isWindows)("hosted terminal sessions on Windows", () => {
+describe.skipIf(!isWindows)("interactive terminal sessions on Windows", () => {
   test.skipIf(!pythonAvailable())("drives a Python REPL through ConPTY", async () => {
     const profile = createProfile();
     let sessionId = "";
@@ -187,18 +165,19 @@ describe.skipIf(!isWindows)("hosted terminal sessions on Windows", () => {
 
   test("reports the exit code of a PowerShell session", async () => {
     const profile = createProfile();
+    // Without HOME, pf finds the profile and the launcher directory under USERPROFILE.
     const { gateway } = await ask(
       profile,
       [ttyRun("exit_run", "Write-Output ('PS_' + 'EXIT_MARK'); exit 9", 20_000), fakeGatewayFinalText("EXIT_DONE")],
       [],
-      { PF_WINDOWS_SHELL: "powershell" },
+      { PF_WINDOWS_SHELL: "powershell", HOME: undefined },
     );
     const output = toolResultText(gateway.requests[1]!.body, "exit_run");
     expect(output).toContain("PS_EXIT_MARK");
     expect(output).toMatch(/"exit_code"\s*:\s*9/);
   }, TIMEOUT);
 
-  test.skipIf(!existsSync(GIT_BASH))("keeps a session across pf restarts and loses it with its host", async () => {
+  test.skipIf(!existsSync(GIT_BASH))("ends a session and its processes when pf ask exits", async () => {
     const profile = createProfile();
     let sessionId = "";
     const first = await ask(
@@ -223,33 +202,19 @@ describe.skipIf(!isWindows)("hosted terminal sessions on Windows", () => {
     const pids = started.match(/PIDS=(\d+):(\d+)/);
     expect(pids).not.toBeNull();
     const sessionPids = [Number(pids![1]), Number(pids![2])];
-    expect(sessionPids.every(processRunning)).toBe(true);
-    const identity = hostIdentity(profile.home);
-    expect(identity).not.toBeNull();
-    const hostPid = Number(identity!.pid);
-    expect(processRunning(hostPid)).toBe(true);
 
-    // pf exited; the detached host kept the session for the next run.
+    // pf exited, and the session's job took the shell and its background process.
+    expect(await waitFor(() => !sessionPids.some(processRunning), 10_000)).toBe(true);
+    expect(existsSync(join(profile.home, ".pf", "terminal-run"))).toBe(true);
+
     const second = await ask(
       profile,
-      [interact("long_observe", () => sessionId, "AFTER_RESTART\r", 3_000), fakeGatewayFinalText("PHASE_TWO")],
+      [interact("long_ended", () => sessionId, "AFTER_EXIT\r", 1_000), fakeGatewayFinalText("PHASE_TWO")],
       ["--resume", "last"],
       BASH_ENV,
     );
-    expect(toolResultText(second.gateway.requests[1]!.body, "long_observe")).toContain("GOT_AFTER_RESTART");
-    expect(hostIdentity(profile.home)?.pid).toBe(identity!.pid);
-
-    // A crashed host takes every process of its sessions with it.
-    process.kill(hostPid, "SIGKILL");
-    expect(await waitFor(() => !processRunning(hostPid), 10_000)).toBe(true);
-    expect(await waitFor(() => !sessionPids.some(processRunning), 10_000)).toBe(true);
-
-    const third = await ask(
-      profile,
-      [interact("long_lost", () => sessionId, "", 1_000), fakeGatewayFinalText("PHASE_THREE")],
-      ["--resume", "last"],
-      BASH_ENV,
-    );
-    expect(toolResultText(third.gateway.requests[1]!.body, "long_lost")).toMatch(/lost/);
+    const ended = toolResultText(second.gateway.requests[1]!.body, "long_ended");
+    expect(ended).toContain("TerminalEnded");
+    expect(ended).not.toContain("GOT_AFTER_EXIT");
   }, TIMEOUT * 2);
 });
