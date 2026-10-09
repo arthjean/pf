@@ -33,10 +33,10 @@
     {
       "id": "EP-004",
       "title": "Startup, exit, and in-process terminals",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 6,
-      "stories_done": 0
+      "stories_done": 6
     },
     {
       "id": "EP-005",
@@ -323,87 +323,87 @@
       "id": "US-018",
       "title": "Draw the first frame before slow startup work",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-017",
         "US-031"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-09T13:16:11+02:00",
+      "completed_at": "2026-10-09T17:31:48+02:00",
+      "reviewed_at": "2026-10-09T17:31:48+02:00"
     },
     {
       "id": "US-019",
       "title": "Title a crashed first v2 turn and fix compaction check sources",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-018"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-09T13:45:25+02:00",
+      "completed_at": "2026-10-09T17:31:48+02:00",
+      "reviewed_at": "2026-10-09T17:31:48+02:00"
     },
     {
       "id": "US-020",
       "title": "Exit without waiting on MCP servers or the usage ledger",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-019"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-09T14:05:44+02:00",
+      "completed_at": "2026-10-09T17:31:48+02:00",
+      "reviewed_at": "2026-10-09T17:31:48+02:00"
     },
     {
       "id": "US-021",
       "title": "Port shell snapshots and in-process terminals",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-014",
         "US-020"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-09T14:24:20+02:00",
+      "completed_at": "2026-10-09T17:31:48+02:00",
+      "reviewed_at": "2026-10-09T17:31:48+02:00"
     },
     {
       "id": "US-022",
       "title": "Run in-process ConPTY terminals on Windows",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-021"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-09T15:16:32+02:00",
+      "completed_at": "2026-10-09T17:31:48+02:00",
+      "reviewed_at": "2026-10-09T17:31:48+02:00"
     },
     {
       "id": "US-023",
       "title": "Retire the detached terminal host from docs and the Windows PRD",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": [
         "US-022"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-09T15:34:27+02:00",
+      "completed_at": "2026-10-09T17:31:48+02:00",
+      "reviewed_at": "2026-10-09T17:31:48+02:00"
     },
     {
       "id": "US-024",
