@@ -1527,6 +1527,7 @@ fn rebindAuthority(
         .shell_allowed => |shell| .{ .shell_allowed = .{
             .fingerprint = .init(command_ctx),
             .source = shell.source,
+            .grant_epoch = shell.grant_epoch,
         } },
     };
 }

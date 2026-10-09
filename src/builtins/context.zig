@@ -28,6 +28,7 @@ const StaticContextInput = context_contract.StaticContextInput;
 const TransientContextInput = context_contract.TransientContextInput;
 const workspace_access = @import("../core/workspace/workspace_access.zig");
 const sort_utils = @import("../core/shared/sort_utils.zig");
+const shell_resolver = @import("../core/terminal/shell_resolver.zig");
 
 pub const gateway_system_prompt = @embedFile("system_prompt.md");
 
@@ -2111,7 +2112,7 @@ fn buildTurnContextFragment(arena: Allocator, workspace_root: []const u8) ![]con
     const cwd = currentWorkingDirectory(arena) catch "(unavailable)";
     const os_text = try host.operatingSystemText(arena);
     const date_text = try todayUtcText(arena);
-    const shell = shellPath() orelse "(unknown)";
+    const shell = shellPath(arena) orelse "(unknown)";
     const home = homeDir() orelse "(unknown)";
     const git = collectGitInfo(arena, workspace_root) catch GitInfo{};
 
@@ -2214,7 +2215,17 @@ fn writeWindowsShellContext(arena: Allocator, writer: *std.Io.Writer) !void {
     try writer.writeByte('\n');
 }
 
-fn shellPath() ?[]const u8 {
+/// Reports the shell the shell tool runs for the user profile, falling back to
+/// the environment when no login shell resolves (for example on Windows).
+fn shellPath(arena: Allocator) ?[]const u8 {
+    var login_shell_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const login_shell = shell_resolver.configuredLoginShellInto(&login_shell_buffer);
+    if (shell_resolver.environment(arena, login_shell, .user)) |resolved| {
+        switch (resolved) {
+            .user => |path| return path,
+            else => {},
+        }
+    } else |_| {}
     return io_mod.getenv("SHELL") orelse io_mod.getenv("COMSPEC");
 }
 
@@ -2741,6 +2752,24 @@ test "git info reads branch from HEAD" {
     const info = try collectGitInfo(arena, workspace);
     try std.testing.expectEqualStrings("main", info.branch.?);
     try std.testing.expectEqual(GitWorktreeState.unknown, info.worktree);
+}
+
+test "turn context reports the shell tool's login shell" {
+    // shell_resolver.environment() returns .legacy on Windows, which has no login shell.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const login_shell = shell_resolver.configuredLoginShellInto(&buffer) orelse
+        return error.SkipZigTest;
+    const expected = switch (try shell_resolver.environment(arena, login_shell, .user)) {
+        .user => |path| path,
+        else => return error.TestUnexpectedResult,
+    };
+    const fragment = try buildTurnContextFragment(arena, "/tmp");
+    const line = try std.fmt.allocPrint(arena, "shell_path: {s}\n", .{expected});
+    try std.testing.expect(std.mem.indexOf(u8, fragment, line) != null);
 }
 
 test "turn context keeps branch metadata inside its field" {

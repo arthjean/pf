@@ -78,7 +78,7 @@ pub fn acceptTimeout(listener: windows.HANDLE, timeout_ms: i32) AcceptError!?std
 }
 
 /// The process id of the peer of an AF_UNIX socket accepted through Winsock.
-pub fn peerProcessId(socket: windows.HANDLE) error{PeerIdentityUnavailable}!u32 {
+fn peerProcessId(socket: windows.HANDLE) error{PeerIdentityUnavailable}!u32 {
     var pid: windows.ULONG = 0;
     var returned: windows.DWORD = 0;
     // Windows leaves the returned byte count at zero for this control code,
@@ -177,7 +177,7 @@ pub const ReceiveError = error{ Timeout, ConnectionResetByPeer, ReceiveFailed };
 
 /// Receives at least one byte from a Winsock `socket` within `timeout_ms`.
 /// Returns 0 at end of stream.
-pub fn receiveTimeout(socket: windows.HANDLE, destination: []u8, timeout_ms: i64) ReceiveError!usize {
+fn receiveTimeout(socket: windows.HANDLE, destination: []u8, timeout_ms: i64) ReceiveError!usize {
     var poll_fds = [_]win32.WSAPOLLFD{.{ .fd = socket, .events = win32.POLLRDNORM, .revents = 0 }};
     const wait: i32 = @intCast(std.math.clamp(timeout_ms, 0, std.math.maxInt(i32)));
     const ready = win32.WSAPoll(&poll_fds, 1, wait);

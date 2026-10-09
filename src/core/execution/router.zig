@@ -67,6 +67,7 @@ pub fn prepareAuthorizedRoute(
                     .command_ctx = command_ctx,
                     .reason = .dynamic_shell,
                     .source = shell.source,
+                    .grant_epoch = shell.grant_epoch,
                 } };
             }
             const admission = command_effect.plan(
@@ -80,6 +81,7 @@ pub fn prepareAuthorizedRoute(
                 .command_ctx = command_ctx,
                 .reason = .planning_failure,
                 .source = shell.source,
+                .grant_epoch = shell.grant_epoch,
             } };
             switch (admission) {
                 .direct_read_only => |plan| {
@@ -92,6 +94,7 @@ pub fn prepareAuthorizedRoute(
                         .command_ctx = command_ctx,
                         .reason = reason,
                         .source = shell.source,
+                        .grant_epoch = shell.grant_epoch,
                     } };
                 },
             }
