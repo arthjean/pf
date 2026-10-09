@@ -52,7 +52,7 @@
       "status": "DONE",
       "priority": "P1",
       "stories_total": 6,
-      "stories_done": 6
+      "stories_done": 5
     }
   ],
   "stories": [
@@ -496,7 +496,7 @@
       "id": "US-031",
       "title": "Keep hosted sessions across pf restarts on Windows",
       "epic": "EP-006",
-      "status": "DONE",
+      "status": "CANCELLED",
       "priority": "P2",
       "size": "L",
       "blocked_by": [

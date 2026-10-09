@@ -9,6 +9,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **New name:** The command is `pf`. Profile state moves from `~/.fx` to `~/.pf`, project defaults from `.fx.json` to `.pf.json`, workspace skills from `.fx/skills` to `.pf/skills`, and environment variables from `FX_*` to `PF_*`. Existing fx settings, sessions, and credentials are not read.
 - **SDK:** The JavaScript package is `libpf`, with `createPfAgent()` and `createPfTerminal()`, and its error codes use the `LIBPF_` prefix.
 - **ACP session workspace:** `session/new` rejects a `cwd` that is relative, empty, or names a directory that does not exist with JSON-RPC error -32602 instead of creating a session.
+- **Interactive terminals:** Terminals that the shell tool starts with `tty: true` now end when pf exits, on every platform, and a resumed session reports them as ended instead of reattaching them.
 
 ### New Features
 

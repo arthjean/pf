@@ -9,6 +9,7 @@
 | 1.1 | 2026-10-01 | Arthur Jean | EP-001 review: binary-level checks of US-002 and US-003 move to US-008, which first produces `pf.exe`; the Linux suite gate compares against the baseline |
 | 1.2 | 2026-10-05 | Arthur Jean | Q3 and Q5 decided: DPAPI on profile files; US-030 and US-031 port the detached terminal host, and US-030's exit criterion moves to the host. US-032: OSC 777 replaces OSC 9, and the image criterion covers paste |
 | 1.3 | 2026-10-05 | Arthur Jean | EP-006 review: US-028 proves user scope from the DPAPI blob's flags instead of a second Windows account, because the account binding is DPAPI's own guarantee |
+| 1.4 | 2026-10-09 | Arthur Jean | Q5 revised by the fx 0.0.13 sync (`tasks/prd-fx-sync-0-0-13.md`, D-TERM A): fx #1137 moves terminals into the pf process on every OS, so Windows sessions end with pf; the EP-006 Definition of Done and US-030's last criterion are amended and US-031 is superseded |
 
 ## Problem Statement
 
@@ -587,7 +588,7 @@ Give every change a deterministic Windows verification signal and document what 
 
 Close the remaining feature gaps between Windows and the POSIX platforms after the preview ships.
 
-**Definition of Done:** Credentials are encrypted at rest with DPAPI once Arthur confirms the backend. Interactive MCP OAuth works. The terminal tool hosts interactive sessions over ConPTY, and those sessions survive pf restarts. Clipboard and notifications work through Win32.
+**Definition of Done:** Credentials are encrypted at rest with DPAPI once Arthur confirms the backend. Interactive MCP OAuth works. The terminal tool hosts interactive sessions over ConPTY. Clipboard and notifications work through Win32.
 
 #### US-028: Encrypt stored credentials with DPAPI
 **Description:** As a Windows user, I want my OAuth tokens and API keys encrypted to my Windows account at rest so that another account or a copied disk image cannot read them.
@@ -631,9 +632,11 @@ Close the remaining feature gaps between Windows and the POSIX platforms after t
 - [ ] Given the agent sends input to `python` running in a hosted session, when it reads the screen, then the REPL output appears.
 - [ ] Given a resize request, when it is applied, then `ResizePseudoConsole` changes the session size and the next screen read reflects it.
 - [ ] Given the session's shell exits, when the session is queried, then it is marked exited with the exit code.
-- [ ] Given the terminal host exits, whether idle, stopped, or crashed, when its job handles close, then every process of every hosted session exits. Amended 2026-10-05 by the Q5 decision: hosted sessions live in the detached terminal host, as on Linux and macOS, so pf exiting alone does not end them (US-031).
+- [ ] Given the terminal host exits, whether idle, stopped, or crashed, when its job handles close, then every process of every hosted session exits. Amended 2026-10-05 by the Q5 decision: hosted sessions live in the detached terminal host, as on Linux and macOS, so pf exiting alone does not end them (US-031). Amended 2026-10-09 by the revised Q5: sessions run inside the pf process, so every session process exits when pf exits or crashes.
 
 #### US-031: Keep hosted sessions across pf restarts on Windows
+**Superseded (2026-10-09):** fx #1137 (`/home/arthur/dev/fx@6bdd4973`) ends every terminal with the pf process that started it, and US-022 of `tasks/prd-fx-sync-0-0-13.md` ports that model to Windows, so no session survives a pf restart. The criteria below stay as history.
+
 **Description:** As a user, I want hosted terminal sessions to keep running and to be reattachable after pf restarts on Windows so that long-running work is not lost.
 
 **Priority:** P2
@@ -801,5 +804,6 @@ Framed as questions for engineering input:
 - **Q4 (Arthur, after Release 1 dogfooding):** Should a follow-up PRD specify a PowerShell-aware parser so that routine PowerShell commands can use fast paths and allow rules? It depends on the review latency and cost measured in Release 1.
 - **Q5 (Arthur, before Release 3):** Is persistent hosted-session reattachment on Windows (US-031) worth its size, or is per-process session lifetime enough?
   - **Decided (Arthur, 2026-10-05):** implement it now. US-030 and US-031 port the existing detached terminal host to Windows (ConPTY sessions, AF_UNIX endpoint) instead of adding an in-process session path that US-031 would replace. US-030's last criterion is amended accordingly.
+  - **Revised (Arthur, 2026-10-09):** per-process session lifetime. The fx 0.0.13 sync takes D-TERM option A: fx #1137 runs terminals inside the pf process on every OS and retires the detached host, so on Windows each session runs in a ConPTY inside pf, in a Job Object that pf holds, and ends when pf exits. US-031 is superseded; US-033 of `tasks/prd-fx-sync-0-0-13.md` validates it on a Windows host.
 - **Q6 (Arthur, when Windows on ARM demand appears):** When should an `aarch64-windows-gnu` artifact ship, given that no hosted CI runner can test it?
 [/PRD]

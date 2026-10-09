@@ -22,7 +22,8 @@ const NapiSurface = enum {
 
 /// pf supports Windows 10 version 1809 or later. Zig's default Windows floor
 /// is older, and below version 1803 `std.Io.net` compiles AF_UNIX sockets out,
-/// which the terminal host needs, so a Windows target is raised to 1809.
+/// which the in-process terminal launcher needs, so a Windows target is
+/// raised to 1809.
 fn withWindowsVersionFloor(b: *std.Build, target: std.Build.ResolvedTarget) std.Build.ResolvedTarget {
     const floor: std.Target.Os.WindowsVersion = .win10_rs5;
     if (target.result.os.tag != .windows) return target;

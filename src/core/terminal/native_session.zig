@@ -250,12 +250,12 @@ const LauncherControl = struct {
     }
 };
 
-/// The Windows counterpart of the launcher process: a host thread that owns
-/// one session's pseudo console and shell, answers the shell's control
-/// markers, and reports the launcher's control frames on a pipe, so
-/// `controlMain`, the liveness pipe, and the command release work as on
-/// POSIX. The shell runs in a Job Object that only this host process holds,
-/// so the shell and everything it starts die with the host.
+/// The Windows counterpart of the launcher process: a thread of the pf
+/// process that owns one session's pseudo console and shell, answers the
+/// shell's control markers, and reports the launcher's control frames on a
+/// pipe, so `controlMain`, the liveness pipe, and the command release work
+/// as on POSIX. The shell runs in a Job Object that only the pf process
+/// holds, so the shell and everything it starts die with pf.
 const WindowsLauncher = struct {
     alloc: Allocator,
     console: conpty.HostedConsole,
@@ -267,7 +267,7 @@ const WindowsLauncher = struct {
     /// Frames for `controlMain`; closing it ends the control stream.
     control_write: ?std.os.windows.HANDLE,
     /// Bytes from `Session.liveness_file`: the start release, then the
-    /// command release. End of stream means the host closed the session.
+    /// command release. End of stream means pf closed the session.
     liveness_read: std.os.windows.HANDLE,
     thread: ?std.Thread = null,
     phase: ControlPhase = .awaiting_shell,
@@ -460,8 +460,8 @@ const WindowsLauncher = struct {
         }
     }
 
-    /// Reads any release byte without blocking. End of stream means the
-    /// host closed the session.
+    /// Reads any release byte without blocking. End of stream means pf
+    /// closed the session.
     fn followLiveness(self: *WindowsLauncher) void {
         const win32 = @import("../shared/win32.zig");
         while (!self.host_closed) {
@@ -534,12 +534,12 @@ const WindowsLauncher = struct {
 
 /// Random bytes in the names of a Windows session's launcher files. The
 /// nonce, not the name, authenticates the control markers, so the name only
-/// needs to be unique in the private host directory and short enough for an
-/// AF_UNIX path.
+/// needs to be unique in the private launcher directory and short enough
+/// for an AF_UNIX path.
 const windows_launcher_name_bytes = 8;
 
-/// The length of a Windows launcher's control socket name, which the host
-/// directory must fit in an AF_UNIX path beside the host endpoint.
+/// The length of a Windows launcher's control socket name, which the
+/// launcher directory must fit in an AF_UNIX path.
 const windows_launcher_socket_name_len = windows_launcher_name_bytes * 2 + ".sock".len;
 
 /// The private directory under the profile directory that holds Windows
@@ -740,7 +740,7 @@ fn writePrivateLauncherFile(path: []const u8, bytes: []const u8) !void {
 }
 
 pub fn runLauncher(alloc: Allocator) !void {
-    // Windows sessions run their launcher as a host thread instead.
+    // Windows sessions run their launcher as a thread of the pf process instead.
     if (comptime !isSupported() or is_windows) return error.TerminalHostUnsupported;
 
     var length_bytes: [4]u8 = undefined;
@@ -1533,8 +1533,8 @@ const SupportedRegistry = struct {
                 }
                 return self.actionError(.wait, request.session_id, err);
             };
-            // A session this host recovered without its process, such as
-            // after the previous host crashed, is lost rather than missing.
+            // A session whose pf process ended, such as after a crash, is
+            // lost rather than missing.
             const missing: contracts.StructuredErrorCode =
                 if (durable.record.lifecycle == .lost) .session_lost else .session_not_found;
             if (request.return_when != .exit) {

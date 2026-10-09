@@ -1,6 +1,6 @@
-//! Winsock AF_UNIX endpoints for the Windows terminal host. `std.Io.net`
+//! Winsock AF_UNIX endpoints for the Windows terminal launchers. `std.Io.net`
 //! listens on AF_UNIX through AFD but cannot name the peer process, so the
-//! host and the session launchers listen through Winsock, which answers
+//! in-process session launchers listen through Winsock, which answers
 //! `SIO_AF_UNIX_GETPEERPID`. Each accepted socket is an AFD endpoint that
 //! `std.Io.net` reads and writes like its own. Clients connect through
 //! `std.Io.net.UnixAddress`. Reference this file only from code selected at

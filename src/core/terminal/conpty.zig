@@ -2,7 +2,7 @@
 //! captures its output on a dedicated reader thread, so `ClosePseudoConsole`
 //! never blocks on an undrained output pipe; test drivers use it.
 //! `HostedConsole` runs a terminal session's shell in a Job Object and hands
-//! the output pipe to the terminal host's own reader. Reference only from
+//! the output pipe to the session's reader in the pf process. Reference only from
 //! code selected at comptime for Windows; the unit tests skip elsewhere.
 
 const std = @import("std");
@@ -278,8 +278,8 @@ pub const terminated_exit_code: u32 = 0x7066_0009;
 
 /// A terminal session's shell behind a pseudo console, inside a Job Object
 /// that kills the shell and everything it starts when the job's last handle
-/// closes, which also happens when the terminal host process dies. The host
-/// reads `output` on its own thread. Input, resize, and close may run on
+/// closes, which also happens when the pf process dies. The in-process
+/// launcher reads `output` on its own thread. Input, resize, and close may run on
 /// different threads; `mutex` orders them against the pseudo console's
 /// teardown.
 pub const HostedConsole = struct {

@@ -189,11 +189,13 @@ The `shell` tool runs commands in Git Bash when it is available and in PowerShel
 
 Set `PF_WINDOWS_SHELL` to `bash` to require Git Bash, to `powershell` to skip it, or to `auto` (the default) for the order above. With `bash`, pf reports an error instead of falling back when Git Bash is missing. `pf doctor` shows the selected shell and why it was chosen, and the model is told which shell and path conventions to use.
 
+pf does not cache shell startup files on Windows: Git Bash reads its login files for every command, PowerShell runs without a profile, and `/shell reload` says so.
+
 Under Git Bash, permission analysis works as on Linux and macOS. pf does not parse PowerShell, so under PowerShell every command needs an exact approval of that command or a configured rule that names it exactly; in `auto` mode, each one goes through the security review. Wildcard allow rules and the automatic approval of routine read-only commands never apply to PowerShell commands.
 
 ### Interactive sessions
 
-Interactive programs that the `shell` tool runs with a terminal, such as REPLs, run in a Windows pseudo console (ConPTY) under the selected Git Bash or PowerShell. A detached terminal host owns these sessions, so they survive the pf process that started them and a later pf run, such as `pf ask --resume last`, continues them. Each session runs inside a Job Object that only the host holds: when the host stops, every process of its sessions stops with it, and those sessions are reported as lost. The host listens on an AF_UNIX socket inside `%USERPROFILE%\.pf` and accepts only processes of the same Windows account. Windows has no tmux, so every session uses this host.
+Interactive programs that the `shell` tool runs with a terminal, such as REPLs, run in a Windows pseudo console (ConPTY) inside the pf process, under the selected Git Bash or PowerShell. Each session runs inside a Job Object that pf holds, so a session and every process it started end when pf exits or crashes. A later pf run, such as `pf ask --resume last`, reports those sessions as ended. Each session keeps its control files in a private directory under `%USERPROFILE%\.pf`.
 
 ### Credentials and notifications
 
