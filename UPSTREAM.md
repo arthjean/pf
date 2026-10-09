@@ -14,7 +14,6 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | fx merge | fx PR | Open Question | Revisited by |
 |---|---|---|---|
 | `73308320925d5c31b4f57b875f07e77eb8b051d6` | #1101 | Q1, answered D: skip the Slack preset; denied message ported by hand | permanent |
-| `3cc5ddfb668a43a11ce15511d00dbb915dd681bd` | #1122 | Q6 part 2: raises the ReleaseSafe unit-test timeout in `.github/workflows/ci.yml` from 900 to 1500 seconds. fx #1114 (`0a798c935e1176da62448beb8d9f6716529cb850`) already has 1500 in its base, so porting it alone keeps pf's 900: US-026 or US-028 must port fx #1122 | US-028 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the Open Question that blocks it, and the story that revisits it.
 
