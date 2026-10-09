@@ -263,6 +263,13 @@ const healthFailureForState = server_views.healthFailureForState;
 const DetachedTransport = server_connection.DetachedTransport;
 pub const McpServer = server_connection.Server;
 
+/// Process exit: SIGKILLs every stdio MCP child in the process at once, or on
+/// Windows terminates each server's Job Object, and refuses later launches. Returns false when only a full teardown reaches
+/// every child; see `stdio_dispatcher.killAllForProcessExit`.
+pub fn killAllStdioChildrenForProcessExit() bool {
+    return stdio_dispatcher.killAllForProcessExit();
+}
+
 pub const McpRuntime = struct {
     alloc: Allocator,
     completions: legacy_url_completion.State,

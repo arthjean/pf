@@ -27,6 +27,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Sessions v2 storage:** With `--sessions-v2`, tool results, tool images, command output, and web downloads are kept once each as read-only blobs named by their digest, prompt images stay inside their turn, and terminal state moves to `~/.pf/terminal/<id>`. Resume, `pf doctor`, and `pf session recover` report a lost blob as damage.
 - **Images:** Originals up to 8000 pixels per side and 5 MiB encoded are sent unchanged. A larger image, or one whose dimensions cannot be verified, is withheld with its saved path and guidance to make a smaller copy, instead of being downscaled. `/image` followed by a pasted path attaches the image.
 - **Faster launch:** The first screen appears before the credential inventory and skill discovery finish; skills finish loading afterward.
+- **Faster exit:** Quitting no longer waits for stdio MCP servers to stop one at a time or for a large usage history to finish loading.
 
 ### Bug Fixes
 
