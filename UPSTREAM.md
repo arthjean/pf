@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `0994a0579d5130463dba07a05fd97807a7bf304c` |
+| Last ported | `463663feb47224f4565b3ba0264d152d88080c42` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -24,7 +24,7 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 | `14893f6460dcba305c5e11d510f5f303eee3b574` | #1082 | The upgrade relaunch argv block and `writeUpgradeRelaunchFailure` in `src/core/app/app_entry_runtime.zig`, the unit test "a v2 handoff relaunches and hints with --sessions-v2", and the relaunch argv expectation in `tests/e2e/tui-resume.test.ts` | `fa515c535aa555ebf8252e962670961fc0e50d38` | Q4 | US-028 |
 | `34f1ed14de47760b44d628ec2d5eb28055b9adf0` | #1062 | The AI Gateway compaction summary fallback to another model family in `src/core/compactor/model.zig`, the unit tests "a failed or empty summary falls back to another family at its lowest reasoning" in `src/core/compactor/model.zig` and "compaction writes the summary with the least reasoning each model accepts" in `src/core/agent/runtime/tests/gateway_flow.zig`, and the retry expectations in `tests/e2e/tui-compaction-activity.test.ts` and `tests/e2e/gateway-stream-lifecycle.test.ts`, which pf rewrites to expect the primary error, and the README sentence on the retry | `9c1cbd1590daf75961e42ea7df94cb7afff76340` | Q3 | US-028 |
 | `34f1ed14de47760b44d628ec2d5eb28055b9adf0` | #1062 | The "Check compactor boundary" steps and the lint-scripts entry in `.github/workflows/ci.yml` and `.github/workflows/full-ci.yml`, and the CI wording on the compactor boundary check in `AGENTS.md` and `CONTRIBUTING.md` | `9c1cbd1590daf75961e42ea7df94cb7afff76340` | Q6 | US-028 |
-| `0994a0579d5130463dba07a05fd97807a7bf304c` | #1127 | The macOS Keychain deferral: the launch call site of `keychainReadDeferrable` in `src/core/app/app_lifecycle.zig` passes `false` instead of `builtin.os.tag == .macos`, and the macOS branch of the unit test "interactive launch leaves a Keychain credential unresolved for the caller" is removed | `pending` | Q5 | US-028 |
+| `0994a0579d5130463dba07a05fd97807a7bf304c` | #1127 | The macOS Keychain deferral: the launch call site of `keychainReadDeferrable` in `src/core/app/app_lifecycle.zig` passes `false` instead of `builtin.os.tag == .macos`, and the macOS branch of the unit test "interactive launch leaves a Keychain credential unresolved for the caller" is removed | `42f1369fa6286d9bd7a54b4ac1d6b877dfd8522d` | Q5 | US-028 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 
