@@ -708,7 +708,7 @@ python3 benchmarks/first_frame.py --isolated-home --cwd /tmp   # empty profile
 By default it uses your own HOME and working directory, which is what users
 feel. It disables auto-upgrade for the measured processes and fails if a
 binary changes during the run. Add `--no-background-reply` to act like a
-terminal that ignores the background color query.
+terminal that ignores the background color query. The script needs a POSIX pseudo-terminal, so it runs on Linux and macOS.
 
 The libpf runtime job measures cold startup, warm prompts, host-tool calls,
 stream throughput, and Agent cleanup. Its direct Pi comparison uses an external

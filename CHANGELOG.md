@@ -26,6 +26,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Context compaction:** Compaction keeps your messages and the assistant's final replies word for word, and saves every compacted turn, tool call, and earlier compaction under an ID such as `M3`, `T12`, or `L2` that the agent can open or search with `read_tool_result`. Sessions compacted by an earlier pf build keep resuming, but a pf build from before this change cannot read checkpoints written after it.
 - **Sessions v2 storage:** With `--sessions-v2`, tool results, tool images, command output, and web downloads are kept once each as read-only blobs named by their digest, prompt images stay inside their turn, and terminal state moves to `~/.pf/terminal/<id>`. Resume, `pf doctor`, and `pf session recover` report a lost blob as damage.
 - **Images:** Originals up to 8000 pixels per side and 5 MiB encoded are sent unchanged. A larger image, or one whose dimensions cannot be verified, is withheld with its saved path and guidance to make a smaller copy, instead of being downscaled. `/image` followed by a pasted path attaches the image.
+- **Faster launch:** The first screen appears before the credential inventory and skill discovery finish; skills finish loading afterward.
 
 ### Bug Fixes
 
