@@ -16,6 +16,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Sessions v2 everywhere:** With `--sessions-v2` or `PF_SESSIONS_V2=1`, the interactive shell, `pf sessions`, `pf session`, and `pf doctor` use the sessions v2 store, and `pf acp` uses it with `PF_SESSIONS_V2=1`. Windows refuses it with an error.
 - **ACP embedding:** ACP clients can steer a running turn with `_meta.pf.steer`, supply a session system prompt, keep their MCP tools loaded on every turn, serve MCP servers over the ACP connection, and choose each session's workspace with `cwd`.
 - **Compaction threshold:** Set `auto_compact_percent` in `~/.pf/settings.json` to any value from 10 to 80, or `PF_AUTO_COMPACT_PERCENT` for a single launch, to choose how full the model's context gets before automatic compaction starts. The default stays 80.
+- **Ultrafast mode:** With `--ultrafast`, `PF_ULTRAFAST=1`, `/ultrafast on`, or `"ultrafast_mode": true` in `~/.pf/settings.json`, pf requests OpenAI's higher-cost Ultrafast service tier on Vercel AI Gateway for a model that supports it. It is off by default, `/status` and `pf status --json` report the request, and pf tells you when Gateway does not confirm that it served the tier.
 
 ### Improvements
 

@@ -149,6 +149,7 @@ pub const Context = struct {
     gateway_models_path: []const u8 = "/v1/models",
     agent_step_limit: usize,
     fast_mode: bool = false,
+    ultrafast_mode: bool = false,
     effort: types.ReasoningEffort = .auto,
     /// Borrowed gateway provider routing inherited by subagent turns. Never
     /// applied to tool-internal provider requests (vision, web search), which
@@ -2188,6 +2189,7 @@ fn executeSubagentProvider(
             .model = ctx.model,
             .effort = ctx.effort,
             .fast_mode = ctx.fast_mode,
+            .ultrafast_mode = ctx.ultrafast_mode,
             .conversation_language = ctx.session.languageSnapshot(),
         },
         .max_result_bytes = ctx.max_tool_result_bytes,

@@ -151,13 +151,13 @@ duplicate, stale, and unclassified files without running the full PGSO gate.
 
 Config precedence (highest wins):
 
-1. Environment variables such as `PF_PROVIDER`, `PF_MODEL`, `PF_PERMISSION_MODE`, and `PF_MAX_AGENT_STEPS`
+1. Environment variables such as `PF_PROVIDER`, `PF_MODEL`, `PF_PERMISSION_MODE`, `PF_MAX_AGENT_STEPS`, and `PF_ULTRAFAST`
 2. `~/.pf/settings.json` → `workspaces["<workspace_path>"]` (profile workspace overrides)
 3. `~/.pf/settings.json` top-level (profile global settings)
 4. `<workspace>/.pf.json` (committed project defaults)
 5. Built-in defaults
 
-Project `.pf.json` accepts only repo-safe defaults: `sandbox`, `max_agent_steps`, `max_tool_result_bytes`, and `context`. Profile-owned keys such as `provider`, `providers`, `models`, `model`, `effort`, `fast_mode`, `slash_menu_categories`, `startup_scrollback`, `prompt_history`, `statusLine`, `skill_match_fuzzy`, `first_call_tool_choice`, `auto_upgrade`, `auto_compact_percent`, `update_channel`, `permission_mode`, `permission`, and `skill_symlink_authorities` are ignored from project config before their values are parsed.
+Project `.pf.json` accepts only repo-safe defaults: `sandbox`, `max_agent_steps`, `max_tool_result_bytes`, and `context`. Profile-owned keys such as `provider`, `providers`, `models`, `model`, `effort`, `fast_mode`, `ultrafast_mode`, `slash_menu_categories`, `startup_scrollback`, `prompt_history`, `statusLine`, `skill_match_fuzzy`, `first_call_tool_choice`, `auto_upgrade`, `auto_compact_percent`, `update_channel`, `permission_mode`, `permission`, and `skill_symlink_authorities` are ignored from project config before their values are parsed.
 
 `skill_symlink_authorities` is an array of absolute directories that symlinked skills may resolve into, such as an app bundle or `/nix/store`. It is read at startup, a workspace override replaces the global list, and its entries are combined with the `PF_SKILL_SYMLINK_AUTHORITIES` environment variable, whose entries are separated like `PATH`: `:` on Linux and macOS, `;` on Windows.
 
@@ -414,7 +414,10 @@ progress are not delivered to operations yet.
 ## ACP Embedding
 
 `pf acp` extends ACP v1 for clients that embed it. Extensions are read and
-written under `_meta.pf`.
+written under `_meta.pf`. Start the server with `pf acp --ultrafast` or
+`pf acp --no-ultrafast` to set a process-local default request for sessions
+created by that server; the request still requires a model that advertises
+Ultra eligibility.
 
 * **Client MCP tools stay loaded:** tool schemas from servers in `mcpServers`
   are advertised on every turn within the `mcp_selected_schema_bytes` budget.

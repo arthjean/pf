@@ -80,6 +80,20 @@ await assert.rejects(
     !String(error.cause).includes("high-level createPfAgent invoked"),
 );
 
+await assert.rejects(
+  createPfAgent({
+    backend: "native",
+    nativeAddon: {
+      libpfApiVersion: 4,
+      createCore() { throw new Error("old addon must not receive ultrafast"); },
+    },
+    apiKey: "loader-key",
+    ultrafast: true,
+  }),
+  (error) => error?.code === "LIBPF_NATIVE_CAPABILITY_UNAVAILABLE" &&
+    !String(error.cause).includes("old addon must not receive ultrafast"),
+);
+
 for (const gatewayChatUrl of [
   "http://attacker.example/chat",
   "https://[redacted]@example.com/chat",

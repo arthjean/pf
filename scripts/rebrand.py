@@ -87,8 +87,10 @@ RULES = [
     (r"releases\.fx\.sh", "releases.paneflow.dev/agent"),
     (r"https?://fx\.sh", "https://paneflow.dev/agent"),
     (r"(?<![A-Za-z0-9.-])fx\.sh(?![A-Za-z0-9])", "paneflow.dev/agent"),
-    # The article follows the name: "an fx session" becomes "a pf session".
+    # The article follows the name: "an fx session" becomes "a pf session",
+    # and "an FX_FAST toggle" becomes "a PF_FAST toggle".
     (r"\b([Aa])n fx(?![A-Za-z0-9])", r"\1 pf"),
+    (r"\b([Aa])n FX(?![A-Za-z0-9])", r"\1 PF"),
     (r"libfx", "libpf"),
     (r"LIBFX", "LIBPF"),
     (r"Libfx", "Libpf"),
