@@ -25,10 +25,10 @@
     {
       "id": "EP-003",
       "title": "Compaction, images, and Ultrafast",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
-      "stories_total": 8,
-      "stories_done": 0
+      "stories_total": 10,
+      "stories_done": 10
     },
     {
       "id": "EP-004",
@@ -44,6 +44,14 @@
       "status": "TODO",
       "priority": "P1",
       "stories_total": 6,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-006",
+      "title": "Windows validation",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 2,
       "stories_done": 0
     }
   ],
@@ -175,113 +183,141 @@
       "id": "US-010",
       "title": "Validate assumption: v1 compaction checkpoints written by pf d7ceb0e load after the compactor rewrite",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-009"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T08:13:38+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
     },
     {
       "id": "US-011",
       "title": "Port the turn-by-turn compaction ledger and the compactor boundary",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-010"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T08:19:00+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
     },
     {
       "id": "US-012",
       "title": "Port raw libpf image bytes with the SDK in lockstep",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-011"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T10:29:53+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
     },
     {
       "id": "US-013",
       "title": "Port v2 blobs, compaction hardening, and the Base64 decode fix",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-012"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T11:02:33+02:00",
+      "completed_at": "2026-10-09T13:12:41+02:00",
+      "reviewed_at": "2026-10-09T13:12:41+02:00"
     },
     {
       "id": "US-014",
       "title": "Port or skip Ultrafast mode",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
-      "size": "M",
+      "size": "XS",
       "blocked_by": [
         "US-013"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T11:49:19+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
     },
     {
       "id": "US-015",
       "title": "Port or skip the CI unit test timeout",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "XS",
       "blocked_by": [
         "US-014"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T11:49:36+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
     },
     {
       "id": "US-016",
       "title": "Keep a running step's text when a v2 turn crashes",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "XS",
       "blocked_by": [
         "US-015"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T11:49:36+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
     },
     {
       "id": "US-017",
       "title": "Let models recover oversized images",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-016"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-08T12:06:09+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
+    },
+    {
+      "id": "US-030",
+      "title": "Port Ultrafast mode",
+      "epic": "EP-003",
+      "status": "DONE",
+      "priority": "P1",
+      "size": "M",
+      "blocked_by": [
+        "US-017"
+      ],
+      "started_at": "2026-10-09T07:51:54+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
+    },
+    {
+      "id": "US-031",
+      "title": "Port the CI unit test timeout",
+      "epic": "EP-003",
+      "status": "DONE",
+      "priority": "P2",
+      "size": "XS",
+      "blocked_by": [
+        "US-030"
+      ],
+      "started_at": "2026-10-09T08:40:00+02:00",
+      "completed_at": "2026-10-09T09:46:43+02:00",
+      "reviewed_at": "2026-10-09T09:46:43+02:00"
     },
     {
       "id": "US-018",
@@ -291,7 +327,8 @@
       "priority": "P0",
       "size": "S",
       "blocked_by": [
-        "US-017"
+        "US-017",
+        "US-031"
       ],
       "started_at": null,
       "completed_at": null,
@@ -447,6 +484,34 @@
       "size": "M",
       "blocked_by": [
         "US-027"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-032",
+      "title": "Run the Windows host suite on the synced tree and fix what fails",
+      "epic": "EP-006",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-029"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-033",
+      "title": "Validate in-process ConPTY terminals on Windows",
+      "epic": "EP-006",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-032"
       ],
       "started_at": null,
       "completed_at": null,
