@@ -28,6 +28,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Images:** Originals up to 8000 pixels per side and 5 MiB encoded are sent unchanged. A larger image, or one whose dimensions cannot be verified, is withheld with its saved path and guidance to make a smaller copy, instead of being downscaled. `/image` followed by a pasted path attaches the image.
 - **Faster launch:** The first screen appears before the credential inventory and skill discovery finish; skills finish loading afterward.
 - **Faster exit:** Quitting no longer waits for stdio MCP servers to stop one at a time or for a large usage history to finish loading.
+- **Shell commands:** On Linux and macOS, pf runs your zsh or bash startup files once per process and restores their result for each command. Run `/shell reload` after changing a file they source; reloading also resets remembered command approvals.
 
 ### Bug Fixes
 
