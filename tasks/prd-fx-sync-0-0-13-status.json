@@ -40,11 +40,11 @@
     },
     {
       "id": "EP-005",
-      "title": "Release tail, CI, and closure",
-      "status": "TODO",
+      "title": "Final fx merges, CI, and closure",
+      "status": "DONE",
       "priority": "P1",
-      "stories_total": 6,
-      "stories_done": 0
+      "stories_total": 5,
+      "stories_done": 5
     },
     {
       "id": "EP-006",
@@ -406,88 +406,74 @@
       "reviewed_at": "2026-10-09T17:31:48+02:00"
     },
     {
-      "id": "US-024",
-      "title": "Port or skip the 0.0.13 version bump",
-      "epic": "EP-005",
-      "status": "TODO",
-      "priority": "P2",
-      "size": "XS",
-      "blocked_by": [
-        "US-023"
-      ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
-    },
-    {
       "id": "US-025",
       "title": "Preserve completed native HTTP responses and use a fast memset",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
-        "US-024"
+        "US-023"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-10T15:22:35+02:00",
+      "completed_at": "2026-10-10T21:05:08+02:00",
+      "reviewed_at": "2026-10-10T21:05:08+02:00"
     },
     {
       "id": "US-026",
       "title": "Port or skip the Linux-first CI",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "L",
       "blocked_by": [
         "US-025"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-10T15:36:16+02:00",
+      "completed_at": "2026-10-10T21:05:08+02:00",
+      "reviewed_at": "2026-10-10T21:05:08+02:00"
     },
     {
       "id": "US-027",
       "title": "Port or skip cooperative fast warmup",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "XS",
       "blocked_by": [
         "US-026"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-10T15:36:22+02:00",
+      "completed_at": "2026-10-10T21:05:08+02:00",
+      "reviewed_at": "2026-10-10T21:05:08+02:00"
     },
     {
       "id": "US-028",
       "title": "Apply held hunks and deferred fx changes once decided",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": [
         "US-027"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-10T15:41:20+02:00",
+      "completed_at": "2026-10-10T21:05:08+02:00",
+      "reviewed_at": "2026-10-10T21:05:08+02:00"
     },
     {
       "id": "US-029",
       "title": "Prove the synced tree end to end",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-027"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-10T15:42:06+02:00",
+      "completed_at": "2026-10-10T21:05:08+02:00",
+      "reviewed_at": "2026-10-10T21:05:08+02:00"
     },
     {
       "id": "US-032",
