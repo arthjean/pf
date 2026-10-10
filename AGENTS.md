@@ -10,7 +10,7 @@ Before reporting the work as ready:
 
 1. Build succeeds.
 2. Focused tests for the changed path pass locally.
-3. The **Full CI** run for the exact current commit passes on every required Linux and macOS runner.
+3. **CI** passes for the exact current commit, including the **macOS arm64** and **Windows x86_64** checks. See **CI on Pull Requests**.
 4. Run the built binary locally and drive at least one real interaction that exercises the change end to end.
 5. Confirm the process did not abort, stderr is clean, and the behavior matches what you are about to tell the user.
 
@@ -216,7 +216,7 @@ Do not bypass the permission system for new tools.
 
 * Zig unit tests go inside the source file they test, using `test "description" { ... }` blocks.
 
-* Run the narrowest relevant tests while developing. The complete `zig build test` suite runs in ReleaseSafe in **Full CI** after the feature branch is pushed, and it must pass before the draft PR is marked ready.
+* Run the narrowest relevant tests while developing. The complete `zig build test` suite runs in ReleaseSafe in **CI** after the feature branch is pushed, and it must pass before the draft PR is marked ready.
 
 * Use `std.testing.expect`, `std.testing.expectEqual`, `std.testing.expectEqualStrings` for assertions.
 
@@ -272,22 +272,27 @@ Assign the label when the PR is opened and keep it accurate when the PR changes.
 
 Keep PR titles as clean imperative sentences, such as `Restore feedback report file clipboard`. Do not add bracketed prefixes such as `[bug]`, `[feature]`, or `[improvement]`. Type belongs in the label, not the title.
 
-## Full CI on Feature Branches
+## CI on Pull Requests
 
 Do not run the complete deterministic test suite locally as the default development loop. Run the focused test for the changed path, build the binary, and exercise that path with `./zig-out/bin/pf`.
 
-After the focused checks pass, create a clean checkpoint commit, push the non-`main` feature branch, and open a draft PR immediately. `.github/workflows/full-ci.yml` runs the following on all four supported native runner architectures:
+After the focused checks pass, create a clean checkpoint commit, push the non-`main` feature branch, and open a draft PR immediately. Linux is the gate for every change because most pf behavior is identical on every platform:
 
-* `ubuntu-24.04` (x86_64)
-* `ubuntu-24.04-arm` (aarch64)
-* `macos-15-intel` (x86_64)
-* `macos-15` (aarch64)
+* `.github/workflows/ci.yml` runs on Linux x86_64. It checks formatting, the PGSO corpus, the public surface, and the compactor boundary, then runs the ReleaseSafe unit tests. It builds pf once, smoke-tests it, and shares that binary with four duration-balanced E2E shards and the MCP conformance baseline. Checked-in weights assign every E2E file to exactly one shard, and files inside each shard run sequentially in separate Bun processes so terminal fixtures and process state cannot leak between files. A failed file receives one retry after its tmux server is reset. A file that passes only on retry gets a warning annotation; investigate it as a possible race. The SDK jobs build WASM and the Node-API addons once and run the complete package qualification. It also runs the Python tests of the CI and release scripts. `Build & Test` passes only when the unit tests and every SDK job pass, so a change cannot break the SDK lanes while the unit tests still pass.
+* `.github/workflows/binary-size.yml` builds each release target on its native runner, reports the size change, and smoke-tests every target's binary. See **Binary Size Observability**.
+* `.github/workflows/bench.yml` enforces the startup latency budget. See **Benchmarks**.
 
-A fifth job runs on `windows-2025` (x86_64): it checks formatting, builds and unit-tests ReleaseSafe, smoke-tests `pf.exe help` and `pf.exe status --json`, and runs the Windows E2E subset (`tests/e2e/windows-subset.ts`). It names the failing step and tests in the job summary.
+Linux jobs install Zig through `.github/actions/setup-zig`, which restores the Zig cache that runs on `main` save with `.github/actions/save-zig-cache`. Pull requests never save a Zig cache through these actions, so they cannot push `main`'s entries out of the repository's cache quota. The PGSO workflow keeps its own cache through `.github/actions/setup-pgso`.
 
-The native matrix builds, tests, and smoke-tests ReleaseSafe on every platform; formatting, the public-surface audit, and the compactor boundary check run in those ReleaseSafe jobs. The E2E matrix runs four duration-balanced, isolated ReleaseSafe shards per platform with Bun and tmux. Checked-in weights assign every test file to exactly one shard on each platform, and files inside each shard run sequentially in separate Bun processes so terminal fixtures and process state cannot leak between files. A failed file receives one bounded retry after its tmux server is reset. Live model evals remain separate because they require credentials and are not deterministic.
+macOS runs only when a change can behave differently there. `.github/workflows/macos.yml` uses `scripts/detect-macos-need.sh` to check the diff. The macOS arm64 unit tests and the E2E files in `tests/e2e/macos-platform-tests.json` run when the change touches a Zig file with a macOS, BSD, or Linux code path, `build.zig`, the macOS signing script, the native SDK addon, a listed E2E file, a shared E2E helper that reads the platform, or the macOS checks themselves. A Linux-only branch counts because macOS takes its other path; a Windows-only branch does not. The listed E2E files run in two weighted shards that share one macOS build. Native SDK addon changes also build and load the addon on macOS. If the detector cannot read the change, the `macOS arm64` check fails instead of passing. To request macOS for any other change, add the `ci:macos` label or run `gh workflow run macos.yml --ref <branch>`. When the change does not need macOS, the `macOS arm64` check passes without starting a macOS runner. Every E2E file that branches on `process.platform` or `platform()` being `darwin` or `linux` must appear in `tests/e2e/macos-platform-tests.json`, and `tests/e2e/ci-shards.test.ts` enforces that.
 
-A Full CI result is valid only when it belongs to the exact current commit and all five `Full suite (...)` jobs succeed. Each Linux and macOS aggregate requires its ReleaseSafe native check plus all four ReleaseSafe E2E shards; the Windows aggregate requires the Windows job. Do not mark the draft PR ready or request review from a stale, partial, queued, cancelled, skipped, or failed run. If Full CI fails, make the smallest repair, rerun the focused local proof, push the new commit to the same draft PR, and wait for Full CI on the new exact commit. After CI passes, run the final ship gate and mark the PR ready only when it reports `SHIP` for that exact commit.
+Windows runs only when a change can behave differently there. `.github/workflows/windows.yml` uses `scripts/detect-windows-need.sh` to check the diff. On `windows-2025` (x86_64) it checks formatting, builds and unit-tests ReleaseSafe, smoke-tests `pf.exe help` and `pf.exe status --json`, builds the ConPTY driver, and runs the Windows E2E subset (`tests/e2e/windows-subset.ts`), naming the failing step and tests in the job summary. It runs when the change touches a Zig file with a Windows code path or any operating system branch, `build.zig`, the Windows signing script, an E2E file that `tests/e2e/windows-subset.ts` runs, a shared E2E helper that reads the platform, or the Windows checks themselves. Any operating system branch counts because Windows may take its other path. If the detector cannot read the change, the `Windows x86_64` check fails instead of passing. To request Windows for any other change, add the `ci:windows` label or run `gh workflow run windows.yml --ref <branch>`. When the change does not need Windows, the `Windows x86_64` check passes without starting a Windows runner.
+
+The macOS arm64 PGSO workflow runs on a pull request only when the PGSO pipeline changes: `scripts/pgso/` other than `corpus.json`, the `setup-pgso` action, or `.github/workflows/pgso-macos-arm64.yml`. To qualify any other change, run `gh workflow run pgso-macos-arm64.yml --ref <branch>`. The stable release always runs it.
+
+Live model evals and the live ACP suite need credentials and are not deterministic, so they run only on request. Run the live ACP suite with `gh workflow run ci.yml --ref <branch> -f acp_live=true`.
+
+A CI result is valid only when it belongs to the exact current commit and `Build & Test`, `E2E (deterministic)`, `Shellcheck`, `Startup Latency`, `macOS arm64`, and `Windows x86_64` all succeed. Do not mark the draft PR ready or request review from a stale, partial, queued, cancelled, skipped, or failed run. If CI fails, make the smallest repair, rerun the focused local proof, push the new commit to the same draft PR, and wait for CI on the new exact commit. After CI passes, run the final ship gate and mark the PR ready only when it reports `SHIP` for that exact commit.
 
 ## Reproducing Render Bugs
 
@@ -343,6 +348,8 @@ Startup latency benchmarks live in `benchmarks/` and run in CI via `.github/work
 
 The CI workflow builds a ReleaseSafe binary, measures six CLI paths with hyperfine, and enforces per-command latency budgets. PRs that exceed a budget fail the check. Startup results stay in the job log, and the workflow uploads its terminal performance, long-turn memory, and libpf latency results as GitHub Actions artifacts; it uploads nothing to external storage.
 
+The long-turn memory and libpf runtime benchmarks run only on request. Start them with `gh workflow run bench.yml --ref <branch> -f long_turn_memory=true` or `-f libpf_runtime=true`.
+
 The startup benchmark uses `PF_BENCH=1`, an environment variable that runs through arg parsing and CLI dispatch, then exits before TTY initialization. This lives in `src/core/app/app_entry_runtime.zig`.
 
 To measure the interactive launch up to the first frame, use `benchmarks/first_frame.py`. It drives pf on a pseudo-terminal and interleaves several `--binary` arguments for before-and-after comparisons.
@@ -365,7 +372,11 @@ Every pull request runs `.github/workflows/binary-size.yml` across Linux x86_64,
 Linux arm64, macOS x86_64, and macOS arm64. Each matrix job builds the pull
 request merge commit and its base commit as stripped ReleaseSafe binaries on
 the same native runner, then reports the exact byte and MiB delta plus ELF or
-Mach-O section changes.
+Mach-O section changes. The base binary is cached by base commit, so later
+pushes to the same pull request reuse it until the base branch moves. Every job
+also smoke-tests the pull request binary with `scripts/smoke-binary.sh`. These
+are release-style builds, and the Linux arm64 and macOS binaries run nowhere
+else on a pull request.
 
 Each platform check is informational. An increase of at least 52,429 bytes
 (0.050000 MiB) emits a warning and retains that platform's binaries for
@@ -386,28 +397,28 @@ Do not document intended behavior as if it already exists.
 
 ## Releasing
 
-Releases use a two-workflow pipeline, Prepare Release then Release. The maintainer controls the changelog voice and format. `CONTRIBUTING.md` (Releases) documents the full pipeline: signing, protected environments, the R2 host, minisign key rotation, CDN Backfill, and the go-live checklist.
+Releases are prepared by hand in a release PR. The maintainer controls the changelog voice and format. `CONTRIBUTING.md` (Releases) documents the full pipeline: signing, protected environments, the R2 host, minisign key rotation, CDN Backfill, and the go-live checklist.
 
 pf publishes no release yet and does not distribute the `libpf` JavaScript SDK. `release.yml`, `dev-release.yml`, and `cdn-backfill.yml` run only on manual dispatch, `release.yml` defaults to `validate_only`, `dev-release.yml` to `dry_run`, and `cdn-backfill.yml` to `dry-run`, and every job that holds a signing key or R2 credentials waits for approval in a protected environment (`apple-signing`, `windows-signing`, `release`). An automatic trigger returns only through the go-live checklist (US-018 in `tasks/prd-pf-distribution.md`). Merging a version bump starts no release.
 
-### Prepare the release
+### Preparing a release
 
-1. Go to **Actions > Prepare Release** on GitHub
-2. Select the bump type (`patch`, `minor`, or `major`) and the `changelog` mode, then run the workflow
-3. The workflow bumps the version, inserts the `## <version>` entry, and opens a PR. `manual`, the default, writes a placeholder and calls no paid service. `ai` feeds the actual `git diff` to an LLM through the AI Gateway (`AI_GATEWAY_API_KEY` secret) to draft the entry from the real code diff, not from commit messages or PR descriptions, and fails before creating a branch when the secret is not set
-4. Replace the placeholder, or review the AI draft, then merge
+To prepare a release:
 
-To prepare a release by hand, bump `pub const version` in `src/main.zig` and write the changelog entry in `CHANGELOG.md` at the top, under a new `## <version>` heading, wrapped in `<!-- release:start -->` and `<!-- release:end -->` markers. Remove the markers from the previous release entry so only the new release has them.
+1. Create a branch, such as `prepare-v0.3.0`
+2. Bump `pub const version` in `src/main.zig`
+3. Write the changelog entry in `CHANGELOG.md` at the top, under a new `## <version>` heading, wrapped in `<!-- release:start -->` and `<!-- release:end -->` markers. Remove the markers from the previous release entry so only the new release has them.
+4. Open a PR and merge it to `main`
 
 ### Publish the release
 
-Dispatch **Actions > Release** on `main` with `validate_only` disabled. It builds all five platforms, signs and notarizes the macOS binaries with Paneflow's Developer ID, signs `pf.exe` with Azure Artifact Signing, signs every archive with the pf minisign key, attests build provenance, and, after a second `release` approval, refuses a changelog that still holds the placeholder, creates the tag, publishes the GitHub Release, uploads to R2 under `agent/vX.Y.Z/`, and writes `agent/latest.txt` last. The release body is extracted from the content between the `<!-- release:start -->` and `<!-- release:end -->` markers in `CHANGELOG.md`.
+Dispatch **Actions > Release** on `main` with `validate_only` disabled. It builds all five platforms, signs and notarizes the macOS binaries with Paneflow's Developer ID, signs `pf.exe` with Azure Artifact Signing, signs every archive with the pf minisign key, attests build provenance, and, after a second `release` approval, creates the tag, publishes the GitHub Release, uploads to R2 under `agent/vX.Y.Z/`, and writes `agent/latest.txt` last. The release body is extracted from the content between the `<!-- release:start -->` and `<!-- release:end -->` markers in `CHANGELOG.md`.
 
 `pf upgrade` installs an archive only when its minisign signature verifies against the `active` or `next` public key in `src/core/upgrade/release_keys.zig`. A key rotation puts the new key in `next` for at least one release before it becomes `active`. When an R2 upload fails or the bucket is lost, **Actions > CDN Backfill** restores it from GitHub Releases after verifying every signature.
 
 ### Writing the changelog
 
-Whether automated or manual, the changelog is public product copy. Describe observable user behavior, not the engineering process behind it. Use the diff, commits, and merged pull requests as research evidence only.
+The changelog is public product copy. Describe observable user behavior, not the engineering process behind it. Use the diff, commits, and merged pull requests as research evidence only.
 
 Public changelog entries must:
 
@@ -469,5 +480,5 @@ Paneflow Agent derives from `vercel-labs/fx` and is licensed under Apache-2.0. K
 1. Run `zig fmt --check src/` and the focused tests for the changed path.
 2. Build and exercise the change locally with `./zig-out/bin/pf`.
 3. Push a clean checkpoint commit and open a draft PR immediately.
-4. Require **Full CI** and the final ship gate to pass on the exact current commit across all five native runners.
+4. Require **CI**, including the **macOS arm64** and **Windows x86_64** checks, and the final ship gate to pass on the exact current commit.
 5. Update docs if behavior changed.

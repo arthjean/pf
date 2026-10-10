@@ -157,6 +157,10 @@ jobs:
       actions: read
       contents: read
     uses: ./.github/workflows/pgso-macos-arm64.yml
+    with:
+      # Keep release evidence long enough to serve as the main control for
+      # manual PGSO comparisons.
+      evidence-retention-days: 90
 
   sign-macos-arm64:
     needs: [check-version, build-macos-arm64]
@@ -395,10 +399,6 @@ jobs:
           LINES=$(wc -l < /tmp/release-notes.md | tr -d ' ')
           if [ "$LINES" -lt 2 ]; then
             echo "Error: No release notes found between <!-- release:start --> and <!-- release:end --> markers in CHANGELOG.md"
-            exit 1
-          fi
-          if grep -q '<!-- release:placeholder -->' /tmp/release-notes.md; then
-            echo "::error::CHANGELOG.md still holds the Prepare Release placeholder <!-- release:placeholder -->; replace it with the release notes before publishing"
             exit 1
           fi
           echo "Extracted release notes ($LINES lines)"

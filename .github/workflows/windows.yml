@@ -1,0 +1,133 @@
+name: Windows
+
+# Linux CI covers everything that behaves the same on every platform. These
+# checks run only for changes that can behave differently on Windows; see
+# scripts/detect-windows-need.sh. Add the ci:windows label or dispatch this
+# workflow to request them for any other change.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect Windows need
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.detect.outputs.needed }}
+    steps:
+      # A dispatch diffs the branch against main, so it runs at least the checks
+      # its pull request run would.
+      - uses: actions/checkout@v4
+        with:
+          # 0 is falsy in expressions, so the dispatch case must come last.
+          fetch-depth: ${{ github.event_name != 'workflow_dispatch' && 2 || 0 }}
+
+      - name: Decide whether this change needs Windows
+        id: detect
+        env:
+          WINDOWS_REQUESTED: ${{ github.event_name == 'workflow_dispatch' && 'manual dispatch' || (contains(github.event.pull_request.labels.*.name, 'ci:windows') && 'ci:windows label' || '') }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            base="$(git merge-base origin/main HEAD)"
+            scripts/detect-windows-need.sh "$base" HEAD
+          else
+            # The pull request merge commit's first parent is the base branch.
+            scripts/detect-windows-need.sh HEAD^1 HEAD
+          fi
+
+  native:
+    name: Windows x86_64 checks
+    needs: detect
+    if: needs.detect.outputs.needed == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      AI_GATEWAY_API_KEY: ""
+      VERCEL_OIDC_TOKEN: ""
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.16.0"
+          cache-key: windows-native-x86_64-ReleaseSafe
+
+      - name: Check formatting
+        run: zig fmt --check src/
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseSafe
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          if ! zig build test -Doptimize=ReleaseSafe --test-timeout 120s 2>&1 | tee "$RUNNER_TEMP/unit-tests.log"; then
+            {
+              echo "### Failed step: Run unit tests"
+              grep -E "^error: '" "$RUNNER_TEMP/unit-tests.log" | head -100 | sed 's/^error: /- /'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Smoke test fresh binary
+        run: |
+          fail() {
+            printf '### Failed step: Smoke test fresh binary\n- %s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          ./zig-out/bin/pf.exe help >"$RUNNER_TEMP/help.out" 2>"$RUNNER_TEMP/help.err" || fail "pf.exe help exited nonzero"
+          test -s "$RUNNER_TEMP/help.out" || fail "pf.exe help printed nothing"
+          test ! -s "$RUNNER_TEMP/help.err" || fail "pf.exe help wrote to stderr"
+          ./zig-out/bin/pf.exe status --json >"$RUNNER_TEMP/status.out" 2>"$RUNNER_TEMP/status.err" || fail "pf.exe status --json exited nonzero"
+          test -s "$RUNNER_TEMP/status.out" || fail "pf.exe status --json printed nothing"
+          test ! -s "$RUNNER_TEMP/status.err" || fail "pf.exe status --json wrote to stderr"
+
+      - name: Build ConPTY driver
+        run: zig build conpty-driver -Doptimize=ReleaseSafe
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install E2E dependencies
+        run: bun install --frozen-lockfile
+        working-directory: tests/e2e
+
+      - name: Run Windows E2E subset
+        run: bun windows-subset.ts
+        working-directory: tests/e2e
+
+  windows:
+    name: Windows x86_64
+    if: ${{ always() }}
+    needs: [detect, native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require Windows results when the change needs them
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          NEEDED: ${{ needs.detect.outputs.needed }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+        run: |
+          test "$DETECT_RESULT" = success
+          if [ "$NEEDED" != true ]; then
+            echo "No Windows-specific change; nothing to require."
+            exit 0
+          fi
+          test "$NATIVE_RESULT" = success

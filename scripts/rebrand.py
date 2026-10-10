@@ -31,6 +31,8 @@ SKIP_FILES = {
     "NOTICE",
     "UPSTREAM.md",
     "scripts/rebrand.py",
+    # pf does not publish libpf, so fx's publishing workflow stays out.
+    ".github/workflows/publish-libfx.yml",
     # PRDs plan pf's divergence from fx and name it on purpose.
     "tasks/prd-fx-sync-0-0-13-status.json",
     "tasks/prd-fx-sync-0-0-13.md",

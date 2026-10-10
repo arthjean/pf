@@ -67,11 +67,15 @@ git reset --hard
 
 Keep the local development loop focused: run the narrowest test that covers the changed path, build pf, and exercise the change using `./zig-out/bin/pf`. The installed `pf` on `PATH` is not valid development evidence.
 
-Once the focused checks pass, create a clean checkpoint commit, push the non-`main` feature branch, and open a draft PR immediately. The **Full CI** workflow runs the complete deterministic suite on native Linux x86_64, Linux aarch64, macOS x86_64, and macOS aarch64 runners. The native matrix builds, tests, and smoke-tests ReleaseSafe on every platform; formatting, the public-surface audit, and the compactor boundary check run in those ReleaseSafe jobs. Four duration-balanced, isolated ReleaseSafe E2E shards per platform use checked-in weights to assign every Bun test file once; files inside each shard run sequentially in separate Bun processes so terminal fixtures and process state cannot leak between files. A failed file receives one bounded retry after tmux is reset.
+Once the focused checks pass, create a clean checkpoint commit, push the non-`main` feature branch, and open a draft PR immediately. **CI** runs the complete deterministic suite on Linux x86_64, which is the gate for every change. It checks formatting, the PGSO corpus, the public surface, and the compactor boundary, runs the ReleaseSafe unit tests, and builds pf once for the E2E jobs. Four duration-balanced E2E shards use checked-in weights to assign every Bun test file once, and files inside each shard run sequentially in separate Bun processes so terminal fixtures and process state cannot leak between files. A failed file receives one retry after tmux is reset, and a file that passes only on retry gets a warning annotation.
 
-Standard PR CI reports ReleaseSafe Build & Test and deterministic E2E results. Do not mark the draft PR ready until all five Full CI jobs and the final ship gate have succeeded for the exact current commit. Each Linux and macOS aggregate requires its ReleaseSafe native check and all four ReleaseSafe E2E shards; the Windows aggregate requires the Windows job, which also runs the Windows E2E subset. A result from an older commit does not count. Live model evals are separate from this gate because they require credentials and are not deterministic.
+macOS checks run only when a change can behave differently on macOS: a Zig file with a macOS, BSD, or Linux code path, `build.zig`, the macOS signing script, the native SDK addon, an E2E file listed in `tests/e2e/macos-platform-tests.json`, or a shared E2E helper that reads the platform. Add the `ci:macos` label or run `gh workflow run macos.yml --ref <branch>` to request them for any other change. The `macOS arm64` check passes without a macOS runner when the change does not need one.
 
-Changes to `build.zig` or `scripts/pgso/` also run the native macOS arm64 PGSO candidate workflow. That lane produces retained size, behavior, and performance evidence but does not alter any release artifact or update channel. Its pinned toolchain, local reproduction command, corpus exclusions, and failure rules are documented in [`scripts/pgso/README.md`](scripts/pgso/README.md).
+Windows checks run only when a change can behave differently on Windows: a Zig file with a Windows code path or any operating system branch, `build.zig`, the Windows signing script, an E2E file that `tests/e2e/windows-subset.ts` runs, or a shared E2E helper that reads the platform. They check formatting, build and unit-test ReleaseSafe, smoke-test `pf.exe`, build the ConPTY driver, and run the Windows E2E subset on `windows-2025`. Add the `ci:windows` label or run `gh workflow run windows.yml --ref <branch>` to request them for any other change. The `Windows x86_64` check passes without a Windows runner when the change does not need one.
+
+Do not mark the draft PR ready until `Build & Test`, `E2E (deterministic)`, `Shellcheck`, `Startup Latency`, `macOS arm64`, `Windows x86_64`, and the final ship gate have succeeded for the exact current commit. A result from an older commit does not count. Live model evals are separate from this gate because they require credentials and are not deterministic.
+
+Changes to the PGSO pipeline also run the native macOS arm64 PGSO candidate workflow: `scripts/pgso/` other than `corpus.json`, the `setup-pgso` action, or the PGSO workflow. Run it on any other branch with `gh workflow run pgso-macos-arm64.yml --ref <branch>`. That lane produces retained size, behavior, and performance evidence but does not alter any release artifact or update channel. Its pinned toolchain, local reproduction command, corpus exclusions, and failure rules are documented in [`scripts/pgso/README.md`](scripts/pgso/README.md).
 
 Every pull request also receives informational ReleaseSafe binary-size
 comparisons for Linux x86_64, Linux arm64, macOS x86_64, and macOS arm64. Each
@@ -79,7 +83,8 @@ comparison builds the pull request merge commit and base commit on the same
 native runner, reports exact file and ELF or Mach-O section deltas, and emits a
 warning at increases of 52,429 bytes (0.050000 MiB) or more. The warning requests
 investigation but does not replace the full PGSO release gate or reject a valid
-feature solely for adding code.
+feature solely for adding code. The same jobs smoke-test each release-style
+binary; the Linux arm64 and macOS binaries run nowhere else on a pull request.
 
 ## Pull Requests
 
@@ -568,8 +573,8 @@ Three locks keep anything from being published by accident: the release workflow
 
 ### Release pipeline
 
-1. **Prepare Release** (`prepare-release.yml`) bumps `pub const version` in `src/main.zig`, inserts a `## X.Y.Z` entry wrapped in release markers at the top of `CHANGELOG.md`, and opens a pull request. Its `changelog` input defaults to `manual`, which writes a placeholder to replace in the pull request and calls no paid service. `ai` is an opt-in that drafts the entry from the source diff through the AI Gateway and runs the public changelog policy lint; it fails before any branch is created when the `AI_GATEWAY_API_KEY` secret is not set. Merging the pull request publishes nothing.
-2. **Release** (`release.yml`) runs on `main`. Its `validate_only` input defaults to `true`; see [Validate release artifacts without publishing](#validate-release-artifacts-without-publishing) for what that run does. With `validate_only` disabled and no `vX.Y.Z` tag yet, the `release` job waits for a second `release` approval, refuses a `CHANGELOG.md` entry that still holds the Prepare Release placeholder, creates the tag, and runs `scripts/publish-release.sh`. That script creates the GitHub Release with every archive, `.sha256`, and `.minisig`, uploads the same files to R2 under `agent/vX.Y.Z/` with `Cache-Control: public, max-age=31536000, immutable`, and writes `agent/latest.txt` last with `Cache-Control: no-cache`. A failed upload names the file and leaves `latest.txt` unchanged.
+1. **Release pull request.** On a `prepare-vX.Y.Z` branch, bump `pub const version` in `src/main.zig`, write the `## X.Y.Z` entry wrapped in release markers at the top of `CHANGELOG.md` by hand, and open a pull request. Merging it publishes nothing.
+2. **Release** (`release.yml`) runs on `main`. Its `validate_only` input defaults to `true`; see [Validate release artifacts without publishing](#validate-release-artifacts-without-publishing) for what that run does. With `validate_only` disabled and no `vX.Y.Z` tag yet, the `release` job waits for a second `release` approval, creates the tag, and runs `scripts/publish-release.sh`. That script creates the GitHub Release with every archive, `.sha256`, and `.minisig`, uploads the same files to R2 under `agent/vX.Y.Z/` with `Cache-Control: public, max-age=31536000, immutable`, and writes `agent/latest.txt` last with `Cache-Control: no-cache`. A failed upload names the file and leaves `latest.txt` unchanged.
 3. **CDN Backfill** (`cdn-backfill.yml`) restores R2 from GitHub Releases, the canonical copy. `scripts/backfill-release.sh` downloads each release, verifies every `.minisig` and its trusted comment against `src/core/upgrade/release_keys.zig`, and uploads through `scripts/publish-release.sh` with the paths and headers above. Its `dry-run` input defaults to `true` and lists the uploads without writing. A release that fails verification is skipped, reported, and makes the run fail at the end. `latest.txt` moves only when `update-latest` is set and the newest GitHub Release was backfilled and verified, so it never points backward.
 
 The release archives are `pf-linux-x86_64.tar.gz`, `pf-linux-aarch64.tar.gz`, `pf-macos-x86_64.tar.gz`, `pf-macos-aarch64.tar.gz`, and `pf-windows-x86_64.zip`. Each carries a `.sha256` and a `.minisig` whose trusted comment is `file:<archive> version:vX.Y.Z channel:stable`, and a GitHub build provenance attestation.
@@ -648,7 +653,7 @@ measurement is not performance approval.
 
 Run these steps in order, in one session, when Arthur decides the CLI is ready. Each names the files it changes and its rollback. A bad release is always superseded by a higher version; never move `latest.txt` backward, because stable builds refuse downgrades and would stay on the bad version anyway.
 
-1. **Prepare the release.** Dispatch **Actions > Prepare Release** with the bump type and `changelog: manual`, replace the placeholder in the pull request with the public release notes, wait for CI, and merge. Changes `src/main.zig` and `CHANGELOG.md`. Rollback: close the pull request unmerged and delete its `prepare-vX.Y.Z` branch; after a merge nothing is published yet, so the next Prepare Release supersedes it.
+1. **Prepare the release.** On a `prepare-vX.Y.Z` branch, bump `pub const version` in `src/main.zig`, write the public release notes in `CHANGELOG.md` between release markers, open a pull request, wait for CI, and merge. Changes `src/main.zig` and `CHANGELOG.md`. Rollback: close the pull request unmerged and delete its branch; after a merge nothing is published yet, so the next release pull request supersedes it.
 2. **Publish.** Dispatch **Actions > Release** on `main` with `validate_only: false`, then approve `apple-signing`, `windows-signing`, and both `release` waits. Changes no file; creates the `vX.Y.Z` tag, the GitHub Release, and the R2 objects under `agent/`. Rollback: a failure before **Create git tag** needs only a fix and a new dispatch. A failure after the tag and before the GitHub Release needs the tag deleted with `git push origin :refs/tags/vX.Y.Z` before the next dispatch. A failure during the R2 upload leaves `latest.txt` unchanged; dispatch **CDN Backfill** for `vX.Y.Z` with `update-latest` set, after a dry run. A release found bad after publication is superseded by a fixed higher version.
 3. **Document installation and verification.** In `README.md`, replace "Paneflow Agent does not publish releases yet" with install and verification sections that give the minisign public key from `release_keys.zig`, `minisign -Vm pf-linux-x86_64.tar.gz -P <public key>`, and `gh attestation verify pf-linux-x86_64.tar.gz --repo arthjean/pf`. Update the release-state statements in this section, the AGENTS.md Releasing section, and `NOTICE`. Changes `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `NOTICE`. Rollback: revert the documentation commit.
 4. **Update the Windows notes.** Remove "Release downloads and `pf upgrade`" from the README list of features not yet available on Windows, and add the recovery note: if an upgrade is interrupted and `pf.exe` is missing, rename `pf.exe.old` in the same directory back to `pf.exe`. Changes `README.md`. Rollback: revert the commit.
@@ -708,6 +713,10 @@ feel. It disables auto-upgrade for the measured processes and fails if a
 binary changes during the run. Add `--no-background-reply` to act like a
 terminal that ignores the background color query. The script needs a POSIX pseudo-terminal, so it runs on Linux and macOS.
 
+The libpf runtime and long-turn memory jobs run only on request. Start them by
+dispatching **Benchmarks** with `libpf_runtime` or `long_turn_memory` set, for
+example `gh workflow run bench.yml --ref <branch> -f libpf_runtime=true`.
+
 The libpf runtime job measures cold startup, warm prompts, host-tool calls,
 stream throughput, and Agent cleanup. Its direct Pi comparison uses an external
 Zig HTTP server, Pi 0.84.4, and three alternating 100-sample rounds. On Bun,
@@ -733,5 +742,5 @@ Minimum checklist:
 1. Run `zig fmt --check src/` and the focused tests for the changed path.
 2. Run `zig build`, then exercise the change with `./zig-out/bin/pf`.
 3. Push the feature branch and open a draft PR immediately.
-4. Require all five **Full CI** jobs and the final ship gate to pass for the exact current commit before marking the PR ready.
+4. Require **CI**, including the **macOS arm64** and **Windows x86_64** checks, and the final ship gate to pass for the exact current commit before marking the PR ready.
 5. Update `README.md` if user-facing behavior changed.
