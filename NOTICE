@@ -28,9 +28,8 @@ and has been modified since. Notable modifications:
   message for a declined MCP authorization is.
 - Provisional, until the held fx changes listed in UPSTREAM.md are decided:
   when a compaction summary request fails or comes back empty on AI Gateway,
-  pf does not retry it with a model from another provider; CI does not run
-  the shell command overhead benchmark; and the AI Gateway-billed shell-path
-  evaluation is not included.
+  pf does not retry it with a model from another provider; and the AI
+  Gateway-billed shell-path evaluation is not included.
 - pf builds and runs natively on Windows x86_64: profile and temp paths,
   private state, the console UI, command execution through Git Bash or
   PowerShell inside Job Objects, line-ending-preserving edits, and

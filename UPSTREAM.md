@@ -24,7 +24,6 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 | fx merge | fx PR | Held | Hold commit | Open Question | Revisited by |
 |---|---|---|---|---|---|
 | `34f1ed14de47760b44d628ec2d5eb28055b9adf0` | #1062 | The AI Gateway compaction summary fallback to another model family in `src/core/compactor/model.zig`, the unit tests "a failed or empty summary falls back to another family at its lowest reasoning" in `src/core/compactor/model.zig` and "compaction writes the summary with the least reasoning each model accepts" in `src/core/agent/runtime/tests/gateway_flow.zig`, and the retry expectations in `tests/e2e/tui-compaction-activity.test.ts` and `tests/e2e/gateway-stream-lifecycle.test.ts`, which pf rewrites to expect the primary error, and the README sentence on the retry | `9c1cbd1590daf75961e42ea7df94cb7afff76340` | Q3 | US-028 |
-| `6bdd49736abd4a85fb6dd60a824e4329784f34c0` | #1137 | The `shell-command-overhead` job in `.github/workflows/bench.yml`; `benchmarks/shell_command_overhead.py` is ported | `3c65e02f8d4ec0163b4e9bab3c924d21c8d6595f` | Q6 | US-028 |
 | `6bdd49736abd4a85fb6dd60a824e4329784f34c0` | #1137 | The AI Gateway-billed shell-path evaluation `tests/evals/shell-path-ab.test.ts` | `3c65e02f8d4ec0163b4e9bab3c924d21c8d6595f` | Q8 | US-028 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
