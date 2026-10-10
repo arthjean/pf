@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `6bdd49736abd4a85fb6dd60a824e4329784f34c0` |
+| Last ported | `4d966e272cfc4296cdf703f409480088cf2e72ba` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -14,6 +14,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | fx merge | fx PR | Open Question | Revisited by |
 |---|---|---|---|
 | `73308320925d5c31b4f57b875f07e77eb8b051d6` | #1101 | Q1, answered D: skip the Slack preset; denied message ported by hand | permanent |
+| `4d966e272cfc4296cdf703f409480088cf2e72ba` | #1153 | Q7, answered keep 0.0.12: no release during the sync | permanent |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the Open Question that blocks it, and the story that revisits it.
 
@@ -71,6 +72,8 @@ When a slice waits on an unanswered Open Question whose pre-decision state is "s
 2. In one commit, set "Last ported" to the skipped merge's full SHA and add its Skipped row.
 3. Port the next slice from that SHA, and resolve later conflicts toward pf without the skipped pull request.
 4. Once the Open Question is answered in favor of fx, the revisiting story (US-028 of `tasks/prd-fx-sync-0-0-13.md`) ports the merge alone with `python3 scripts/rebrand.py port <merge>^1 <merge>` and removes its Skipped row.
+
+pf does not take fx version bumps. pf changes `pub const version` in `src/main.zig` only through its own release flow, so a merge that only bumps fx's version and its changelog is skipped this way and listed as `permanent`.
 
 ## Holding a hunk
 
