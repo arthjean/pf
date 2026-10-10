@@ -7202,10 +7202,10 @@ printf '%s' ${JSON.stringify(trailingMarker)} > ${JSON.stringify(effectPath)}
         socketFailure ??= error;
       });
       connections += 1;
-      if (connections === 6) {
-        socket.resetAndDestroy();
-        return;
-      }
+      // Reset the sixth connection only after its request arrives, so pf
+      // always fails while reading the response head. A reset on accept
+      // races the send and fails the write instead on a slower build.
+      const resetAfterRequest = connections === 6;
 
       let request = Buffer.alloc(0);
       let requestHandled = false;
@@ -7225,6 +7225,10 @@ printf '%s' ${JSON.stringify(trailingMarker)} > ${JSON.stringify(effectPath)}
         if (request.length < headerEnd + 4 + contentLength) return;
 
         requestHandled = true;
+        if (resetAfterRequest) {
+          socket.resetAndDestroy();
+          return;
+        }
         requests += 1;
         if (connections < 6) {
           const body = JSON.stringify({
