@@ -808,8 +808,7 @@ fn loadStartupStateWithKeychainRead(
     if (auth_mode == .local and !state.model_requests_blocked) {
         if (credential_mode) |mode| defer_or_resolve: {
             if (keychain_read == .deferred and mode == .stored and keychainReadDeferrable(
-                // Held until Q5: pf reads the macOS Keychain before the first frame.
-                false,
+                builtin.os.tag == .macos,
                 secret_store.isDisabled(),
                 state.provider,
                 settings.credential_source,
@@ -2907,10 +2906,16 @@ test "interactive launch leaves a Keychain credential unresolved for the caller"
         var state = try loadStartupStateWithKeychainRead(alloc, oauth_transport.unavailable_provider, keychain_store, try alloc.dupe(u8, workspace_root), "default/model", 25, .local, null, .stored, null, null, keychain_read);
         defer state.deinit(alloc);
         try std.testing.expect(state.credential == null);
-        // The launch call site never defers while Q5 holds the Keychain deferral.
-        // Test builds keep the pf login in the profile, where it is absent.
-        try std.testing.expect(state.deferred_credential == null);
-        try std.testing.expectEqual(credentials.PfLoginReadStatus.absent, state.pf_login_status);
+        if (keychain_read == .deferred and builtin.os.tag == .macos) {
+            const request = state.deferred_credential orelse return error.TestExpectedDeferredCredential;
+            try std.testing.expectEqual(model_provider.ProviderId.gateway, request.provider);
+            try std.testing.expectEqual(@as(?credentials.Source, .pf_login), request.preferred);
+            try std.testing.expectEqual(credentials.PfLoginReadStatus.not_attempted, state.pf_login_status);
+        } else {
+            // Test builds keep the pf login in the profile, where it is absent.
+            try std.testing.expect(state.deferred_credential == null);
+            try std.testing.expectEqual(credentials.PfLoginReadStatus.absent, state.pf_login_status);
+        }
     }
 }
 
