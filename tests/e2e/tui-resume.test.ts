@@ -5739,9 +5739,10 @@ test.skipIf(!tmuxAvailable())(
       expect(resumed).not.toMatch(/[*✓!✗⊘i] session: resumed:/);
 
       const argvLines = readFileSync(argvLogPath, "utf8").trim().split("\n");
+      // A v2 relaunch keeps its switch, so it reopens the same store.
       expect(argvLines).toEqual([
         installedPf,
-        `${installedPf}\tresume\t${sessionId}\t--upgrade-relaunch`,
+        `${installedPf}${SESSIONS_V2 ? "\t--sessions-v2" : ""}\tresume\t${sessionId}\t--upgrade-relaunch`,
       ]);
 
       await active.sendText("Continue after upgrade handoff.");
