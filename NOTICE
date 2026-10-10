@@ -26,10 +26,11 @@ and has been modified since. Notable modifications:
 - The one-command Slack MCP preset of fx (`pf mcp add slack`), which relies
   on the fx Slack app and its bridge on fx.sh, is not ported. Only its
   message for a declined MCP authorization is.
-- Provisional, until the held fx changes listed in UPSTREAM.md are decided:
-  when a compaction summary request fails or comes back empty on AI Gateway,
-  pf does not retry it with a model from another provider; and the AI
-  Gateway-billed shell-path evaluation is not included.
+- When a compaction summary request fails or comes back empty on AI Gateway,
+  pf returns the error instead of retrying it with a model from another
+  provider, so conversation content reaches only the model the user chose.
+- fx's AI Gateway-billed shell-path A/B evaluation
+  (`tests/evals/shell-path-ab.test.ts`) is not included.
 - pf builds and runs natively on Windows x86_64: profile and temp paths,
   private state, the console UI, command execution through Git Bash or
   PowerShell inside Job Objects, line-ending-preserving edits, and
