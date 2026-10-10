@@ -29,7 +29,6 @@ and has been modified since. Notable modifications:
 - Provisional, until the held fx changes listed in UPSTREAM.md are decided:
   when a compaction summary request fails or comes back empty on AI Gateway,
   pf does not retry it with a model from another provider; CI does not run
-  `scripts/check-compactor-boundary.sh`, which contributors run locally, nor
   the shell command overhead benchmark; the AI Gateway-billed shell-path
   evaluation is not included; and on macOS, pf reads a Keychain-stored
   Vercel login or AI Gateway key before the first frame instead of after it.

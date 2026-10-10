@@ -50,6 +50,9 @@ jobs:
       - name: Audit public surface
         run: ./scripts/check-public-surface.sh
 
+      - name: Check compactor boundary
+        run: ./scripts/check-compactor-boundary.sh
+
       - name: Test signing and release routing
         run: python3 -m unittest scripts.tests.test_macos_signing scripts.tests.test_signed_macos scripts.tests.test_sign_release_archives scripts.tests.test_publish_release scripts.tests.test_prepare_release -q
 
