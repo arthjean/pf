@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `cc3c514acc1e2a9c43f545fb119dce8e19cab562` |
+| Last ported | `0a798c935e1176da62448beb8d9f6716529cb850` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -15,6 +15,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 |---|---|---|---|
 | `73308320925d5c31b4f57b875f07e77eb8b051d6` | #1101 | Q1, answered D: skip the Slack preset; denied message ported by hand | permanent |
 | `4d966e272cfc4296cdf703f409480088cf2e72ba` | #1153 | Q7, answered keep 0.0.12: no release during the sync | permanent |
+| `0a798c935e1176da62448beb8d9f6716529cb850` | #1114 | Q6 unanswered: Linux-first CI (CI topology, triggers, Prepare Release, SDK gating) | US-028 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the Open Question that blocks it, and the story that revisits it.
 
