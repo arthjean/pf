@@ -17,15 +17,20 @@ export const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
 /**
  * pf reads the profile from USERPROFILE before HOME on Windows, so when
- * `overrides` sets or unsets HOME, `env` gets the same USERPROFILE. libuv
- * restores a missing USERPROFILE from the parent, so an unset home is passed
- * as an empty one.
+ * `overrides` sets or unsets HOME without setting USERPROFILE, `env` gets
+ * the same USERPROFILE. libuv restores a missing USERPROFILE from the
+ * parent, so an unset home is passed as an empty one.
  */
 export function mirrorTestHome(
   env: Record<string, string | undefined>,
   overrides: Record<string, string | undefined> | undefined,
 ): void {
-  if (process.platform === "win32" && overrides && "HOME" in overrides) {
+  if (
+    process.platform === "win32" &&
+    overrides &&
+    "HOME" in overrides &&
+    overrides.USERPROFILE === undefined
+  ) {
     env.USERPROFILE = env.HOME ?? "";
   }
 }
