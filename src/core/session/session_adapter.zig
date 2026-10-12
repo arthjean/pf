@@ -3544,6 +3544,7 @@ test "a running tool call is saved once, and resume answers it as possibly run" 
 }
 
 test "a crash while a tool runs keeps the text of the message that issued it (D51)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -3575,6 +3576,7 @@ test "a crash while a tool runs keeps the text of the message that issued it (D5
 }
 
 test "text an earlier step finished with never lands on a later running step without text (D51)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
