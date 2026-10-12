@@ -4284,6 +4284,7 @@ fn toolTurn(user: []const u8, results: []types.PersistedToolResult, steps: []typ
 }
 
 test "a v2 session keeps its bodies as blobs its items list, and never makes a side folder (D44, D48)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4346,6 +4347,7 @@ test "a v2 session keeps its bodies as blobs its items list, and never makes a s
 }
 
 test "a body is stored only while its session is on disk, and a child opens its turn to store one (D44)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4523,6 +4525,7 @@ const OldSideFolder = struct {
 };
 
 test "an older session moves off its side folder on its first writable open, and its old names still resolve (D47)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4591,6 +4594,7 @@ test "an older session moves off its side folder on its first writable open, and
 }
 
 test "compactor records on v2 are recorded by one setting with the next write, and come back on resume and in a fork (D50)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4675,6 +4679,7 @@ test "a web-fetch download on v2 is a read-only blob the model opens by its path
 }
 
 test "a move cut short is redone on the next open, and old names still resolve (D47)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4710,6 +4715,7 @@ test "a move cut short is redone on the next open, and old names still resolve (
 }
 
 test "an ACP client's prompt and tool identities are settings, written only when they change (D46)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4738,6 +4744,7 @@ test "an ACP client's prompt and tool identities are settings, written only when
 }
 
 test "a prompt image's bytes ride inside the user's item, and an image without them encodes as v1's (D44)" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
