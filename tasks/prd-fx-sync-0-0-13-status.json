@@ -49,10 +49,10 @@
     {
       "id": "EP-006",
       "title": "Windows validation",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 2,
-      "stories_done": 0
+      "stories_done": 2
     }
   ],
   "stories": [
@@ -479,29 +479,29 @@
       "id": "US-032",
       "title": "Run the Windows host suite on the synced tree and fix what fails",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-029"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-12T19:26:01+02:00",
+      "completed_at": "2026-10-12T22:24:04+02:00",
+      "reviewed_at": "2026-10-12T22:24:04+02:00"
     },
     {
       "id": "US-033",
       "title": "Validate in-process ConPTY terminals on Windows",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-032"
       ],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-10-12T20:10:36+02:00",
+      "completed_at": "2026-10-12T22:24:04+02:00",
+      "reviewed_at": "2026-10-12T22:24:04+02:00"
     }
   ]
 }
