@@ -3969,6 +3969,7 @@ test "resume after a compaction starts with its summary and keeps the retained t
 }
 
 test "each later compaction keeps only the turns after its cut" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
