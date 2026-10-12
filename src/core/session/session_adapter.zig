@@ -3393,6 +3393,7 @@ test "the manager guards child lines, and a child without a log reopens under it
 }
 
 test "v2 child ultrafast preferences survive instruction changes and resume" {
+    try skipV2StoreOnWindows();
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();

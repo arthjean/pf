@@ -3068,6 +3068,8 @@ test "ACP ultrafast new load and resume preserve configured baselines on both ba
     var capture = try tmp.dir.createFile(io_mod.getIo(), "ultrafast.jsonl", .{ .read = true });
     defer capture.close(io_mod.getIo());
     for ([_]bool{ false, true }) |v2_backend| {
+        // pf: Windows refuses sessions v2, so only the v1 backend runs there.
+        if (v2_backend and builtin.os.tag == .windows) continue;
         for ([_]bool{ false, true }) |baseline| {
             for ([_]?bool{ null, false, true }) |process| {
                 var arena_state = std.heap.ArenaAllocator.init(alloc);
