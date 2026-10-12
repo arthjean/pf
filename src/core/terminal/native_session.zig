@@ -5683,8 +5683,14 @@ test "exit close ends live sessions within the grace bound and refuses new start
     const started = io_mod.milliTimestamp();
     try std.testing.expect(registry.closeAllForExit());
     const elapsed = io_mod.milliTimestamp() - started;
-    try std.testing.expect(elapsed >= exit_grace_ms);
-    try std.testing.expect(elapsed < exit_grace_ms + exit_join_ms);
+    if (comptime is_windows) {
+        // pf: Windows terminates each session's job at once instead of
+        // waiting out the hangup grace.
+        try std.testing.expect(elapsed < exit_grace_ms);
+    } else {
+        try std.testing.expect(elapsed >= exit_grace_ms);
+        try std.testing.expect(elapsed < exit_grace_ms + exit_join_ms);
+    }
 
     // Every pin is released, the liveness pipe is closed so the launcher kills
     // the process group, and the durable record says the terminal ended.
