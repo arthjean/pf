@@ -45,6 +45,13 @@ pub const Config = struct {
     shell_grant_epoch: ?u64 = null,
 };
 
+const ai_agent_env = "AI_AGENT";
+const ai_agent_name = "pf";
+
+pub fn applyAgentEnvironment(environment: *std.process.Environ.Map) !void {
+    try environment.put(ai_agent_env, ai_agent_name);
+}
+
 pub const CallbackProjection = enum {
     model_safe,
     raw,
@@ -1273,6 +1280,9 @@ fn executeProcessWithInput(
     isolate_process_group: bool,
 ) !CollectedProcess {
     const started_ms = io_mod.milliTimestamp();
+    var environment = try io_mod.cloneEnvironMap(scratch);
+    defer environment.deinit();
+    try applyAgentEnvironment(&environment);
     var job = try createCommandJob();
     defer closeCommandJob(&job);
     var child = try spawnCommand(.{
@@ -1281,6 +1291,7 @@ fn executeProcessWithInput(
         .stdout = .pipe,
         .stderr = .pipe,
         .cwd = .{ .path = cwd },
+        .environ_map = &environment,
         .pgid = if (isolate_process_group and builtin.os.tag != .windows and builtin.os.tag != .wasi) 0 else null,
     }, job);
     if (child.stdin) |input| {
@@ -1331,6 +1342,12 @@ fn executeProcessWithScript(
     script: []const u8,
     environ_map: ?*const std.process.Environ.Map,
 ) !CollectedProcess {
+    var environment = if (environ_map) |map|
+        try map.clone(scratch)
+    else
+        try io_mod.cloneEnvironMap(scratch);
+    defer environment.deinit();
+    try applyAgentEnvironment(&environment);
     if (comptime supports_foreground_session) {
         return executeProcessWithDetachedSession(
             scratch,
@@ -1338,7 +1355,7 @@ fn executeProcessWithScript(
             argv,
             cwd,
             script,
-            environ_map,
+            &environment,
         );
     }
     return executeProcessWithScriptUnisolated(
@@ -1347,7 +1364,7 @@ fn executeProcessWithScript(
         argv,
         cwd,
         script,
-        environ_map,
+        &environment,
     );
 }
 
@@ -3650,6 +3667,46 @@ test "raw process execution returns foreground output" {
     try std.testing.expectEqual(@as(usize, 5), command_result.stdout_bytes);
     try std.testing.expectEqual(@as(usize, 0), command_result.stderr_bytes);
     try std.testing.expect(!command_result.truncated);
+}
+
+test "commands receive pf agent environment" {
+    const result = try executeCommand(
+        .{ .max_command_output_bytes = 4096 },
+        std.testing.allocator,
+        "printf '%s' \"$AI_AGENT\"",
+        "/tmp",
+    );
+    defer std.testing.allocator.free(result.output);
+
+    try std.testing.expect(std.mem.find(
+        u8,
+        result.output,
+        "<stdout>\npf\n</stdout>",
+    ) != null);
+}
+
+test "agent environment preserves the supplied environment without mutating it" {
+    if (builtin.os.tag != .macos and builtin.os.tag != .linux) return error.SkipZigTest;
+
+    var environment = std.process.Environ.Map.init(std.testing.allocator);
+    defer environment.deinit();
+    try environment.put("AI_AGENT", "other-agent");
+    try environment.put("PF_AGENT_FIXTURE", "retained");
+
+    var scratch_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch_state.deinit();
+    const result = try executeProcessWithScript(
+        scratch_state.allocator(),
+        .{ .max_command_output_bytes = 4096 },
+        &.{ "/bin/sh", "-c", "printf '%s:%s' \"$AI_AGENT\" \"$PF_AGENT_FIXTURE\"" },
+        "/tmp",
+        "",
+        &environment,
+    );
+
+    try std.testing.expectEqualStrings("pf:retained", result.stdout);
+    try std.testing.expectEqualStrings("", result.stderr);
+    try std.testing.expectEqualStrings("other-agent", environment.get("AI_AGENT").?);
 }
 
 test "authorized command executes exactly once" {

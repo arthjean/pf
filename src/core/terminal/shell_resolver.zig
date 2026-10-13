@@ -480,7 +480,7 @@ pub fn buildBootstrapFor(
     var output: std.ArrayList(u8) = .empty;
     errdefer output.deinit(alloc);
 
-    try output.appendSlice(alloc, "set +x; ");
+    try output.appendSlice(alloc, "set +x; export AI_AGENT=pf; ");
     if (command_path) |path| {
         try output.appendSlice(alloc, "pf_terminal_command=$(< ");
         try appendShellWord(&output, alloc, path);
@@ -518,7 +518,9 @@ fn buildPowershellBootstrap(
     var output: std.ArrayList(u8) = .empty;
     errdefer output.deinit(alloc);
 
-    try output.appendSlice(alloc, "Set-PSDebug -Off; ");
+    // pf: what the POSIX bootstrap exports, so a PowerShell terminal's
+    // commands see pf as their agent too.
+    try output.appendSlice(alloc, "Set-PSDebug -Off; $env:AI_AGENT = 'pf'; ");
     if (command_path) |path| {
         try output.appendSlice(alloc, "try { $pf_terminal_command = [System.IO.File]::ReadAllText(");
         try appendPowershellWord(&output, alloc, path);
@@ -876,7 +878,7 @@ test "bootstrap quotes private paths and separates command completion" {
     );
     defer std.testing.allocator.free(commandless);
     try std.testing.expectEqualStrings(
-        "set +x; '/tmp/pf'\"'\"'bin' '--pf-internal-terminal-control' " ++
+        "set +x; export AI_AGENT=pf; '/tmp/pf'\"'\"'bin' '--pf-internal-terminal-control' " ++
             "'/tmp/control' 'nonce' 'shell-ready' || exit 125\n",
         commandless,
     );
@@ -981,12 +983,24 @@ test "Windows resolves Git Bash and PowerShell in the selected dialect only" {
     );
 }
 
+test "both bootstrap dialects set AI_AGENT before the user command" {
+    const alloc = std.testing.allocator;
+    const posix = try buildBootstrapFor(alloc, .posix, "/tmp/pf", "/tmp/control", "nonce", "/tmp/cmd");
+    defer alloc.free(posix);
+    try std.testing.expect(std.mem.startsWith(u8, posix, "set +x; export AI_AGENT=pf; "));
+    const powershell = try buildBootstrapFor(alloc, .powershell, "C:\\pf.exe", "C:\\c.sock", "nonce", "C:\\cmd");
+    defer alloc.free(powershell);
+    try std.testing.expect(std.mem.startsWith(u8, powershell, "Set-PSDebug -Off; $env:AI_AGENT = 'pf'; "));
+    const assignment = std.mem.find(u8, powershell, "$env:AI_AGENT").?;
+    try std.testing.expect(assignment < std.mem.find(u8, powershell, "Invoke-Expression $pf_terminal_command").?);
+}
+
 test "PowerShell bootstrap quotes verbatim strings and keeps the exit status" {
     const alloc = std.testing.allocator;
     const commandless = try buildBootstrapFor(alloc, .powershell, "C:\\pf's\\pf.exe", "C:\\x\u{2019}y\\c.sock", "nonce", null);
     defer alloc.free(commandless);
     try std.testing.expectEqualStrings(
-        "Set-PSDebug -Off; & 'C:\\pf''s\\pf.exe' '--pf-internal-terminal-control' " ++
+        "Set-PSDebug -Off; $env:AI_AGENT = 'pf'; & 'C:\\pf''s\\pf.exe' '--pf-internal-terminal-control' " ++
             "'C:\\x\u{2019}\u{2019}y\\c.sock' 'nonce' 'shell-ready'; if ($LASTEXITCODE -ne 0) { exit 125 }\n",
         commandless,
     );

@@ -67,6 +67,7 @@ Commands run in your login shell, zsh or bash, with your startup files applied, 
 - Tools that switch the environment by directory, such as direnv or mise hooks, apply the environment of the directory where pf captured the startup files, usually your workspace.
 - If the startup files cannot be captured, pf says so once and runs them for every command instead.
 - Terminals opened with `tty: true` run your full login shell and end when pf exits.
+- Every command pf runs, including terminals and PowerShell on Windows, receives `AI_AGENT=pf` in its environment, so development tools can detect pf.
 
 ## Documentation
 
