@@ -458,10 +458,43 @@ export type PfEngineStorage =
     checkpoint?: PfBytes;
   };
 
+/** ChatGPT credentials for a Codex agent. `accountId` and `expiresAt` default to the access token's own claims. */
+export interface PfChatgptCredentials {
+  accessToken: string;
+  /** Lets libpf refresh the access token near expiry and once after a rejection. */
+  refreshToken?: string;
+  accountId?: string;
+  /** Milliseconds since the epoch. */
+  expiresAt?: number;
+}
+
+/** Runs on AI Gateway, the default. */
+export interface PfGatewayProvider {
+  provider?: "gateway" | undefined;
+  chatgpt?: undefined;
+  onChatgptCredentials?: undefined;
+}
+
+/** Runs on a ChatGPT plan through Codex instead of AI Gateway. */
+export interface PfCodexProvider {
+  provider: "codex";
+  /** Credentials for Codex requests, asked for in whichever process runs the turn. `sessionId` is set for model requests and absent for the model list. */
+  chatgpt: (request: { sessionId?: string }) => PfChatgptCredentials | Promise<PfChatgptCredentials>;
+  /** Receives credentials libpf refreshed, so the host can save them. */
+  onChatgptCredentials?: (credentials: PfChatgptCredentials, info: { sessionId?: string }) => void | Promise<void>;
+}
+
 /** Options for `createPfEngine()`. */
-export type PfEngineOptions = PfSharedOptions<PfEngineEvent> & PfModelChoice & PfEngineStorage & {
-  /** The AI Gateway credential. Required. */
-  apiKey: string;
+export type PfEngineOptions = PfSharedOptions<PfEngineEvent> & PfModelChoice & PfEngineStorage & (
+  | (PfGatewayProvider & {
+    /** The AI Gateway credential. Required. */
+    apiKey: string;
+  })
+  | (PfCodexProvider & {
+    /** The AI Gateway credential, unused by Codex turns. */
+    apiKey?: string | undefined;
+  })
+) & {
   /** The id for AI Gateway session affinity: 1 to 255 letters, digits, `.`, `_`, or `-`. Give a restored session the id it had before. */
   sessionId?: string | null;
 };
@@ -491,7 +524,7 @@ export declare function memory(options?: MemoryOptions): Durability;
 // Durable agents
 
 /** Options for `createPfAgent()`. */
-export type PfAgentOptions = PfSharedOptions<PfAgentEvent> & PfModelChoice & {
+export type PfAgentOptions = PfSharedOptions<PfAgentEvent> & PfModelChoice & (PfGatewayProvider | PfCodexProvider) & {
   /** The AI Gateway credential. Without it, libpf uses `AI_GATEWAY_API_KEY`, then on Vercel the deployment's OIDC token. */
   apiKey?: string | undefined;
   /** Where sessions live. Without it, libpf picks one from the environment. */

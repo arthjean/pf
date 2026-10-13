@@ -15,7 +15,9 @@ export {
 
 export type {
   PfBytes,
+  PfChatgptCredentials,
   PfCheckpointMeta,
+  PfCodexProvider,
   PfEffort,
   PfEngine,
   PfEngineEvent,
@@ -27,6 +29,7 @@ export type {
   PfErrorSummary,
   PfFetch,
   PfFollowUp,
+  PfGatewayProvider,
   PfHostTool,
   PfImageBlock,
   PfJsonSchema,

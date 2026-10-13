@@ -10,6 +10,7 @@ import {
   listModels,
   pfSdkApiVersion,
   supportsJspi,
+  type PfChatgptCredentials,
   type PfEngine,
   type PfEngineEvent,
   type PfEngineTurn,
@@ -223,4 +224,27 @@ export async function events(): Promise<void> {
       if (event.type === "session.error") console.log(event);
     },
   });
+}
+
+// A Codex engine on the host's ChatGPT credentials.
+declare const tokenStore: {
+  load(sessionId?: string): Promise<PfChatgptCredentials>;
+  save(credentials: PfChatgptCredentials): Promise<void>;
+};
+export async function codexEngine(): Promise<PfEngine> {
+  const engine = await createPfEngine({
+    provider: "codex",
+    model: "gpt-6.1-sol",
+    chatgpt: ({ sessionId }) => tokenStore.load(sessionId),
+    onChatgptCredentials: (credentials) => tokenStore.save(credentials),
+  });
+  // @ts-expect-error a Codex engine needs chatgpt()
+  await createPfEngine({ provider: "codex", model });
+  // @ts-expect-error chatgpt() needs provider "codex"
+  await createPfEngine({ apiKey, model, chatgpt: () => tokenStore.load() });
+  // @ts-expect-error a Gateway engine needs apiKey
+  await createPfEngine({ provider: "gateway", model });
+  // @ts-expect-error libpf runs Gateway or Codex
+  await createPfEngine({ provider: "grok", apiKey, model });
+  return engine;
 }
