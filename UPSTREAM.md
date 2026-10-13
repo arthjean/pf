@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `ac0971839c90d67e1bd585c3a33dd7fc311feea9` |
+| Last ported | `9b73d5d65eefde798f66e7325a58ba48b61eb17a` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 

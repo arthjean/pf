@@ -26,6 +26,8 @@ Sign in with one of:
 - `pf login grok`: Grok subscription (xAI OAuth)
 - `pf setup`: AI Gateway API key
 
+Run `pf doctor` to check your sign-in, configuration, and workspace before the first request.
+
 pf loads Grok models from your subscription's live catalog, so new supported models appear without a static model list. Public xAI metadata enriches image support but does not filter subscription models.
 
 Then start the interactive shell from a project:
@@ -42,6 +44,8 @@ pf ask "explain the changes in this repository"
 ```
 
 Inside the shell, run `/help` to browse interactive commands.
+
+pf saves each conversation under `~/.pf/sessions/`. Run `pf -c` in the same project to continue where you left off.
 
 In tmux, use your usual prefix bindings to switch sessions or enter copy mode.
 pf preserves those tmux views while resizing, including when the switcher zooms a split pane.
