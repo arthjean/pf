@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `d9a05d4e0be0151f7cf05f134c8857f29793c404` |
+| Last ported | `c1db919112c5c83fdcc0be508f8d34d189d149af` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -16,6 +16,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | `73308320925d5c31b4f57b875f07e77eb8b051d6` | #1101 | Q1, answered D: skip the Slack preset; denied message ported by hand | permanent |
 | `4d966e272cfc4296cdf703f409480088cf2e72ba` | #1153 | Q7, answered keep 0.0.12: no release during the sync | permanent |
 | `e4915028b87319bdada544545a4095f0bdf2108b` | #1161 | D-DOCS: Vercel contributor policy | permanent |
+| `c1db919112c5c83fdcc0be508f8d34d189d149af` | #1162 | libpf is not distributed | permanent |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the Open Question that blocks it, and the story that revisits it.
 
