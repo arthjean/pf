@@ -14,10 +14,13 @@ export {
 } from "./libpf.cjs";
 
 export type {
+  PfApiKeyCredentials,
   PfBytes,
-  PfChatgptCredentials,
   PfCheckpointMeta,
   PfCodexProvider,
+  PfCustomProvider,
+  PfCustomProviderDefinition,
+  PfCustomProviderModel,
   PfEffort,
   PfEngine,
   PfEngineEvent,
@@ -30,6 +33,7 @@ export type {
   PfFetch,
   PfFollowUp,
   PfGatewayProvider,
+  PfGrokProvider,
   PfHostTool,
   PfImageBlock,
   PfJsonSchema,
@@ -42,6 +46,7 @@ export type {
   PfOnAmbiguous,
   PfPromptBlock,
   PfPromptInput,
+  PfProviderCredentials,
   PfProviderTool,
   PfResizedImage,
   PfResourceBlock,

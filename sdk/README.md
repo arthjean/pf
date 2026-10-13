@@ -39,7 +39,7 @@ The full documentation is at [paneflow.dev/agent/docs/lib](https://paneflow.dev/
 - [Steers](https://paneflow.dev/agent/docs/lib/steering) a turn while it runs
 - Takes [images](https://paneflow.dev/agent/docs/lib/images) in prompts and tool results
 - Gives each conversation its own model, instructions and context
-- Runs on AI Gateway, or on a user's [ChatGPT plan](#chatgpt-plans) through Codex
+- Runs on AI Gateway, on a user's own [ChatGPT](#chatgpt-plans) or [Grok](#grok-plans) plan, or on [any OpenAI-compatible server](#custom-providers)
 - Uses a native addon on macOS and Linux, and WebAssembly everywhere else, including browsers
 - Puts the [pf terminal](https://paneflow.dev/agent/docs/lib/webassembly#embed-the-terminal) in a web page
 - Ships TypeScript types for every entry point, with no runtime dependencies
@@ -216,14 +216,80 @@ An agent can run on a user's ChatGPT plan through Codex instead of AI Gateway. S
 const agent = createPfAgent({
   provider: "codex",
   model: "gpt-6.1-sol",
-  chatgpt: ({ sessionId }) => tokens.load(sessionId),
-  onChatgptCredentials: (credentials, { sessionId }) => tokens.save(sessionId, credentials),
+  credentials: ({ provider, sessionId }) => tokens.load(provider, sessionId),
+  onCredentials: (credentials, { provider, sessionId }) => tokens.save(provider, sessionId, credentials),
 });
 ```
 
-libpf calls `chatgpt()` before Codex requests, in whichever process runs the turn, and adds the credentials to those requests itself, so they never reach the engine or a saved session. It refreshes them shortly before they expire and once after a rejected request, then passes the new ones to `onChatgptCredentials` for you to save. Codex doesn't accept requests from web pages, so these turns run on your server.
+libpf calls `credentials()` before Codex requests, in whichever process runs the turn, and adds the credentials to those requests itself, so they never reach the engine or a saved session. It refreshes them shortly before they expire and once after a rejected request, then passes the new ones to `onCredentials` for you to save. Codex doesn't accept requests from web pages, so these turns run on your server.
+
+Sessions in one process share each refresh. If your app runs on several servers, two of them can notice the same expiring credentials at once, and the provider accepts only the first refresh. Pass `refreshLock` so they take turns:
+
+```js
+refreshLock: ({ provider, sessionId }, refresh) => locks.withLock(`${provider}:${accountOf(sessionId)}`, refresh),
+```
+
+libpf calls it with a function to run while you hold a lock on that user's account, for example in Redis. Inside it, libpf asks `credentials()` again and uses what another server already saved. This works for Grok too.
 
 libpf does not sign users in: the host obtains the ChatGPT credentials itself.
+
+### Grok plans
+
+An agent can also run on a user's Grok plan. Set `provider: "grok"` and pass the same `credentials` callback, which libpf calls with `provider: "grok"`:
+
+```js
+const agent = createPfAgent({
+  provider: "grok",
+  model: "grok-4.5",
+  credentials: ({ provider, sessionId }) => tokens.load(provider, sessionId),
+  onCredentials: (credentials, { provider, sessionId }) => tokens.save(provider, sessionId, credentials),
+});
+```
+
+libpf handles Grok credentials the same way as Codex's: it adds them to Grok requests itself, refreshes them, and checks that a refreshed token still belongs to the same xAI account. Grok doesn't accept requests from web pages either, so these turns run on your server.
+
+To sign a user in, use `libpf/grok`. Device code is the simplest:
+
+```js
+import { startDeviceSignIn, completeDeviceSignIn } from "libpf/grok";
+
+// Show device.userCode and a link to device.verificationUrl.
+const device = await startDeviceSignIn();
+
+// Wait until the user enters the code. pollDeviceSignIn() checks once, for a later request.
+const credentials = await completeDeviceSignIn(device);
+```
+
+`startSignIn()` and `finishSignIn()` work like ChatGPT's: after the user signs in, xAI opens a page at `127.0.0.1` that doesn't load, and the user pastes its address back. The sign-in uses the same xAI client as the pf CLI, and the user's Grok plan and xAI's terms apply to the turns.
+
+### Custom providers
+
+An agent can also run on any server that speaks the OpenAI Chat Completions API, such as a local model server or a router. Pass the provider as an object and name the model it serves:
+
+```js
+const agent = createPfAgent({
+  provider: { name: "local", baseUrl: "http://localhost:11434/v1" },
+  model: "qwen3:8b",
+});
+```
+
+Requests go to `{baseUrl}/chat/completions`, which must use HTTPS, or HTTP on `localhost`. A server that needs a key gets it from the same `credentials` callback, which libpf calls with the provider's `name`:
+
+```js
+const agent = createPfAgent({
+  provider: {
+    name: "router",
+    baseUrl: "https://openrouter.ai/api/v1",
+    models: { "qwen/qwen3-coder": { contextWindow: 128000, supportsToolUse: true } },
+  },
+  model: "qwen/qwen3-coder",
+  credentials: async ({ provider, sessionId }) => ({ apiKey: await keys.load(provider, sessionId) }),
+});
+```
+
+libpf sends the key as a bearer token to that chat URL only, and the key never reaches the engine or a saved session. A key isn't refreshed, so a rejected one ends the turn with the server's error. `models` tells libpf what it can't ask the server: each model's context window and output limit, and whether it takes tools and images. Tool calls work when the model and server support them. In a browser, the server must accept cross-origin requests, and the page can read the key.
+
+Saved sessions follow the agent's provider: point an agent at another base URL and its sessions continue there, history included.
 
 ## One conversation, no sessions
 
@@ -304,6 +370,8 @@ This is the pf CLI's interface compiled to WebAssembly. Your page supplies stora
 | `libpf/browser` | The browser build, plus `createPfTerminal` and `xtermAdapter` |
 | `libpf/wasm` | The WebAssembly SDK without packaged asset paths, so you pass `wasm` yourself |
 | `libpf/durable-local`, `libpf/durable-vercel`, `libpf/durable-world` | `local()`, `vercel()` and `world()` |
+| `libpf/chatgpt` | `startSignIn`, `finishSignIn`, `startDeviceSignIn`, `pollDeviceSignIn`, `completeDeviceSignIn`, `refreshCredentials` |
+| `libpf/grok` | `startSignIn`, `finishSignIn`, `startDeviceSignIn`, `pollDeviceSignIn`, `completeDeviceSignIn`, `refreshCredentials` |
 | `libpf/mcp` | `createMcpAdapter` |
 | `libpf/skills`, `libpf/skills/node` | `createSkillsAdapter`, and `loadSkillFile` for Node.js and Bun |
 

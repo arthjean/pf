@@ -458,8 +458,8 @@ export type PfEngineStorage =
     checkpoint?: PfBytes;
   };
 
-/** ChatGPT credentials for a Codex agent. `accountId` and `expiresAt` default to the access token's own claims. */
-export interface PfChatgptCredentials {
+/** A subscription provider's credentials: a ChatGPT plan's for Codex, or a Grok plan's. `accountId` and `expiresAt` default to the access token's own claims when it carries them. */
+export interface PfProviderCredentials {
   accessToken: string;
   /** Lets libpf refresh the access token near expiry and once after a rejection. */
   refreshToken?: string;
@@ -471,17 +471,63 @@ export interface PfChatgptCredentials {
 /** Runs on AI Gateway, the default. */
 export interface PfGatewayProvider {
   provider?: "gateway" | undefined;
-  chatgpt?: undefined;
-  onChatgptCredentials?: undefined;
+  credentials?: undefined;
+  onCredentials?: undefined;
+  refreshLock?: undefined;
+}
+
+/** Runs on a user's plan instead of AI Gateway. */
+interface PfSubscriptionProvider<Provider extends "codex" | "grok"> {
+  provider: Provider;
+  /** Credentials for the provider's requests, asked for in whichever process runs the turn. `sessionId` is set for model requests and absent for the model list. */
+  credentials: (request: { provider: Provider; sessionId?: string }) => PfProviderCredentials | Promise<PfProviderCredentials>;
+  /** Receives credentials libpf refreshed, so the host can save them. */
+  onCredentials?: (credentials: PfProviderCredentials, info: { provider: Provider; sessionId?: string }) => void | Promise<void>;
+  /**
+   * Runs `refresh` while the host holds a lock on the account, so a host with
+   * several servers refreshes it on one at a time. libpf asks `credentials()`
+   * again inside it and uses credentials another server already saved.
+   */
+  refreshLock?: (info: { provider: Provider; sessionId?: string }, refresh: () => Promise<void>) => Promise<unknown>;
 }
 
 /** Runs on a ChatGPT plan through Codex instead of AI Gateway. */
-export interface PfCodexProvider {
-  provider: "codex";
-  /** Credentials for Codex requests, asked for in whichever process runs the turn. `sessionId` is set for model requests and absent for the model list. */
-  chatgpt: (request: { sessionId?: string }) => PfChatgptCredentials | Promise<PfChatgptCredentials>;
-  /** Receives credentials libpf refreshed, so the host can save them. */
-  onChatgptCredentials?: (credentials: PfChatgptCredentials, info: { sessionId?: string }) => void | Promise<void>;
+export type PfCodexProvider = PfSubscriptionProvider<"codex">;
+
+/** Runs on a Grok plan instead of AI Gateway. */
+export type PfGrokProvider = PfSubscriptionProvider<"grok">;
+
+/** What libpf knows about a model a custom provider serves. Unset fields are unknown. */
+export interface PfCustomProviderModel {
+  contextWindow?: number;
+  /** Less than `contextWindow` when both are set. */
+  maxOutputTokens?: number;
+  supportsToolUse?: boolean;
+  supportsVision?: boolean;
+}
+
+/** A server that speaks OpenAI Chat Completions, such as a local model server or a router. */
+export interface PfCustomProviderDefinition {
+  /** Names the provider to `credentials()`: a letter, then letters, digits, `_` or `-`, at most 64 characters. Not `gateway`, `codex` or `grok`. */
+  name: string;
+  /** The API prefix: requests go to `{baseUrl}/chat/completions`. HTTPS, or HTTP on localhost. */
+  baseUrl: string;
+  /** The models it serves, by id. */
+  models?: Record<string, PfCustomProviderModel>;
+}
+
+/** A custom provider's API key. */
+export interface PfApiKeyCredentials {
+  apiKey: string;
+}
+
+/** Runs on a custom provider instead of AI Gateway. */
+export interface PfCustomProvider {
+  provider: PfCustomProviderDefinition;
+  /** The API key for the provider's requests, asked for in whichever process runs the turn. Omit it for a server that needs no key. */
+  credentials?: ((request: { provider: string; sessionId?: string }) => PfApiKeyCredentials | Promise<PfApiKeyCredentials>) | undefined;
+  onCredentials?: undefined;
+  refreshLock?: undefined;
 }
 
 /** Options for `createPfEngine()`. */
@@ -490,8 +536,8 @@ export type PfEngineOptions = PfSharedOptions<PfEngineEvent> & PfModelChoice & P
     /** The AI Gateway credential. Required. */
     apiKey: string;
   })
-  | (PfCodexProvider & {
-    /** The AI Gateway credential, unused by Codex turns. */
+  | ((PfCodexProvider | PfGrokProvider | PfCustomProvider) & {
+    /** The AI Gateway credential, unused by this provider's turns. */
     apiKey?: string | undefined;
   })
 ) & {
@@ -524,7 +570,7 @@ export declare function memory(options?: MemoryOptions): Durability;
 // Durable agents
 
 /** Options for `createPfAgent()`. */
-export type PfAgentOptions = PfSharedOptions<PfAgentEvent> & PfModelChoice & (PfGatewayProvider | PfCodexProvider) & {
+export type PfAgentOptions = PfSharedOptions<PfAgentEvent> & PfModelChoice & (PfGatewayProvider | PfCodexProvider | PfGrokProvider | PfCustomProvider) & {
   /** The AI Gateway credential. Without it, libpf uses `AI_GATEWAY_API_KEY`, then on Vercel the deployment's OIDC token. */
   apiKey?: string | undefined;
   /** Where sessions live. Without it, libpf picks one from the environment. */
