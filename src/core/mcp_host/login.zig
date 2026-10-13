@@ -17,7 +17,7 @@ pub const Listener = struct {
 
     /// Listens on 127.0.0.1 at `port`, or at a free port when null.
     pub fn open(io: std.Io, port: ?u16) !Listener {
-        const address = std.Io.net.IpAddress.parseIp4("127.0.0.1", port orelse 0) catch unreachable;
+        const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port orelse 0);
         var server = try address.listen(io, .{ .reuse_address = port != null });
         return .{ .port = server.socket.address.getPort(), .server = server };
     }
