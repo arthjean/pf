@@ -262,7 +262,7 @@ async function installedWorkerMain() {
   assert.deepEqual(Object.keys(cjs).sort(), exportNames, "ESM and CJS exports differ");
 
   if (config.mode === "cjs-happy") {
-    assert.equal(typeof cjs.createPfAgent, "function");
+    assert.equal(typeof cjs.createPfEngine, "function");
     const info = await cjs.getBackendInfo({ backend: "native" });
     assert.equal(info.backend, "native");
     console.log(JSON.stringify({ mode: config.mode, exportNames, info }));
@@ -278,7 +278,7 @@ async function installedWorkerMain() {
       : "LIBPF_NATIVE_LOAD_FAILED");
     if (config.mode === "fault-missing-addon") assert.equal(reason.causeCode, "ENOENT");
     else assert.equal(reason.causeCode, "ERR_DLOPEN_FAILED");
-    const factoryError = await expectedError(() => esm.createPfAgent({ backend: "native", apiKey: "test-placeholder" }));
+    const factoryError = await expectedError(() => esm.createPfEngine({ backend: "native", apiKey: "test-placeholder" }));
     assert.ok(factoryError.code, "factory error must preserve a code");
     console.log(JSON.stringify({ mode: config.mode, info, factoryError: errorRecord(factoryError) }));
     return;
@@ -290,7 +290,7 @@ async function installedWorkerMain() {
     const forcedWasm = await esm.getBackendInfo({ backend: "wasm" });
     assert.equal(forcedWasm.backend, "unavailable");
     assert.equal(forcedWasm.attempts[0].reason.code, "LIBPF_JSPI_UNAVAILABLE");
-    const factoryError = await expectedError(() => esm.createPfAgent({ backend: "wasm", apiKey: "test-placeholder" }));
+    const factoryError = await expectedError(() => esm.createPfEngine({ backend: "wasm", apiKey: "test-placeholder" }));
     assert.equal(factoryError.code, "LIBPF_JSPI_REQUIRED");
     const automatic = await esm.getBackendInfo({ backend: "auto" });
     assert.equal(automatic.backend, "native");
@@ -303,7 +303,7 @@ async function installedWorkerMain() {
     const info = await esm.getBackendInfo({ backend: "native", nativeAddon: badAddon });
     assert.equal(info.backend, "unavailable");
     assert.equal(info.attempts[0].reason.code, "LIBPF_NATIVE_API_MISMATCH");
-    const factoryError = await expectedError(() => esm.createPfAgent({
+    const factoryError = await expectedError(() => esm.createPfEngine({
       backend: "native",
       nativeAddon: badAddon,
       apiKey: "test-placeholder",
@@ -318,16 +318,16 @@ async function installedWorkerMain() {
     const invalidProbe = await expectedError(() => esm.getBackendInfo(null));
     assert.ok(invalidProbe instanceof TypeError);
     assert.equal(invalidProbe.message, "getBackendInfo() options must be an object");
-    const invalidBackend = await expectedError(() => esm.createPfAgent({ backend: "other", apiKey: "test-placeholder" }));
+    const invalidBackend = await expectedError(() => esm.createPfEngine({ backend: "other", apiKey: "test-placeholder" }));
     assert.ok(invalidBackend instanceof TypeError);
     assert.equal(invalidBackend.message, 'backend must be "auto", "native", or "wasm"');
-    const invalidCheckpoint = await expectedError(() => esm.createPfAgent({
+    const invalidCheckpoint = await expectedError(() => esm.createPfEngine({
       backend: "native",
       apiKey: "test-placeholder",
       checkpoint: new Uint8Array([1, 2, 3]),
     }));
     assert.match(invalidCheckpoint.message, /Invalid or non-fresh libpf checkpoint/);
-    const recovery = await esm.createPfAgent({ backend: "native", apiKey: "test-placeholder" });
+    const recovery = await esm.createPfEngine({ backend: "native", apiKey: "test-placeholder" });
     const checkpoint = await recovery.checkpoint();
     await recovery.close();
     assert.ok(checkpoint.length > 48);
@@ -346,11 +346,11 @@ async function installedWorkerMain() {
     assert.equal(first.backend, "unavailable");
     assert.equal(first.attempts[0].reason.code, "LIBPF_WASM_LOAD_FAILED");
     if (config.mode === "fault-missing-wasm") assert.equal(first.attempts[0].reason.causeCode, "ENOENT");
-    const factoryError = await expectedError(() => esm.createPfAgent({ backend: "wasm", apiKey: "test-placeholder" }));
+    const factoryError = await expectedError(() => esm.createPfEngine({ backend: "wasm", apiKey: "test-placeholder" }));
     await writeFile(config.wasmPath, await readFile(config.restoreWasmPath));
     const second = await esm.getBackendInfo({ backend: "wasm" });
     assert.equal(second.backend, "wasm-jspi");
-    const recovery = await esm.createPfAgent({ backend: "wasm", apiKey: "test-placeholder" });
+    const recovery = await esm.createPfEngine({ backend: "wasm", apiKey: "test-placeholder" });
     const checkpoint = await recovery.checkpoint();
     await recovery.close();
     assert.ok(checkpoint.length > 48);
@@ -530,7 +530,7 @@ async function installedWorkerMain() {
     const started = performance.now();
     let agent;
     try {
-      agent = await esm.createPfAgent(baseOptions(backend, [lookupTool(marker, mode, state)]));
+      agent = await esm.createPfEngine(baseOptions(backend, [lookupTool(marker, mode, state)]));
       const observed = await withTimeout(consumeTurn(agent.prompt(`CALL ${marker}`)), 10_000, `tool workflow ${marker}`);
       assert.equal(observed.result.stopReason, "end_turn");
       assert.equal(observed.text, `done:${marker}`);
@@ -559,14 +559,14 @@ async function installedWorkerMain() {
     let source;
     let restored;
     try {
-      source = await esm.createPfAgent(baseOptions("native", tools));
+      source = await esm.createPfEngine(baseOptions("native", tools));
       const first = await consumeTurn(source.prompt(`CALL ${marker}`));
       assert.equal(first.text, `done:${marker}`);
       const checkpoint = await source.checkpoint();
       assert.ok(checkpoint.length > 48);
       await source.close();
       source = null;
-      restored = await esm.createPfAgent(baseOptions("native", tools, checkpoint));
+      restored = await esm.createPfEngine(baseOptions("native", tools, checkpoint));
       const second = await consumeTurn(restored.prompt(`RESTORE ${marker}`));
       assert.equal(second.text, `restored:${marker}`);
       assert.equal(state.callbacks, 1);
@@ -606,7 +606,7 @@ async function installedWorkerMain() {
     const runtimeEvents = [];
     let agent;
     try {
-      agent = await esm.createPfAgent({
+      agent = await esm.createPfEngine({
         ...baseOptions("native", [waitTool]),
         onEvent(event) { runtimeEvents.push(event); },
       });
@@ -651,7 +651,7 @@ async function installedWorkerMain() {
     const started = performance.now();
     const info = await esm.getBackendInfo({ backend });
     assert.equal(info.backend, "native");
-    const agent = await esm.createPfAgent({
+    const agent = await esm.createPfEngine({
       backend,
       apiKey: "test-placeholder",
       home: process.cwd(),

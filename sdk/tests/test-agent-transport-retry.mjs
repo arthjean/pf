@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent, supportsJspi } from "../node.js";
+import { createPfEngine, supportsJspi } from "../node.js";
 
 const backend = process.argv[2] || "native";
 if (!new Set(["native", "wasm"]).has(backend)) {
@@ -39,7 +39,7 @@ const fetchOnceThenSucceed = async (_url, init) => {
   }), { status: 200, headers: { "content-type": "text/event-stream" } });
 };
 
-const agent = await createPfAgent({
+const agent = await createPfEngine({
   backend,
   nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"
@@ -87,7 +87,7 @@ const cancelEvents = [];
 let cancelFetchCalls = 0;
 let fetchStartedResolve;
 const fetchStarted = new Promise((resolveStarted) => { fetchStartedResolve = resolveStarted; });
-const cancelledAgent = await createPfAgent({
+const cancelledAgent = await createPfEngine({
   backend,
   nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"
@@ -127,7 +127,7 @@ console.log(`${process.versions.bun ? "Bun" : "Node"} ${backend} Agent cancellat
 const retryBoundaryEvents = [];
 const retryBoundaryController = new AbortController();
 let retryBoundaryFetchCalls = 0;
-const retryBoundaryAgent = await createPfAgent({
+const retryBoundaryAgent = await createPfEngine({
   backend,
   nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
   ...(backend === "wasm"

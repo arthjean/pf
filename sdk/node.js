@@ -2,15 +2,20 @@ import { access, readFile } from "node:fs/promises";
 import { closeSync } from "node:fs";
 import { createRequire } from "node:module";
 import { Socket } from "node:net";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CoreOutput } from "./core-output.js";
 import { loadModule, withModuleFailure } from "./wasm-module.js";
 import { fetchCleanupAction, cleanupTimeoutMs, cleanupByteLimit } from "./fetch-cleanup.js";
+import { createDurableAgentFactory, memory } from "./durable.js";
+import { pfHarness } from "./pf-harness.js";
 import {
-  createPfAgent as createWasmAgent,
+  createPfEngine as createWasmAgent,
   createPfTerminal as createWasmTerminal,
+  createMemoryPersistence,
+  PfFencedError,
+  PfJournalVersionError,
   encodeXtermKeyEvent,
   pfSdkApiVersion,
   listModels,
@@ -19,7 +24,7 @@ import {
   xtermAdapter,
 } from "./pf-sdk.js";
 
-export { encodeXtermKeyEvent, pfSdkApiVersion, listModels, supportsJspi, xtermAdapter };
+export { createMemoryPersistence, encodeXtermKeyEvent, PfFencedError, PfJournalVersionError, pfSdkApiVersion, listModels, memory, supportsJspi, xtermAdapter };
 export const libpfApiVersion = 2;
 const nativeCoreApiVersion = 4;
 
@@ -644,7 +649,12 @@ async function createWithFallback(surface, nativeMethod, wasmFactory, defaultWas
   return wasmFactory({ ...runtimeOptions, wasm: await wasmInput(wasmSource) });
 }
 
-export async function createPfAgent(options = {}) {
+/**
+ * One pf session on the native core, or on WebAssembly when the native
+ * addon is unavailable, with no durability of its own. `createPfAgent`
+ * runs durable sessions on these.
+ */
+export async function createPfEngine(options = {}) {
   return createWithFallback(
     "agent",
     "createCore",
@@ -653,6 +663,38 @@ export async function createPfAgent(options = {}) {
     options,
   );
 }
+
+// The durability a session gets when the caller names none: Vercel's World
+// on Vercel, otherwise files in the temporary directory. Each is its own
+// module, loaded only here: a bundler copies the file the URL names and
+// leaves the import itself to Node.
+async function environmentDurability() {
+  const load = (asset) => import(/* webpackIgnore: true */ /* turbopackIgnore: true */ (asset.protocol === "" ? bundledAssetUrl(asset) : asset).href);
+  if (process.env.VERCEL) {
+    const { vercel } = await load(new URL("./durable/vercel.mjs", import.meta.url));
+    return vercel();
+  }
+  const { local } = await load(new URL("./durable/local.mjs", import.meta.url));
+  return local({ dir: process.env.PF_SESSIONS_DIR || resolve(tmpdir(), "libpf", "sessions") });
+}
+
+/**
+ * An agent whose sessions survive crashes, timeouts and redeployments. It
+ * does no I/O until a session is used.
+ */
+export const createPfAgent = createDurableAgentFactory({
+  name: "createPfAgent",
+  label: "pf agent",
+  defaultDurability: environmentDurability,
+  harness: pfHarness({
+    createEngine: createPfEngine,
+    // An explicit key, then the durability's own credential, such as a
+    // Vercel deployment's OIDC token, then the one in the environment.
+    defaultApiKey: async (durability) => process.env.AI_GATEWAY_API_KEY ||
+      (await Promise.resolve(durability?.gatewayKey?.()).catch(() => undefined)) ||
+      process.env.VERCEL_OIDC_TOKEN || undefined,
+  }),
+});
 
 export function createPfTerminal(options = {}) {
   return createWithFallback("terminal", "createPfTerminal", createWasmTerminal, defaultTermWasm, options);

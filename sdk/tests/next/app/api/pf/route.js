@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createPfAgent, getBackendInfo } from "libpf";
+import { createPfEngine, getBackendInfo } from "libpf";
 import { createMcpAdapter } from "libpf/mcp";
 
 export const runtime = "nodejs";
@@ -102,7 +102,7 @@ export async function GET(request) {
         ]);
       } } : {}),
     };
-    agent = await createPfAgent(options);
+    agent = await createPfEngine(options);
     if (scenario === "startup") {
       return Response.json({ ok: true, probe, checkpointBytes: (await agent.checkpoint()).length });
     }
@@ -125,7 +125,7 @@ export async function GET(request) {
     await agent.close();
     agent = null;
     if (scenario === "resume") {
-      agent = await createPfAgent({ ...options, checkpoint });
+      agent = await createPfEngine({ ...options, checkpoint });
       const resumed = agent.prompt("Repeat the value you looked up without calling another tool.", { signal: controller.signal });
       let resumedText = "";
       for await (const event of resumed) if (event.type === "text_delta") resumedText += event.delta;

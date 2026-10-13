@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent, supportsJspi } from "../node.js";
+import { createPfEngine, supportsJspi } from "../node.js";
 
 const backend = process.argv[2] || "native";
 if (!new Set(["native", "wasm"]).has(backend)) throw new Error("usage: test-agent-steering.mjs [native|wasm]");
@@ -91,7 +91,7 @@ const options = (checkpoint) => ({
 
 let agent;
 try {
-  agent = await createPfAgent(options());
+  agent = await createPfEngine(options());
   const turn = agent.prompt("start work");
   const events = [];
   let steered = false;
@@ -118,7 +118,7 @@ try {
 
   const checkpoint = await agent.checkpoint();
   await agent.close();
-  agent = await createPfAgent(options(checkpoint));
+  agent = await createPfEngine(options(checkpoint));
   const restored = agent.prompt("continue saved work");
   let restoredText = "";
   for await (const event of restored) if (event.type === "text_delta") restoredText += event.delta;

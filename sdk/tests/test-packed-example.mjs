@@ -2,7 +2,7 @@
 import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -32,7 +32,7 @@ if (process.argv[2] !== "--installed") {
     await rm(temp, { recursive: true, force: true });
   }
 } else {
-  const { createPfAgent, createPfTerminal, getBackendInfo } = format === "cjs" ? createRequire(import.meta.url)("libpf") : await import("libpf");
+  const { createPfAgent, createPfEngine, createPfTerminal, getBackendInfo, memory } = format === "cjs" ? createRequire(import.meta.url)("libpf") : await import("libpf");
   const { createMcpAdapter } = await import("libpf/mcp");
   const { createSkillsAdapter } = await import("libpf/skills");
   assert.equal(typeof createMcpAdapter, "function");
@@ -47,7 +47,7 @@ if (process.argv[2] !== "--installed") {
       await assert.rejects(getBackendInfo(makeOptions("backend", invalid)), TypeError);
       await assert.rejects(getBackendInfo(makeOptions("surface", invalid)), TypeError);
       const backendError = { name: "TypeError", message: 'backend must be "auto", "native", or "wasm"' };
-      await assert.rejects(createPfAgent(makeOptions("backend", invalid)), backendError);
+      await assert.rejects(createPfEngine(makeOptions("backend", invalid)), backendError);
       await assert.rejects(createPfTerminal(makeOptions("backend", invalid)), backendError);
     }
     for (const value of [undefined, "auto", "native", "wasm"]) {
@@ -58,7 +58,7 @@ if (process.argv[2] !== "--installed") {
   }
   assert.deepEqual(await getBackendInfo({ backend: undefined, surface: undefined }), await getBackendInfo());
   assert.deepEqual(await getBackendInfo({ backend: "auto", surface: "agent" }), await getBackendInfo());
-  for (const select of [getBackendInfo, createPfAgent, createPfTerminal]) {
+  for (const select of [getBackendInfo, createPfEngine, createPfTerminal]) {
     let reads = 0;
     const options = { backend: "native", get nativeAddon() { reads++; this.backend = null; } };
     await assert.rejects(select(options), { name: "TypeError", message: 'backend must be "auto", "native", or "wasm"' });
@@ -83,7 +83,7 @@ if (process.argv[2] !== "--installed") {
   });
   await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
 
-  const agent = await createPfAgent({
+  const agent = await createPfEngine({
     backend,
     fetch(input, init) {
       const origin = `http://127.0.0.1:${server.address().port}`;
@@ -96,7 +96,7 @@ if (process.argv[2] !== "--installed") {
     model: "packed/model",
   });
   try {
-    assert.deepEqual(Object.keys(agent).sort(), ["checkpoint", "close", "prompt"]);
+    assert.deepEqual(Object.keys(agent).sort(), ["checkpoint", "close", "followUp", "prompt", "resume", "sessionId"]);
     const turn = agent.prompt("hello");
     let text = "";
     for await (const event of turn) if (event.type === "text_delta") text += event.delta;
@@ -106,6 +106,33 @@ if (process.argv[2] !== "--installed") {
     assert.equal(requestedModel, "packed/model");
     assert.ok((await agent.checkpoint()).length > 48);
     await agent.close();
+
+    // A durable agent from the package: the local World it bundles keeps the
+    // session in files, then memory() opts out.
+    const sessionsDir = await mkdtemp(resolve(tmpdir(), "libpf-packed-sessions-"));
+    process.env.PF_SESSIONS_DIR = sessionsDir;
+    try {
+      for (const durability of [undefined, memory()]) {
+        const durable = createPfAgent({
+          backend,
+          fetch: (input, init) => fetch(init?.method === "GET" ? `http://127.0.0.1:${server.address().port}/models` : String(input), init),
+          apiKey: "packed-key",
+          gatewayChatUrl: `http://127.0.0.1:${server.address().port}/chat`,
+          model: "packed/model",
+          ...(durability ? { durability } : {}),
+        });
+        const durableTurn = durable.session().prompt("hello");
+        let durableText = "";
+        for await (const event of durableTurn) if (event.type === "text_delta") durableText += event.delta;
+        assert.equal(durableText, "packed");
+        assert.equal((await durableTurn.result).stopReason, "end_turn");
+        await durable.close();
+      }
+      assert.ok((await readdir(sessionsDir)).includes("runs"), "the default durability kept the session on disk");
+    } finally {
+      delete process.env.PF_SESSIONS_DIR;
+      await rm(sessionsDir, { recursive: true, force: true });
+    }
     console.log(`${format} ${backend} packed libpf example passed`);
   } finally {
     await agent.close().catch(() => {});

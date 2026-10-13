@@ -23,8 +23,8 @@ try {
   const worker = new Worker(`
     const { parentPort, workerData } = require("node:worker_threads");
     (async () => {
-      const { createPfAgent } = await import(workerData.nodeModuleUrl);
-      const agent = await createPfAgent({
+      const { createPfEngine } = await import(workerData.nodeModuleUrl);
+      const agent = await createPfEngine({
         nativeAddon: workerData.addonPath,
         backend: "native",
         fetch(input, init) {

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent, supportsJspi } from "../node.js";
+import { createPfEngine, supportsJspi } from "../node.js";
 
 const backend = process.argv[2] || "native";
 if (!new Set(["native", "wasm"]).has(backend)) {
@@ -79,7 +79,7 @@ const backendOptions = {
 };
 
 async function capture(instructions, prompt) {
-  const agent = await createPfAgent({
+  const agent = await createPfEngine({
     ...backendOptions,
     fetch: gatewayFetch,
     onEvent(event) { sdkEvents.push(event); },

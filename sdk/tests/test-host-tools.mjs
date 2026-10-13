@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
+import { createPfEngine } from "../node.js";
 
 const backend = process.argv[2] || "native";
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
@@ -55,7 +55,7 @@ const { port } = server.address();
 
 let agent;
 try {
-  agent = await createPfAgent({
+  agent = await createPfEngine({
     backend,
     nativeAddon: addon,
     ...(backend === "wasm" ? { wasm: await readFile(wasmPath) } : {}),

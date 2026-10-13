@@ -75,9 +75,9 @@ const importAt = performance.now();
 let importedAt;
 let initializedAt;
 if (target === "libpf") {
-  const { createPfAgent } = await import(pathToFileURL(resolve(root, "sdk/node.js")));
+  const { createPfEngine } = await import(pathToFileURL(resolve(root, "sdk/node.js")));
   importedAt = performance.now();
-  const agent = await createPfAgent({
+  const agent = await createPfEngine({
     backend: "native",
     nativeAddon: resolve(root, "zig-out/lib/libpf.node"),
     fetch: globalThis.fetch,

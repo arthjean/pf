@@ -3,8 +3,8 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
-import { createPfAgent as createSharedAgent } from "../pf-sdk.js";
+import { createPfEngine } from "../node.js";
+import { createPfEngine as createSharedAgent } from "../pf-sdk.js";
 import { createMcpAdapter } from "../mcp.js";
 import { createSkillsAdapter } from "../skills.js";
 
@@ -27,7 +27,7 @@ const options = {
   apiKey: "instruction-limit-test-key",
 };
 
-const agent = await createPfAgent({ ...options, instructions: exactInstructions });
+const agent = await createPfEngine({ ...options, instructions: exactInstructions });
 await agent.close();
 
 let runtimeCreations = 0;

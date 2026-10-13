@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { setImmediate as nextLoop } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
+import { createPfEngine } from "../node.js";
 
 const apiKey = "http-cleanup-fixture-key";
 const modelId = "native/http-cleanup-model";
@@ -80,7 +80,7 @@ await new Promise((done, fail) => { server.once("error", fail); server.listen(0,
 const gatewayChatUrl = `http://127.0.0.1:${server.address().port}/chat`;
 async function newTurn(record, extra = {}) {
   const agentIndex = catalogCounts.push(0) - 1;
-  const agent = await bounded(createPfAgent({
+  const agent = await bounded(createPfEngine({
     backend: "native", nativeAddon: addon, apiKey, model: modelId, gatewayChatUrl,
     fetch(input, init) {
       if (init.method === "GET") {

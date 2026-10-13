@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { strict as assert } from "node:assert";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent, supportsJspi } from "../node.js";
+import { createPfEngine, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const defaultWasm = resolve(scriptDir, "../../zig-out/bin/pf-core.wasm");
@@ -36,7 +36,7 @@ const timeout = (label, ms = 5000) => new Promise((_, reject) => {
 });
 
 const agent = await Promise.race([
-  createPfAgent({
+  createPfEngine({
   backend: "wasm",
     wasm: await readFile(wasmPath),
     fetch: stalledFetch,
@@ -79,7 +79,7 @@ for (const stage of ["headers", "body", "late-body", "close"]) {
   let followingUp = false;
   const model = `sdk/catalog-cancel-${stage}`;
   const catalog = () => Response.json({ object: "list", data: [{ id: model, type: "language", tags: ["tool-use"] }] });
-  const catalogAgent = await createPfAgent({
+  const catalogAgent = await createPfEngine({
     backend: "wasm",
     wasm: await readFile(wasmPath),
     apiKey: "sdk-test-key",

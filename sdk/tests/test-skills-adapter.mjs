@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { mkdtemp } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
+import { createPfEngine } from "../node.js";
 import { createSkillsAdapter } from "../skills.js";
 import { loadSkillFile } from "../skills-node.js";
 
@@ -52,7 +52,7 @@ await new Promise((resolveListen) => gateway.listen(0, "127.0.0.1", resolveListe
 
 let agent;
 try {
-  agent = await createPfAgent({
+  agent = await createPfEngine({
     backend,
     nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
     ...(backend === "wasm" ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) } : {}),

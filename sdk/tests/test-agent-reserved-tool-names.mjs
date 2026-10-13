@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent, supportsJspi } from "../node.js";
+import { createPfEngine, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const backend = process.argv[2] || "native";
@@ -68,7 +68,7 @@ const gateway = {
   },
 };
 
-const agent = await createPfAgent({
+const agent = await createPfEngine({
   backend,
   apiKey: "sdk-reserved-names-key",
   model: "sdk/tool-model",

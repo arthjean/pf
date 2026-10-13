@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
+import { createPfEngine } from "../node.js";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
@@ -41,7 +41,7 @@ if (!child) {
 
   for (let index = 0; index < attempts; index++) {
     await assert.rejects(
-      createPfAgent({ ...options, checkpoint: new Uint8Array([1, 2, 3]) }),
+      createPfEngine({ ...options, checkpoint: new Uint8Array([1, 2, 3]) }),
       (error) => {
         assert.match(error.message, /Invalid or non-fresh libpf checkpoint/);
         return true;
@@ -49,7 +49,7 @@ if (!child) {
     );
   }
 
-  const agent = await createPfAgent(options);
+  const agent = await createPfEngine(options);
   await agent.close();
   console.log(`${backend} failed bootstrap cleanup passed`);
 }

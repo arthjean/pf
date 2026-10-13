@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
+import { createPfEngine } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const addon = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/lib/libpf.node"));
@@ -27,7 +27,7 @@ const sse = (...events) => new Response(
 );
 
 try {
-  agent = await createPfAgent({
+  agent = await createPfEngine({
     backend: "native",
     nativeAddon: addon,
     home,

@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
+import { createPfEngine } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 let modelRequests = 0;
@@ -54,7 +54,7 @@ async function exerciseLateSettlement(closeBeforeSettle) {
 
   let agent;
   try {
-    agent = await createPfAgent({
+    agent = await createPfEngine({
       backend: "native",
       nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
       fetch(input, init) {

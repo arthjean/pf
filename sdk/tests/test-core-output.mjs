@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { CoreOutput } from "../core-output.js";
-import { createPfAgent } from "../pf-sdk.js";
+import { createPfEngine } from "../pf-sdk.js";
 
 const encoder = new TextEncoder();
 const message = { text: "¢€\u{1f600}界\nsecond line", escaped: '"\\' };
@@ -89,7 +89,7 @@ for (const cancelAt of ["permission.request", "permission.resolve"]) {
     abortHostEffects() {},
     closeStdin() { exit(0); },
   };
-  const agent = await createPfAgent({
+  const agent = await createPfEngine({
     apiKey: "callback-fixture", runtimeFactory: () => runtime,
     onEvent(event) { if (event.type === cancelAt) turn.cancel(); },
     onPermission() { permissionCalls++; return "allow-once"; },

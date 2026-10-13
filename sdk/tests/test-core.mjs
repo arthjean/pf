@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent, supportsJspi } from "../node.js";
+import { createPfEngine, supportsJspi } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const wasmPath = resolve(process.argv[2] || resolve(scriptDir, "../../zig-out/bin/pf-core.wasm"));
@@ -39,14 +39,14 @@ const mockFetch = async (url, init) => {
   }), { status: 200, headers: { "content-type": "text/event-stream" } });
 };
 
-const agent = await createPfAgent({
+const agent = await createPfEngine({
   backend: "wasm",
   wasm: await readFile(wasmPath),
   fetch: mockFetch,
   apiKey: "sdk-test-key",
   model: "sdk/core-model",
 });
-assert.deepEqual(Object.keys(agent).sort(), ["checkpoint", "close", "prompt"]);
+assert.deepEqual(Object.keys(agent).sort(), ["checkpoint", "close", "followUp", "prompt", "resume", "sessionId"]);
 
 const turn = agent.prompt([
   { type: "text", text: "say hello" },

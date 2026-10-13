@@ -2,7 +2,7 @@
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../../sdk/node.js";
+import { createPfEngine } from "../../sdk/node.js";
 import { sampleStats as stats } from "./workload.mjs";
 
 const args = process.argv.slice(2);
@@ -132,7 +132,7 @@ async function runWarmPrompt(agent, index) {
 async function runStreamCase(chunks, bytes) {
   const rows = [];
   for (let sample = -1; sample < streamSamples; sample += 1) {
-    const agent = await createPfAgent(agentOptions(`${origin}/stream?chunks=${chunks}&bytes=${bytes}`));
+    const agent = await createPfEngine(agentOptions(`${origin}/stream?chunks=${chunks}&bytes=${bytes}`));
     try {
       const promptAt = performance.now();
       const turn = agent.prompt("stream");
@@ -168,7 +168,7 @@ async function runStreamCase(chunks, bytes) {
 
 let warmAgent;
 try {
-  warmAgent = await createPfAgent(agentOptions(`${origin}/warm`));
+  warmAgent = await createPfEngine(agentOptions(`${origin}/warm`));
   const firstPrompt = await runWarmPrompt(warmAgent, -4);
   for (let index = -3; index < 0; index += 1) await runWarmPrompt(warmAgent, index);
   const warmRows = [];

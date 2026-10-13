@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent, createPfTerminal, getBackendInfo } from "../node.js";
+import { createPfEngine, createPfTerminal, getBackendInfo } from "../node.js";
 
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
 const coreWasm = resolve(scriptDir, "../../zig-out/bin/pf-core.wasm");
@@ -48,7 +48,7 @@ try {
   assert.deepEqual(await getBackendInfo({ surface: undefined, backend: undefined, nativeAddon: matchingCore }), defaults);
   assert.deepEqual(await getBackendInfo({ surface: "agent", backend: "auto", nativeAddon: matchingCore }), defaults);
   const backendError = { name: "TypeError", message: 'backend must be "auto", "native", or "wasm"' };
-  await assert.rejects(createPfAgent({ backend: null }), backendError);
+  await assert.rejects(createPfEngine({ backend: null }), backendError);
   await assert.rejects(createPfTerminal({ backend: null }), backendError);
 
   assert.deepEqual(await getBackendInfo({ backend: "native", nativeAddon: matchingCore }), {
@@ -93,7 +93,7 @@ try {
   assert.equal(missing.attempts[0].reason.code, "LIBPF_NATIVE_ARTIFACT_MISSING");
   assert.equal(missing.attempts[0].reason.causeCode, "MODULE_NOT_FOUND");
   await assert.rejects(
-    createPfAgent({ backend: "native", nativeAddon: missingAddon, apiKey: "missing-override-key" }),
+    createPfEngine({ backend: "native", nativeAddon: missingAddon, apiKey: "missing-override-key" }),
     (error) => error?.code === "MODULE_NOT_FOUND",
   );
 
@@ -102,7 +102,7 @@ try {
   assert.equal(dependencyFailure.attempts[0].reason.code, "LIBPF_NATIVE_LOAD_FAILED");
   assert.equal(dependencyFailure.attempts[0].reason.causeCode, "ERR_MODULE_NOT_FOUND");
   await assert.rejects(
-    createPfAgent({ backend: "native", nativeAddon: dependencyAddon, apiKey: "dependency-override-key" }),
+    createPfEngine({ backend: "native", nativeAddon: dependencyAddon, apiKey: "dependency-override-key" }),
     (error) => error?.code === "ERR_MODULE_NOT_FOUND",
   );
 
@@ -111,7 +111,7 @@ try {
   assert.equal(defaultMissing.attempts[0].reason.code, "LIBPF_NATIVE_ARTIFACT_MISSING");
   assert.equal(defaultMissing.attempts[0].reason.causeCode, "ENOENT");
   await assert.rejects(
-    createPfAgent({ backend: "native", apiKey: "missing-default-key" }),
+    createPfEngine({ backend: "native", apiKey: "missing-default-key" }),
     (error) => error?.code === "LIBPF_NATIVE_UNAVAILABLE",
   );
   await assert.rejects(
@@ -131,7 +131,7 @@ try {
   assert.equal(nonlocal.attempts[0].reason.code, "LIBPF_NATIVE_LOAD_FAILED");
   assert.equal(nonlocal.attempts[0].reason.causeCode, "ERR_INVALID_FILE_URL_HOST");
   await assert.rejects(
-    createPfAgent({ backend: "native", nativeAddon: nonlocalAddon, apiKey: "nonlocal-key" }),
+    createPfEngine({ backend: "native", nativeAddon: nonlocalAddon, apiKey: "nonlocal-key" }),
     (error) => error?.code === "ERR_INVALID_FILE_URL_HOST",
   );
 
@@ -153,7 +153,7 @@ try {
       }],
     });
     await assert.rejects(
-      createPfAgent({ backend: "auto", nativeAddon: nonlocalAddon, apiKey: "nonlocal-key" }),
+      createPfEngine({ backend: "auto", nativeAddon: nonlocalAddon, apiKey: "nonlocal-key" }),
       (error) => error?.code === "LIBPF_JSPI_REQUIRED" && error.cause?.code === "ERR_INVALID_FILE_URL_HOST",
     );
   } finally {
@@ -161,7 +161,7 @@ try {
     Object.defineProperty(WebAssembly, "promising", { configurable: true, value: savedPromising });
   }
 
-  const nonlocalFallback = await createPfAgent({
+  const nonlocalFallback = await createPfEngine({
     backend: "auto",
     nativeAddon: nonlocalAddon,
     wasm: coreWasm,
@@ -182,7 +182,7 @@ try {
     ["wasm-jspi", "LIBPF_WASM_LOAD_FAILED"],
   ]);
   await assert.rejects(
-    createPfAgent({ backend: "wasm", wasm: nonlocalWasm, apiKey: "nonlocal-wasm-key" }),
+    createPfEngine({ backend: "wasm", wasm: nonlocalWasm, apiKey: "nonlocal-wasm-key" }),
     (error) => error?.code === "ERR_INVALID_FILE_URL_HOST",
   );
   assert.equal((await getBackendInfo({ backend: "auto", nativeAddon: false, wasm: coreWasm })).backend, "wasm-jspi");
@@ -201,7 +201,7 @@ try {
   await writeFile(replacedWasm, await readFile(coreWasm));
   const secondFileProbe = await getBackendInfo({ backend: "wasm", wasm: replacedWasm });
   assert.equal(secondFileProbe.backend, "wasm-jspi", "replaced Wasm file must be read again after compile failure");
-  const replacedAgent = await createPfAgent({ backend: "wasm", wasm: replacedWasm, apiKey: "probe-retry-key" });
+  const replacedAgent = await createPfEngine({ backend: "wasm", wasm: replacedWasm, apiKey: "probe-retry-key" });
   const replacedCheckpoint = await replacedAgent.checkpoint();
   await replacedAgent.close();
   assert.ok(replacedCheckpoint.length > 0, "factory must reuse the valid replacement after the failed probe");
@@ -220,7 +220,7 @@ try {
   try {
     assert.equal((await getBackendInfo({ backend: "wasm", wasm: stableWasm })).backend, "wasm-jspi");
     await assert.rejects(
-      createPfAgent({
+      createPfEngine({
         backend: "wasm",
         wasm: stableWasm,
         apiKey: "stable-cache-key",
@@ -229,7 +229,7 @@ try {
       /Invalid or non-fresh libpf checkpoint/,
     );
     assert.equal((await getBackendInfo({ backend: "wasm", wasm: stableWasm })).backend, "wasm-jspi");
-    const stableAgent = await createPfAgent({ backend: "wasm", wasm: stableWasm, apiKey: "stable-cache-key" });
+    const stableAgent = await createPfEngine({ backend: "wasm", wasm: stableWasm, apiKey: "stable-cache-key" });
     await stableAgent.close();
     assert.equal(stableCompileCalls, 1, "downstream factory errors must retain a successful compiled module");
   } finally {

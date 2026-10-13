@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../../sdk/node.js";
+import { createPfEngine } from "../../sdk/node.js";
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -136,7 +136,7 @@ async function cancelAndRecover() {
 }
 
 try {
-  const warmup = await createPfAgent(options);
+  const warmup = await createPfEngine(options);
   try {
     await exercise(warmup, "capacity warmup");
   } finally {
@@ -144,7 +144,7 @@ try {
   }
   await quiesce();
   snapshots.push(collect("baseline"));
-  const created = await Promise.allSettled(Array.from({ length: count }, () => createPfAgent(options)));
+  const created = await Promise.allSettled(Array.from({ length: count }, () => createPfEngine(options)));
   for (const [index, result] of created.entries()) {
     if (result.status === "fulfilled") agents.push(result.value);
     else failures.push({ index, error: String(result.reason) });

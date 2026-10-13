@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPfAgent } from "../node.js";
+import { createPfEngine } from "../node.js";
 
 const backend = process.argv[2] || "native";
 const scriptDir = fileURLToPath(new URL(".", import.meta.url));
@@ -60,7 +60,7 @@ async function exerciseCancellation(settlement, closeBeforeSettle) {
   const controller = new AbortController();
   let agent;
   try {
-    agent = await createPfAgent({
+    agent = await createPfEngine({
       backend,
       nativeAddon: resolve(scriptDir, "../../zig-out/lib/libpf.node"),
       ...(backend === "wasm" ? { wasm: await readFile(resolve(scriptDir, "../../zig-out/bin/pf-core.wasm")) } : {}),
