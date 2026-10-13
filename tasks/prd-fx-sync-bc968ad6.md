@@ -8,6 +8,7 @@
 | 1.0 | 2026-10-13 | Arthur Jean | Initial draft from a full-range dry run, one isolated port per fx merge, cumulative ports at every slice boundary, and nine verified analysis reports (one per merge cluster), with each key claim rechecked against `/home/arthur/dev/fx` pulled to `bc968ad6` |
 | 1.1 | 2026-10-13 | Arthur Jean | Every Windows-host test and runtime check moved into a final epic (EP-006), so EP-001 to EP-005 are implemented and verified on Linux; the Zig 0.17 epic merged with merges 31 to 44; stories renumbered |
 | 1.2 | 2026-10-13 | Arthur Jean | Baseline at 6708560 recorded (US-001) |
+| 1.3 | 2026-10-13 | Arthur Jean | Merges 1 to 16 ported (EP-002); UPSTREAM.md holds the `.github/` hunks of `ff3b8d33` (#1180) and `1df91f0b` (#1202) under Q5 until US-022 |
 
 ## Problem Statement
 

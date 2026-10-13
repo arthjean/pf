@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `d5a7bc50d12d4a3a9eab6f852b5033ccfb596484` |
+| Last ported | `1eed0348b40f8a96b18cd3ebe57f72735b323f2d` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -26,6 +26,8 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 |---|---|---|---|---|---|
 | `34f1ed14de47760b44d628ec2d5eb28055b9adf0` | #1062 | The AI Gateway compaction summary fallback to another model family in `src/core/compactor/model.zig`, the unit tests "a failed or empty summary falls back to another family at its lowest reasoning" in `src/core/compactor/model.zig` and "compaction writes the summary with the least reasoning each model accepts" in `src/core/agent/runtime/tests/gateway_flow.zig`, and the retry expectations in `tests/e2e/tui-compaction-activity.test.ts` and `tests/e2e/gateway-stream-lifecycle.test.ts`, which pf rewrites to expect the primary error, and the README sentence on the retry | `9c1cbd1590daf75961e42ea7df94cb7afff76340` | Q3, answered 2026-10-10: keep pf's behavior | permanent |
 | `6bdd49736abd4a85fb6dd60a824e4329784f34c0` | #1137 | The AI Gateway-billed shell-path evaluation `tests/evals/shell-path-ab.test.ts` | `3c65e02f8d4ec0163b4e9bab3c924d21c8d6595f` | Q8, answered 2026-10-10: not ported | permanent |
+| `ff3b8d33c9ac5798ed60ff891b3911770e1888c1` | #1180 | The `.github/workflows/ci.yml` SDK steps that install the Vercel World packages with `npm ci --prefix sdk/durable`, test durable sessions on WebAssembly, N-API, Bun and a World, type-check the declarations, and model-check durable sessions | pending | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
+| `1df91f0b4ebf8f00b16fc6453d33059397460b9f` | #1202 | The `.github/workflows/ci.yml` line that drives the code along the leased durable session model | pending | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 
