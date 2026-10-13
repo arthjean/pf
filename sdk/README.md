@@ -248,19 +248,7 @@ const agent = createPfAgent({
 
 libpf handles Grok credentials the same way as Codex's: it adds them to Grok requests itself, refreshes them, and checks that a refreshed token still belongs to the same xAI account. Grok doesn't accept requests from web pages either, so these turns run on your server.
 
-To sign a user in, use `libpf/grok`. Device code is the simplest:
-
-```js
-import { startDeviceSignIn, completeDeviceSignIn } from "libpf/grok";
-
-// Show device.userCode and a link to device.verificationUrl.
-const device = await startDeviceSignIn();
-
-// Wait until the user enters the code. pollDeviceSignIn() checks once, for a later request.
-const credentials = await completeDeviceSignIn(device);
-```
-
-`startSignIn()` and `finishSignIn()` work like ChatGPT's: after the user signs in, xAI opens a page at `127.0.0.1` that doesn't load, and the user pastes its address back. The sign-in uses the same xAI client as the pf CLI, and the user's Grok plan and xAI's terms apply to the turns.
+libpf does not sign users in to Grok either: the host obtains the credentials itself, and the user's Grok plan and xAI's terms apply to the turns.
 
 ### Custom providers
 
@@ -370,8 +358,6 @@ This is the pf CLI's interface compiled to WebAssembly. Your page supplies stora
 | `libpf/browser` | The browser build, plus `createPfTerminal` and `xtermAdapter` |
 | `libpf/wasm` | The WebAssembly SDK without packaged asset paths, so you pass `wasm` yourself |
 | `libpf/durable-local`, `libpf/durable-vercel`, `libpf/durable-world` | `local()`, `vercel()` and `world()` |
-| `libpf/chatgpt` | `startSignIn`, `finishSignIn`, `startDeviceSignIn`, `pollDeviceSignIn`, `completeDeviceSignIn`, `refreshCredentials` |
-| `libpf/grok` | `startSignIn`, `finishSignIn`, `startDeviceSignIn`, `pollDeviceSignIn`, `completeDeviceSignIn`, `refreshCredentials` |
 | `libpf/mcp` | `createMcpAdapter` |
 | `libpf/skills`, `libpf/skills/node` | `createSkillsAdapter`, and `loadSkillFile` for Node.js and Bun |
 
