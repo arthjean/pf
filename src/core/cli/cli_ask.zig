@@ -1367,14 +1367,15 @@ const AskContext = struct {
             tc.mcp_tool_schema = mcpToolSchemaJson;
             tc.mcp_snapshot_tool = mcpSnapshotTool;
             tc.mcp_call_feature = mcpCallFeature;
-            if (self.mcp_elicitation_capabilities.any()) {
-                tc.mcp_input_responder = .{
-                    .context = @ptrCast(self),
-                    .capabilities = self.mcp_elicitation_capabilities,
-                    .legacy_url_manual_completion = true,
-                    .callback = respondToAskMcpInput,
-                };
-            }
+        }
+        // Either engine: on a terminal, a server's question is put to the user.
+        if ((self.mcp_host != null or self.mcp != null) and self.mcp_elicitation_capabilities.any()) {
+            tc.mcp_input_responder = .{
+                .context = @ptrCast(self),
+                .capabilities = self.mcp_elicitation_capabilities,
+                .legacy_url_manual_completion = true,
+                .callback = respondToAskMcpInput,
+            };
         }
         return tc;
     }
@@ -3954,7 +3955,7 @@ fn reportUnapprovedMcpServers(ctx: *AskContext, h: *mcp_host.Host) !void {
         try ctx.writeStderr(s.name);
         listed = true;
     }
-    if (listed) try ctx.writeStderr(". Approve with pf mcp trust approve <name> before retrying.\n");
+    if (listed) try ctx.writeStderr(". Approve with pf mcp approve <name> before retrying.\n");
 }
 
 fn activateAskMcp(ctx: *AskContext) anyerror!*mcp_runtime.McpRuntime {

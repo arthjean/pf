@@ -16,6 +16,7 @@ pub const Options = runtime_mod.Options;
 pub const Catalog = model.Catalog;
 pub const Notify = runtime_mod.Notify;
 pub const Notice = runtime_mod.Notice;
+pub const Status = runtime_mod.Status;
 pub const selected = runtime_mod.selected;
 pub const refusesOnWindows = runtime_mod.refusesOnWindows;
 pub const windows_refusal_message = runtime_mod.windows_refusal_message;
