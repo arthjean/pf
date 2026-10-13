@@ -74,6 +74,8 @@ PROTECTED = [
     # Attribution that names fx on purpose.
     r"\[fx\](?=\(https://github\.com/vercel-labs/fx\))",
     r"the fx Slack app",
+    r"fx's Slack app",
+    r"fx\.sh's",
     r"fx Client ID",
     # Repository names parsed from those fixtures.
     r"\"fx\", [A-Za-z_.?]*repo_name\)",
@@ -119,11 +121,15 @@ RULES = [(re.compile(p), r) for p, r in RULES]
 # Internal fx spellings that `check` accepts: binary format magics, test
 # labels, and temp prefixes.
 ALLOWED = [
-    r"FX(?:CP|RPLY\d+|REL[HP]\d+|TE|TH|TP)\b",
+    r"FX(?:CP|RPLY\d+|REL[HP]\d+|SN|TE|TH|TP)\b",
     r"FX\d\d",
     r"FXC-?\d*",
     r"\bAFX\b",
     r"FXWASMLIVE",
+    # FxXtermLike renames to PfXtermLike, whose "fX" is not the name.
+    r"PfXterm",
+    # Base64 kernel checkpoints in libpf fixtures.
+    r"\"checkpoint\": \"[A-Za-z0-9+/]{16,}={0,2}\"",
     r"RIFFxxxx",
     r"fxc\d+",
     r"fxop:",
@@ -145,8 +151,10 @@ def mask(line, keep):
         keep.append(match.group(0))
         return f"\0{len(keep) - 1}\0"
 
+    # Test for Slack before masking, which can hide the word.
+    slack = SLACK_LINE_RE.search(line)
     line = PROTECTED_RE.sub(stash, line)
-    if SLACK_LINE_RE.search(line):
+    if slack:
         line = FX_SH_RE.sub(stash, line)
     return line
 
@@ -293,7 +301,8 @@ def cmd_port(args):
             if current is None:
                 continue
             if current == expected:
-                git("rm", "--quiet", str(dest.relative_to(ROOT)))
+                # An earlier port in the same worktree may have staged this file.
+                git("rm", "--quiet", "--force", str(dest.relative_to(ROOT)))
                 print(f"delete {dest.relative_to(ROOT)}")
             else:
                 conflicts.append(f"{dest.relative_to(ROOT)}: deleted upstream but changed in pf")
