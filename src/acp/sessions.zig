@@ -31,6 +31,7 @@ const project_config = @import("../core/mcp/project_config.zig");
 const builtin_mcp = @import("../builtins/mcp.zig");
 const workspace_config = @import("../core/mcp/workspace_config.zig");
 const config_runtime = @import("../core/config/config_runtime.zig");
+const permissions = @import("../core/permissions/permissions.zig");
 const model_catalog = @import("../core/gateway/model_catalog.zig");
 const model_capabilities = @import("../core/config/model_capabilities.zig");
 const provider_set = @import("../core/gateway/provider_set.zig");
@@ -71,11 +72,12 @@ pub fn handleNewLibpfSession(
     var session_rt_owned = true;
     defer if (session_rt_owned) session_rt.deinit(alloc);
 
+    const start = server.loadStartingMode(state, alloc);
     state.active_session = .{
         .session_id = session_id,
         .model = model,
         .provider = state.provider,
-        .mode = state.cfg.mode_registry.default_mode_id,
+        .mode = start.id,
         .workspace_root = state.workspace_root,
         .api_key = state.api_key,
         .credential_source = state.credential_source,
@@ -86,7 +88,7 @@ pub fn handleNewLibpfSession(
         .ultrafast_mode = state.ultrafast_mode,
         .effort = state.effort,
         .first_call_tool_choice = state.first_call_tool_choice,
-        .permission_mode = state.permission_mode,
+        .permission_mode = start.permission_mode,
         .permission_rules = state.permission_rules,
         .session_rt = session_rt,
         .cancel_flag = std.atomic.Value(bool).init(false),
@@ -124,13 +126,14 @@ pub fn handleNewWasmSession(state: *server.ServerState, alloc: Allocator, msg: *
     var revision_owned = true;
     defer if (revision_owned) alloc.free(revision);
 
+    const start = server.loadStartingMode(state, alloc);
     state.active_session = .{
         .session_id = session_id,
         .wasm_state = durable,
         .wasm_revision = revision,
         .model = model,
         .provider = durable.preferences.provider,
-        .mode = state.cfg.mode_registry.default_mode_id,
+        .mode = start.id,
         .workspace_root = state.workspace_root,
         .api_key = state.api_key,
         .credential_source = state.credential_source,
@@ -142,7 +145,7 @@ pub fn handleNewWasmSession(state: *server.ServerState, alloc: Allocator, msg: *
         .ultrafast_mode = state.ultrafast_mode,
         .effort = state.effort,
         .first_call_tool_choice = state.first_call_tool_choice,
-        .permission_mode = state.permission_mode,
+        .permission_mode = start.permission_mode,
         .permission_rules = state.permission_rules,
         .session_rt = session_rt,
         .cancel_flag = std.atomic.Value(bool).init(false),
@@ -601,7 +604,7 @@ fn writeNewSessionResponse(
     try writeModeConfigOption(
         &out.writer,
         state.cfg.mode_registry,
-        state.cfg.mode_registry.default_mode_id,
+        state.active_session.?.mode,
     );
     if (effortConfigState(state)) |config| {
         try out.writer.writeAll(",");
@@ -616,7 +619,7 @@ fn writeNewSessionResponse(
         try writeUltrafastConfigOption(&out.writer, current);
     }
     try out.writer.writeAll("],\"modes\":{\"currentModeId\":");
-    try writeJsonStr(state.cfg.mode_registry.default_mode_id, &out.writer);
+    try writeJsonStr(state.active_session.?.mode, &out.writer);
     try out.writer.writeAll(",\"availableModes\":");
     try writeModesArray(&out.writer, state.cfg.mode_registry);
     try out.writer.writeAll("}}");
@@ -679,13 +682,14 @@ pub fn handleLoadWasmSession(state: *server.ServerState, alloc: Allocator, msg: 
     if (loaded.state.usage) |usage| try session_rt.usage.restore(alloc, usage, loaded.state.created_at_ms);
 
     try server.releaseActiveSession(state);
+    const start = server.loadStartingMode(state, alloc);
     state.active_session = .{
         .session_id = sid_copy,
         .wasm_state = loaded.state,
         .wasm_revision = loaded.revision,
         .model = model_copy,
         .provider = loaded.state.preferences.provider,
-        .mode = state.cfg.mode_registry.default_mode_id,
+        .mode = start.id,
         .workspace_root = state.workspace_root,
         .api_key = state.api_key,
         .credential_source = state.credential_source,
@@ -697,7 +701,7 @@ pub fn handleLoadWasmSession(state: *server.ServerState, alloc: Allocator, msg: 
         .ultrafast_mode = restoredUltrafastMode(state, loaded.state.preferences.ultrafast_mode),
         .effort = loaded.state.preferences.effort,
         .first_call_tool_choice = state.first_call_tool_choice,
-        .permission_mode = state.permission_mode,
+        .permission_mode = start.permission_mode,
         .permission_rules = state.permission_rules,
         .session_rt = session_rt,
         .cancel_flag = std.atomic.Value(bool).init(false),
@@ -866,11 +870,9 @@ fn handleRestoreSession(
             const previous_mcp = active.mcp;
             active.mcp = session_mcp;
             session_mcp_owned = false;
-            server.applySessionMode(
-                state.cfg.mode_registry,
-                active,
-                state.cfg.mode_registry.default_mode_id,
-            );
+            const start = server.loadStartingMode(state, alloc);
+            active.mode = start.id;
+            active.permission_mode = start.permission_mode;
             state.subagent_authority_mutex.unlock(io_mod.getIo());
             if (previous_mcp) |runtime| {
                 runtime.retireAndWait();
@@ -1265,7 +1267,7 @@ fn writeLoadSessionResponse(
     try writeModeConfigOption(
         &out.writer,
         state.cfg.mode_registry,
-        state.cfg.mode_registry.default_mode_id,
+        state.active_session.?.mode,
     );
     if (effortConfigState(state)) |config| {
         try out.writer.writeAll(",");
@@ -1280,7 +1282,7 @@ fn writeLoadSessionResponse(
         try writeUltrafastConfigOption(&out.writer, current);
     }
     try out.writer.writeAll("],\"modes\":{\"currentModeId\":");
-    try writeJsonStr(state.cfg.mode_registry.default_mode_id, &out.writer);
+    try writeJsonStr(state.active_session.?.mode, &out.writer);
     try out.writer.writeAll(",\"availableModes\":");
     try writeModesArray(&out.writer, state.cfg.mode_registry);
     try out.writer.writeAll("}}");
@@ -1459,6 +1461,7 @@ fn activateSession(
     const client_system_prompt: []u8 = activation.client_system_prompt orelse &.{};
     if (activation.workspace) |binding| try workspace_binding.commit(state, binding);
     if (activation.credential) |credential| server.adoptServerCredential(state, credential);
+    const start = server.loadStartingMode(state, state.alloc);
     // Nothing after this load can fail before the session takes ownership.
     const files: SavedFiles = if (restored_writable) |*writable| .{ .v1 = writable } else .{ .v2 = activation.v2.? };
     const tool_identities = try restoredToolIdentities(state.alloc, files);
@@ -1471,7 +1474,7 @@ fn activateSession(
         .tool_identities = tool_identities,
         .model = activation.model,
         .provider = activation.provider,
-        .mode = state.cfg.mode_registry.default_mode_id,
+        .mode = start.id,
         .workspace_root = state.workspace_root,
         .api_key = state.api_key,
         .credential_source = state.credential_source,
@@ -1483,7 +1486,7 @@ fn activateSession(
         .ultrafast_mode = activation.ultrafast_mode,
         .effort = activation.effort,
         .first_call_tool_choice = state.first_call_tool_choice,
-        .permission_mode = state.permission_mode,
+        .permission_mode = start.permission_mode,
         .permission_rules = state.permission_rules,
         .session_rt = activation.session_rt,
         .mcp = activation.mcp,
@@ -2341,9 +2344,10 @@ pub fn writeModeConfigOption(
         try writeJsonStr(mode.name, w);
         try w.writeAll(",\"description\":");
         try writeJsonStr(mode.description, w);
-        try w.writeAll(",\"permissionMode\":");
-        try writeJsonStr(@tagName(mode.permission_mode), w);
-        try w.writeAll("}");
+        // ACP leaves extra value fields to `_meta`.
+        try w.writeAll(",\"_meta\":{\"pf\":{\"permissionMode\":");
+        try writeJsonStr(permissions.permissionModeLabel(mode.permission_mode), w);
+        try w.writeAll("}}}");
     }
     try w.writeAll("]}");
 }
@@ -2948,6 +2952,34 @@ fn stableAcpSessionTestEnviron() !*const std.process.Environ.Map {
     return map;
 }
 
+test "ACP mode choice is saved under USERPROFILE when Windows has no HOME" {
+    const alloc = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const profile = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
+    defer alloc.free(profile);
+
+    const previous = io_mod.environMap();
+    defer if (previous) |map| io_mod.setEnvironMap(map) else io_mod.setEnvironBlock(.empty);
+    var environ = std.process.Environ.Map.init(alloc);
+    defer environ.deinit();
+    try environ.put("USERPROFILE", profile);
+    io_mod.setEnvironMap(&environ);
+    io_mod.test_home_dir_os = .windows;
+    defer io_mod.test_home_dir_os = builtin.os.tag;
+    try std.testing.expectEqualStrings(profile, io_mod.homeDir().?);
+
+    var state: server.ServerState = undefined;
+    state.cfg.minimal_kernel = false;
+    state.cfg.home_override = null;
+    server.saveSessionPermissionMode(&state, alloc, .yolo);
+    try std.testing.expectEqual(types.PermissionMode.yolo, state.permission_mode);
+
+    const settings = try tmp.dir.readFileAlloc(io_mod.getIo(), ".pf/settings.json", alloc, .limited(64 * 1024));
+    defer alloc.free(settings);
+    try std.testing.expect(std.mem.find(u8, settings, "\"permission_mode\":\"yolo\"") != null);
+}
+
 const AcpSessionTestHome = struct {
     alloc: Allocator,
     map: std.process.Environ.Map,
@@ -3347,7 +3379,7 @@ test "ACP new and loaded sessions provide a writable subagent host" {
             test_session_mode_registry.default_mode_id,
             new_active.mode,
         );
-        server.applySessionMode(
+        _ = server.applySessionMode(
             state.cfg.mode_registry,
             new_active,
             "review",

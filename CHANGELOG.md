@@ -10,6 +10,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **SDK:** The JavaScript package is `libpf`, with `createPfAgent()` and `createPfTerminal()`, and its error codes use the `LIBPF_` prefix.
 - **ACP session workspace:** `session/new` rejects a `cwd` that is relative, empty, or names a directory that does not exist with JSON-RPC error -32602 instead of creating a session.
 - **Interactive terminals:** Terminals that the shell tool starts with `tty: true` now end when pf exits, on every platform, and a resumed session reports them as ended instead of reattaching them.
+- **ACP permission modes:** ACP session modes are the CLI's permission modes, `auto`, `ask`, and `full-access`, with `auto` as the default; the `code` mode is gone. A session starts in the saved `permission_mode`, choosing a mode with `session/set_mode` or `session/set_config_option` saves it like `/permissions`, and any other mode returns error -32602.
 
 ### New Features
 
@@ -34,10 +35,12 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Shell commands:** On Linux and macOS, pf runs your zsh or bash startup files once per process and restores their result for each command. Run `/shell reload` after changing a file they source; reloading also resets remembered command approvals.
 - **Model details:** `pf models --json` describes each Gateway model with its display `name`, the `efforts` it accepts besides `auto`, and whether it has `fast` and `ultrafast` lanes.
 - **Status effort:** `pf status` and `pf status --json` report the reasoning `effort` a new session in the workspace starts with, after the model.
+- **Status modes:** `pf status --json` reports the permission `mode` a new session in the workspace starts in and lists the `modes` with their `id`, `name`, and `description`.
 
 ### Bug Fixes
 
 - **Tall prompts:** A submitted prompt or steering message taller than the screen stays whole in the terminal scrollback instead of losing its first lines.
+- **Prompts on a full screen:** A prompt submitted when the screen is full appears at once instead of after the next redraw.
 - **Crash recovery on sessions v2:** Text the agent streamed before a tool call survives a crash or a killed process, and is sent once when the session resumes.
 - **Damaged compaction checkpoints:** A compaction checkpoint whose saved counts are out of range no longer stops pf; new records are numbered after the saved ones.
 - **Steering after a cancel:** Steering typed right after a tool result survives a canceled turn and appears exactly once when the session resumes.

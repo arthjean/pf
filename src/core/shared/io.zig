@@ -665,11 +665,15 @@ pub fn getenv(key: []const u8) ?[]const u8 {
 /// prefers `USERPROFILE` to find one profile from every shell. The slice
 /// borrows the process environment.
 pub fn homeDir() ?[]const u8 {
-    if (comptime builtin.os.tag == .windows) {
+    const os_tag = if (comptime builtin.is_test) test_home_dir_os else builtin.os.tag;
+    if (os_tag == .windows) {
         if (nonEmptyEnv("USERPROFILE")) |profile| return profile;
     }
     return getenv("HOME");
 }
+
+/// Lets a test take another platform's branch of `homeDir` on any host.
+pub var test_home_dir_os: if (builtin.is_test) std.Target.Os.Tag else void = if (builtin.is_test) builtin.os.tag else {};
 
 /// Returns the temporary directory: `TEMP`, else `TMP`, else
 /// `GetTempPathW`, on Windows, and `TMPDIR`, else `/tmp`, elsewhere.
