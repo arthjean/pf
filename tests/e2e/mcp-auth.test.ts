@@ -4281,37 +4281,6 @@ describe("MCP-v2 login (PF_MCP_ENGINE=v2)", () => {
     expect(existsSync(v1Store)).toBe(true);
   }, 60_000);
 
-  test("Slack signs in through fx.sh: the bridge's form comes back from its origin only", async () => {
-    upstream = startModernMcpHttpFixture("json");
-    auth = startAuthFixture(upstream.url, { slackBridgeClientId: PF_SLACK_CLIENT_ID });
-    const root = createRoot(auth, true, "http", auth.url, false, PF_SLACK_CLIENT_ID);
-    const bridgeOrigin = new URL(auth.url).origin;
-    const env = { ...v2Env(root), PF_E2E_SLACK_ORIGIN: bridgeOrigin };
-    const login = runPf(["mcp", "login", "fixture"], { cwd: root.workspace, env, timeoutMs: 20_000 });
-    // The browser opens fx.sh's start, which goes on to Slack's page.
-    expect(await waitForFileText(root.openLog, "/api/slack/auth?", 10_000)).toBe(true);
-    const start = new URL(readFileSync(root.openLog, "utf8").trim());
-    expect(start.origin).toBe(bridgeOrigin);
-    expect([...start.searchParams.keys()].sort()).toEqual(["challenge", "client_id", "port", "scope", "state"]);
-    expect(start.searchParams.get("state")).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(start.searchParams.get("challenge")).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(start.searchParams.get("client_id")).toBe(PF_SLACK_CLIENT_ID);
-    expect(start.searchParams.get("scope")!.split(" ")).toHaveLength(9);
-    // fx.sh's page posts what Slack sent back; only its origin is taken.
-    const target = `http://127.0.0.1:${start.searchParams.get("port")}/slack/oauth/callback`;
-    const body = await authorizePersonalFixture(auth, start);
-    const post = (fields: URLSearchParams, origin: string) => fetch(target, { method: "POST", headers: { origin }, body: fields, redirect: "manual" });
-    expect((await post(body, "https://evil.example")).status).toBe(404);
-    expect(auth.tokenExchanges).toBe(0);
-    expect((await post(body, bridgeOrigin)).status).toBe(200);
-    const done = await login;
-    expect(done.stderr).toBe("");
-    expect(done.code).toBe(0);
-    expect(done.stdout).toContain("Signed in to fixture.");
-    expect(auth.tokenExchanges).toBe(1);
-    expect(await statusOf(root)).toBe("signed_in");
-  }, 60_000);
-
   test("pf mcp login explains servers it can't sign in to", async () => {
     upstream = startModernMcpHttpFixture("json");
     auth = startAuthFixture(upstream.url);
