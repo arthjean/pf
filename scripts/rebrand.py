@@ -36,6 +36,8 @@ SKIP_FILES = {
     # PRDs plan pf's divergence from fx and name it on purpose.
     "tasks/prd-fx-sync-0-0-13-status.json",
     "tasks/prd-fx-sync-0-0-13.md",
+    "tasks/prd-fx-sync-bc968ad6-status.json",
+    "tasks/prd-fx-sync-bc968ad6.md",
     "tasks/prd-pf-distribution.md",
     "tasks/prd-windows-native-support.md",
 }
