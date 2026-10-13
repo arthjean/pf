@@ -30,6 +30,10 @@ and has been modified since. Notable modifications:
   provider, so conversation content reaches only the model the user chose.
 - fx's AI Gateway-billed shell-path A/B evaluation
   (`tests/evals/shell-path-ab.test.ts`) is not included.
+- Until Q2 and Q5 of `tasks/prd-fx-sync-bc968ad6.md` are answered, libpf
+  does not include fx's ChatGPT sign-in module (`libpf/chatgpt`), which
+  signs users in with the Codex CLI's OpenAI client, and CI keeps its
+  workflows without the fx changes those questions hold.
 - CI follows fx's Linux gate and its macOS checks that run only when a
   change needs them, and adds a Windows workflow (`windows.yml`) that runs
   the Windows build, unit tests, and E2E subset the same way. The Linux gate

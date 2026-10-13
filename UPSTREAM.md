@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `9b73d5d65eefde798f66e7325a58ba48b61eb17a` |
+| Last ported | `016cdc543148643317c3061c16689f0c25ac8dc3` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -26,6 +26,8 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 |---|---|---|---|---|---|
 | `34f1ed14de47760b44d628ec2d5eb28055b9adf0` | #1062 | The AI Gateway compaction summary fallback to another model family in `src/core/compactor/model.zig`, the unit tests "a failed or empty summary falls back to another family at its lowest reasoning" in `src/core/compactor/model.zig` and "compaction writes the summary with the least reasoning each model accepts" in `src/core/agent/runtime/tests/gateway_flow.zig`, and the retry expectations in `tests/e2e/tui-compaction-activity.test.ts` and `tests/e2e/gateway-stream-lifecycle.test.ts`, which pf rewrites to expect the primary error, and the README sentence on the retry | `9c1cbd1590daf75961e42ea7df94cb7afff76340` | Q3, answered 2026-10-10: keep pf's behavior | permanent |
 | `6bdd49736abd4a85fb6dd60a824e4329784f34c0` | #1137 | The AI Gateway-billed shell-path evaluation `tests/evals/shell-path-ab.test.ts` | `3c65e02f8d4ec0163b4e9bab3c924d21c8d6595f` | Q8, answered 2026-10-10: not ported | permanent |
+| `016cdc543148643317c3061c16689f0c25ac8dc3` | #1209 | The libpf ChatGPT sign-in module: `sdk/chatgpt-sign-in.js`, `sdk/types/chatgpt.d.ts`, the `./chatgpt` export and `files` entry of `sdk/package.json`, its `sdk/scripts/package-libpf.mjs` entry, `sdk/tests/test-chatgpt-sign-in.mjs` and its lines in `sdk/tests/test-node-napi.mjs`, `sdk/tests/test-types.mjs` and `sdk/tests/types/adapters.mts`, and its section of `sdk/README.md` | pending | Q2 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
+| `016cdc543148643317c3061c16689f0c25ac8dc3` | #1209 | The `.github/workflows/ci.yml` lines that run `sdk/tests/test-durable-codex-crash.mjs` | pending | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 

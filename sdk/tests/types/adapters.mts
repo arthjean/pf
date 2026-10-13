@@ -1,16 +1,5 @@
 // The MCP and skills adapters, as the README combines them with an agent.
-import { createPfAgent, type PfChatgptCredentials } from "libpf";
-import {
-  completeDeviceSignIn,
-  finishSignIn,
-  pollDeviceSignIn,
-  refreshCredentials,
-  startDeviceSignIn,
-  startSignIn,
-  type ChatgptDeviceSignIn,
-  type ChatgptSignIn,
-  type ChatgptSignInErrorCode,
-} from "libpf/chatgpt";
+import { createPfAgent } from "libpf";
 import { createMcpAdapter, type McpAdapter, type McpClient } from "libpf/mcp";
 import { createSkillsAdapter, type SkillRecord } from "libpf/skills";
 import { createSkillsAdapter as createSkillsAdapterFromNode, loadSkillFile, type LoadedSkill } from "libpf/skills/node";
@@ -78,20 +67,4 @@ export async function skills(): Promise<void> {
 
   // @ts-expect-error a skill record needs instructions
   createSkillsAdapter([{ name: "review" }]);
-}
-
-// Sign in with ChatGPT on a website: start in one request, finish in another.
-declare const sessionStore: { put(value: ChatgptSignIn): void; take(): ChatgptSignIn };
-export async function chatgptSignIn(pastedAddress: string): Promise<PfChatgptCredentials> {
-  const signIn = await startSignIn();
-  sessionStore.put(signIn);
-  const credentials = await finishSignIn(sessionStore.take(), pastedAddress);
-  // @ts-expect-error finishSignIn() needs the sign-in startSignIn() returned
-  await finishSignIn({ url: signIn.url }, pastedAddress);
-  const device: ChatgptDeviceSignIn = await startDeviceSignIn();
-  const polled: PfChatgptCredentials | null = await pollDeviceSignIn(device);
-  const waited: PfChatgptCredentials = await completeDeviceSignIn(device, { signal: AbortSignal.timeout(900_000) });
-  const code: ChatgptSignInErrorCode = "LIBPF_CHATGPT_SIGN_IN_EXPIRED";
-  void polled; void waited; void code;
-  return refreshCredentials(credentials);
 }
