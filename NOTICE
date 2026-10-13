@@ -44,6 +44,8 @@ and has been modified since. Notable modifications:
   consoles inside the pf process and end with it. On Windows,
   `/shell reload` reports that startup files are not cached instead of
   reloading them. Sessions v2 compiles on Windows but is refused there.
+- MCP-v2 (`PF_MCP_ENGINE=v2`) is refused on Windows, where pf keeps the
+  default MCP engine.
 
 "fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
 where this code comes from.

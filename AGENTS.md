@@ -77,6 +77,8 @@ Key rules:
 
 * `src/acp/` owns the ACP (Agent Client Protocol) JSON-RPC 2.0 server.
 
+* `src/mcp/` is the MCP-v2 engine. `PF_MCP_ENGINE=v2` selects it in place of the default v1 client in `src/core/mcp/` on Linux and macOS; Windows refuses it. Its files import only `std` and each other, and the host passes in `std.Io` and every other service through `src/mcp/host.zig`. pf connects to it through `src/core/mcp_host/`.
+
 ### Adding a Feature
 
 Before implementing, answer in order:
