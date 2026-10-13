@@ -1,0 +1,423 @@
+{
+  "prd": {
+    "file": "tasks/prd-fx-sync-bc968ad6.md",
+    "title": "fx Sync to /home/arthur/dev/fx@bc968ad6 (Zig 0.17, MCP-v2, durable libpf, native indexer)",
+    "created_at": "2026-10-13",
+    "status": "READY"
+  },
+  "epics": [
+    {
+      "id": "EP-001",
+      "title": "Port groundwork",
+      "status": "DONE",
+      "priority": "P0",
+      "stories_total": 2,
+      "stories_done": 2
+    },
+    {
+      "id": "EP-002",
+      "title": "ACP, status, Program Status, and libpf durability (merges 1 to 16)",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 3,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-003",
+      "title": "MCP-v2, libpf providers, gateway robustness, and Release 1 validation on Linux (merges 17 to 29)",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 6,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-004",
+      "title": "Zig 0.17 toolchain, docs, Ctrl+O, and libpf follow-ups (merges 30 to 44)",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 5,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-005",
+      "title": "Native indexer, safe git, relative HOME, usage, and closure (merges 45 to 51)",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 6,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-006",
+      "title": "Windows host validation",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 4,
+      "stories_done": 0
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Record the baseline at 6708560",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [],
+      "started_at": "2026-10-13T15:59:57+02:00",
+      "completed_at": "2026-10-13T16:36:13+02:00",
+      "reviewed_at": "2026-10-13T16:36:13+02:00"
+    },
+    {
+      "id": "US-002",
+      "title": "Extend the rename rules and harden the port tool",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-001"
+      ],
+      "started_at": "2026-10-13T15:59:57+02:00",
+      "completed_at": "2026-10-13T16:36:13+02:00",
+      "reviewed_at": "2026-10-13T16:36:13+02:00"
+    },
+    {
+      "id": "US-003",
+      "title": "Port merges 1 to 9 (Fast mode, status effort, Program Status)",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-002"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-004",
+      "title": "Port merges 10 to 12 (ACP permission modes, status modes)",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-003"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-005",
+      "title": "Port merges 13 to 16 (durable libpf sessions)",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-004"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-006",
+      "title": "Port fx #1206 (MCP-v2) and refuse it on Windows",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-005"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-007",
+      "title": "Port merges 18 and 19 (tool intent, README)",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-006"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-008",
+      "title": "Port merges 20 and 21 (libpf on Codex, MCP-v2 dogfood fixes) with holds",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-007"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-009",
+      "title": "Port merges 22 to 25 (AI_AGENT, libpf credentials, Grok, custom providers)",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-008"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-010",
+      "title": "Port merges 26 to 29 (gateway timers, host statuses, error handling, image budget)",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-009"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-011",
+      "title": "Validate Release 1 on Linux",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-010"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-012",
+      "title": "Port fx #1163 and migrate pf-only code to Zig 0.17",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-011"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-013",
+      "title": "Retire deprecated Zig names in pf code",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P2",
+      "size": "M",
+      "blocked_by": [
+        "US-012"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-014",
+      "title": "Port merges 31 to 35 (docs model, Gateway key masking, README, sdk/README)",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-012"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-015",
+      "title": "Port merges 36 to 38 (Ctrl+O tool rows, CONTRIBUTING, PGSO log)",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-014"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-016",
+      "title": "Port merges 39 to 44 (libpf leases and latency, Ctrl+O anchor, gVisor)",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-015"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-017",
+      "title": "Port fx #1196 (native indexer and safe git)",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-016"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-018",
+      "title": "Make safe git and the indexer correct on Windows",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-017"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-019",
+      "title": "Port fx #1240 (streaming grep, FIFO, relative HOME) with D-HOME",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-017"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-020",
+      "title": "Port merges 47 to 50 (benchmark, traces, CODEOWNERS skip, agent routing)",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-019"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-021",
+      "title": "Resolve fx #1226 (/usage from provider reports) per Q4",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [
+        "US-020"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-022",
+      "title": "Apply Arthur's answers and close the sync",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-021"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-023",
+      "title": "Run the Windows build and test suites and attribute failures",
+      "epic": "EP-006",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-022"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-024",
+      "title": "Exercise Release 1 changes on Windows",
+      "epic": "EP-006",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-023"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-025",
+      "title": "Exercise Release 2 changes on Windows",
+      "epic": "EP-006",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": [
+        "US-023"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-026",
+      "title": "Certify the final commit on Windows and Linux",
+      "epic": "EP-006",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": [
+        "US-024",
+        "US-025"
+      ],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    }
+  ]
+}
