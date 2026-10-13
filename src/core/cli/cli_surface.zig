@@ -18,6 +18,8 @@ const debug_trace = @import("../shared/debug_trace.zig");
 const doctor_runtime = @import("doctor_runtime.zig");
 const gateway_provider = @import("../gateway/gateway_provider.zig");
 const model_catalog = @import("../gateway/model_catalog.zig");
+const model_catalog_metadata = @import("../gateway/model_catalog_metadata.zig");
+const model_capabilities = @import("../config/model_capabilities.zig");
 const provider_set = @import("../gateway/provider_set.zig");
 const execution_process_provider = @import("../execution/process_provider.zig");
 const github_publish = @import("../github/github_publish.zig");
@@ -1535,9 +1537,20 @@ fn runNonInteractiveWithDeps(
             };
             var ids = loaded.ids;
             defer collections.freeStringList(alloc, &ids);
+            var entries = loaded.entries;
+            defer model_catalog.freeModelCatalog(alloc, &entries);
+            const details = try modelDetails(
+                alloc,
+                ids.items,
+                entries.items,
+                available_providers.select(startup.provider),
+                startup.provider,
+            );
+            defer alloc.free(details);
 
             const text = try (output_contracts.ModelListSnapshot{
                 .ids = ids.items,
+                .details = details,
                 .provider = startup.provider,
                 .private_models_hidden = loaded.provenance.access.private_models_may_be_hidden,
                 .public_only_reason = loaded.provenance.access.public_only_reason,
@@ -2221,6 +2234,7 @@ fn statusSnapshotFromStartupWithBuild(
     return .{
         .model = startup.selected_model,
         .model_origin = startup.model_origin.label(),
+        .effort = startup.effort,
         .provider = startup.provider,
         .auth = startup.auth,
         .auth_help = startup.auth.missingHelp(.cli),
@@ -2890,6 +2904,36 @@ fn permissionRulesForSnapshot(alloc: Allocator, active_rules: anytype) !types.Pe
         };
     }
     return .{ .rules = rules };
+}
+
+/// One detail per id when the provider described its models, by the same capability merge a
+/// session uses for its effort and speed options; Ultrafast is a Gateway-only lane. Empty when
+/// there are no entries. Names borrow from `entries`. Caller frees the returned slice.
+fn modelDetails(
+    alloc: Allocator,
+    ids: []const []const u8,
+    entries: []const model_catalog.ModelCatalogEntry,
+    bundle: provider_set.Bundle,
+    provider: model_provider.ProviderId,
+) ![]const output_contracts.ModelDetail {
+    if (entries.len == 0) return &.{};
+    const details = try alloc.alloc(output_contracts.ModelDetail, ids.len);
+    for (ids, details) |id, *detail| {
+        const entry = for (entries) |candidate| {
+            if (std.mem.eql(u8, candidate.id, id)) break candidate;
+        } else null;
+        const capabilities = model_capabilities.mergeCapabilities(
+            bundle.fallbackModelCapabilities(id),
+            if (entry) |found| model_catalog_metadata.fromCatalogEntry(found) else null,
+        );
+        detail.* = .{
+            .name = if (entry) |found| found.name else null,
+            .efforts = capabilities.reasoning_efforts,
+            .fast = capabilities.supports_fast_mode,
+            .ultrafast = provider == .gateway and capabilities.supports_ultrafast_mode,
+        };
+    }
+    return details;
 }
 
 fn catalogFailureDetail(failure: model_catalog.Failure) []const u8 {
@@ -5654,6 +5698,63 @@ test "runIfRequested models passes startup team to fetch seam" {
     );
 }
 
+test "runIfRequested models json describes each model from its catalog entry" {
+    var capture = CaptureOutput.init(std.testing.allocator);
+    defer capture.deinit();
+    var probe = ModelFetchProbe{ .outcome = .described };
+    var cfg = testConfig();
+    cfg.provider_set.gateway.cli_model_catalog = probe.provider();
+
+    var deps = capture.deps();
+    deps.load_startup_state = stubLoadStartupState;
+
+    const result = try runIfRequestedWithDeps(std.testing.allocator, &.{ @constCast("models"), @constCast("--json") }, cfg, deps);
+    try std.testing.expectEqual(RunResult.handled_success, result);
+    try std.testing.expectEqualStrings(
+        "{\"kind\":\"models\",\"count\":1,\"shown_count\":1,\"more_count\":0,\"private_models_hidden\":false," ++
+            "\"ids\":[\"private/blue-hornbill\"],\"models\":[{\"id\":\"private/blue-hornbill\",\"name\":\"Blue Hornbill\"," ++
+            "\"efforts\":[\"low\",\"high\"],\"fast\":true,\"ultrafast\":true}]}\n",
+        capture.stdout.written(),
+    );
+}
+
+test "modelDetails lets the catalog entry decide and keeps Ultrafast to the Gateway" {
+    const Fallback = struct {
+        fn capabilities(_: []const u8) model_capabilities.Capabilities {
+            return .{
+                .supports_fast_mode = true,
+                .reasoning_efforts = .fromSlice(&.{types.ReasoningEffort.literal("medium")}),
+            };
+        }
+    };
+    var bundle = testConfig().provider_set.gateway;
+    bundle.fallback_model_capabilities_fn = Fallback.capabilities;
+    const entries = [_]model_catalog.ModelCatalogEntry{.{
+        .id = @constCast("openai/gpt-6-astra"),
+        .name = @constCast("GPT-6 Astra"),
+        .model_type = @constCast("language"),
+        .supports_ultrafast_mode = true,
+    }};
+    const ids = [_][]const u8{ "openai/gpt-6-astra", "provider/unlisted" };
+
+    const gateway = try modelDetails(std.testing.allocator, &ids, &entries, bundle, .gateway);
+    defer std.testing.allocator.free(gateway);
+    try std.testing.expectEqualStrings("GPT-6 Astra", gateway[0].name.?);
+    try std.testing.expect(gateway[0].ultrafast);
+    try std.testing.expect(!gateway[0].fast);
+    try std.testing.expectEqual(@as(usize, 0), gateway[0].efforts.len);
+    try std.testing.expectEqual(@as(?[]const u8, null), gateway[1].name);
+    try std.testing.expect(gateway[1].fast);
+    try std.testing.expectEqualStrings("medium", gateway[1].efforts.slice()[0].label());
+
+    const codex = try modelDetails(std.testing.allocator, &ids, &entries, bundle, .codex);
+    defer std.testing.allocator.free(codex);
+    try std.testing.expect(!codex[0].ultrafast);
+
+    const undescribed = try modelDetails(std.testing.allocator, &ids, &.{}, bundle, .gateway);
+    try std.testing.expectEqual(@as(usize, 0), undescribed.len);
+}
+
 test "runIfRequested credits renders through the configured provider" {
     var capture = CaptureOutput.init(std.testing.allocator);
     defer capture.deinit();
@@ -5728,7 +5829,7 @@ test "runIfRequested local json success appends exactly one newline" {
     const result = try runIfRequestedWithDeps(std.testing.allocator, &.{ @constCast("status"), @constCast("--json") }, testConfig(), deps);
     try std.testing.expectEqual(RunResult.handled_success, result);
     try std.testing.expectEqualStrings(
-        "{\"kind\":\"status\",\"model\":\"test-model\",\"model_origin\":\"default\",\"update_channel\":\"stable\",\"build_channel\":\"stable\",\"build_revision\":\"\",\"auth\":\"missing\",\"auth_refreshable\":false,\"auth_help\":\"pf needs access to Vercel AI Gateway. Run pf login to sign in, pf setup to use an API key, or set AI_GATEWAY_API_KEY.\",\"permission_mode\":\"auto\",\"workspace\":\"/tmp/pf\",\"history_turns\":0,\"session_permission_grants\":0,\"agent_step_limit\":42,\"ultrafast_requested\":false,\"mcp\":{\"connection_check\":\"not_checked\",\"servers\":[],\"configuration_issues\":[],\"inspection_error\":null}}\n",
+        "{\"kind\":\"status\",\"model\":\"test-model\",\"model_origin\":\"default\",\"effort\":\"auto\",\"update_channel\":\"stable\",\"build_channel\":\"stable\",\"build_revision\":\"\",\"auth\":\"missing\",\"auth_refreshable\":false,\"auth_help\":\"pf needs access to Vercel AI Gateway. Run pf login to sign in, pf setup to use an API key, or set AI_GATEWAY_API_KEY.\",\"permission_mode\":\"auto\",\"workspace\":\"/tmp/pf\",\"history_turns\":0,\"session_permission_grants\":0,\"agent_step_limit\":42,\"ultrafast_requested\":false,\"mcp\":{\"connection_check\":\"not_checked\",\"servers\":[],\"configuration_issues\":[],\"inspection_error\":null}}\n",
         capture.stdout.written(),
     );
     try std.testing.expect(!std.mem.endsWith(u8, capture.stdout.written(), "\n\n"));
@@ -5818,7 +5919,7 @@ test "writeRenderedJsonLine falls back to heap and appends exactly one newline" 
     );
 
     try std.testing.expectEqualStrings(
-        "{\"kind\":\"status\",\"model\":\"test-model\",\"model_origin\":\"default\",\"update_channel\":\"stable\",\"build_channel\":\"stable\",\"build_revision\":\"\",\"auth\":\"missing\",\"auth_refreshable\":false,\"auth_help\":\"pf needs access to Vercel AI Gateway. Run pf login to sign in, pf setup to use an API key, or set AI_GATEWAY_API_KEY.\",\"permission_mode\":\"ask\",\"workspace\":\"/tmp/pf\",\"history_turns\":0,\"session_permission_grants\":0,\"agent_step_limit\":42,\"ultrafast_requested\":true}\n",
+        "{\"kind\":\"status\",\"model\":\"test-model\",\"model_origin\":\"default\",\"effort\":\"auto\",\"update_channel\":\"stable\",\"build_channel\":\"stable\",\"build_revision\":\"\",\"auth\":\"missing\",\"auth_refreshable\":false,\"auth_help\":\"pf needs access to Vercel AI Gateway. Run pf login to sign in, pf setup to use an API key, or set AI_GATEWAY_API_KEY.\",\"permission_mode\":\"ask\",\"workspace\":\"/tmp/pf\",\"history_turns\":0,\"session_permission_grants\":0,\"agent_step_limit\":42,\"ultrafast_requested\":true}\n",
         capture.stdout.written(),
     );
 }
@@ -6170,12 +6271,34 @@ fn failingStartupState(
 const ModelFetchProbe = struct {
     const Outcome = enum {
         success,
+        /// Succeeds with the catalog entry behind the id, as the Gateway does.
+        described,
         failure,
         cancelled,
     };
 
     called: bool = false,
     outcome: Outcome = .success,
+
+    fn describedEntry(alloc: Allocator) !model_catalog.ModelCatalogEntry {
+        const id = try alloc.dupe(u8, "private/blue-hornbill");
+        errdefer alloc.free(id);
+        const name = try alloc.dupe(u8, "Blue Hornbill");
+        errdefer alloc.free(name);
+        const model_type = try alloc.dupe(u8, "language");
+        errdefer alloc.free(model_type);
+        var efforts: std.ArrayList(types.ReasoningEffort) = .empty;
+        errdefer efforts.deinit(alloc);
+        try efforts.appendSlice(alloc, &.{ types.ReasoningEffort.literal("low"), types.ReasoningEffort.literal("high") });
+        return .{
+            .id = id,
+            .name = name,
+            .model_type = model_type,
+            .reasoning_efforts = efforts,
+            .supports_fast_mode = true,
+            .supports_ultrafast_mode = true,
+        };
+    }
 
     fn provider(self: *ModelFetchProbe) gateway_provider.CliModelCatalogProvider {
         return .{
@@ -6214,7 +6337,7 @@ const ModelFetchProbe = struct {
         switch (self.outcome) {
             .failure => return failure(input, .runtime),
             .cancelled => return failure(input, .cancellation),
-            .success => {},
+            .success, .described => {},
         }
 
         var ids: std.ArrayList([]u8) = .empty;
@@ -6225,8 +6348,21 @@ const ModelFetchProbe = struct {
             alloc.free(id);
             return failure(input, .resource_exhausted);
         };
+        var entries: std.ArrayList(model_catalog.ModelCatalogEntry) = .empty;
+        if (self.outcome == .described) {
+            const entry = describedEntry(alloc) catch {
+                collections.freeStringList(alloc, &ids);
+                return failure(input, .resource_exhausted);
+            };
+            entries.append(alloc, entry) catch {
+                model_catalog.freeModelCatalogEntry(alloc, entry);
+                collections.freeStringList(alloc, &ids);
+                return failure(input, .resource_exhausted);
+            };
+        }
         return .{ .loaded = .{
             .ids = ids,
+            .entries = entries,
             .provenance = .{ .access = .init(input.access) },
         } };
     }

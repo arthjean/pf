@@ -46,6 +46,8 @@ Inside the shell, run `/help` to browse interactive commands.
 In tmux, use your usual prefix bindings to switch sessions or enter copy mode.
 pf preserves those tmux views while resizing, including when the switcher zooms a split pane.
 
+The interactive shell reports its state with the [Program Status Protocol (OSC 7501)](https://www.superlogical.com/rex/docs/build/program-status), so a terminal that supports it can show when pf is working, waiting for your approval or answer, done, or stopped by an error. Approval and question reports include the request or question text. When pf exits or is suspended, it clears the terminal's status records. Terminals without support ignore the reports.
+
 ## Images
 
 Paste an image, attach one with `pf ask --image PATH`, or ask pf to `read_file` a PNG, JPEG, GIF, or WebP. File-backed attachments retain the original image. Before each model request, it checks the complete image count and sends only images that fit: at most 8000 pixels per side with 20 or fewer images, or 2000 pixels per side with more than 20. The encoded per-image limit is 5 MiB.
@@ -103,7 +105,7 @@ Use `/ultrafast on`, `/ultrafast off`, or `/ultrafast status` in the shell. The 
 
 Ultra mode is available only through the Vercel AI Gateway's OpenAI service tier. Gateway metadata currently marks Astra eligible. pf does not select Ultra automatically, and switching models clears an existing Ultra request. Subagents inherit the parent turn's request; an explicit parent disable and capability checks override an existing child preference. Background side calls, including titles, reviews, and compaction, do not use Ultra mode.
 
-ACP clients get the same per-session choice as the shell. The config options from `session/new`, `session/load`, `session/resume`, and `session/set_config_option` include `fast` only for models with a Fast lane and `ultrafast` only for Ultra-eligible models, each with the values `false` and `true`. Turning one on turns the other off, enabling a lane the model lacks returns an error, and switching models turns off a lane the new model lacks. The choice is saved with the session. An unknown config option id returns an error.
+ACP clients get the same per-session choice as the shell. The config options from `session/new`, `session/load`, `session/resume`, and `session/set_config_option` include `fast` only for models with a Fast lane and `ultrafast` only for Ultra-eligible models, each with the values `false` and `true`. Turning one on turns the other off, enabling a lane the model lacks returns an error, and switching models turns off a lane the new model lacks. The choice is saved with the session. An unknown config option id returns an error. To show these choices before a session exists, `pf models --json` describes each Gateway model by the same rules: its display `name`, the `efforts` it accepts besides `auto`, and whether it has `fast` and `ultrafast` lanes. `pf status --json` run in the workspace reports the `model` and `effort` a new session there starts with.
 
 ## Gateway provider routing
 

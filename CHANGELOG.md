@@ -18,6 +18,8 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **ACP embedding:** ACP clients can steer a running turn with `_meta.pf.steer`, supply a session system prompt, keep their MCP tools loaded on every turn, serve MCP servers over the ACP connection, and choose each session's workspace with `cwd`.
 - **Compaction threshold:** Set `auto_compact_percent` in `~/.pf/settings.json` to any value from 10 to 80, or `PF_AUTO_COMPACT_PERCENT` for a single launch, to choose how full the model's context gets before automatic compaction starts. The default stays 80.
 - **Ultrafast mode:** With `--ultrafast`, `PF_ULTRAFAST=1`, `/ultrafast on`, or `"ultrafast_mode": true` in `~/.pf/settings.json`, pf requests OpenAI's higher-cost Ultrafast service tier on Vercel AI Gateway for a model that supports it. It is off by default, `/status` and `pf status --json` report the request, and pf tells you when Gateway does not confirm that it served the tier.
+- **ACP Fast mode:** ACP sessions offer a `fast` config option for models with a Fast lane, next to `ultrafast`. Turning one on turns the other off, enabling a lane the model lacks or setting an unknown option id returns an error, and the choice is saved with the session.
+- **Program Status reports:** The interactive shell reports whether it is idle, working, waiting for your approval or answer, done, or stopped by an error through the Program Status Protocol (OSC 7501), and clears its reports when it exits or is suspended. Terminals without support ignore them. `pf ask` and `pf acp` do not send them.
 
 ### Improvements
 
@@ -30,9 +32,12 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Faster launch:** The first screen appears before the credential inventory and skill discovery finish; skills finish loading afterward. On macOS, a Vercel login or AI Gateway key stored in the Keychain is read after the first screen too.
 - **Faster exit:** Quitting no longer waits for stdio MCP servers to stop one at a time or for a large usage history to finish loading.
 - **Shell commands:** On Linux and macOS, pf runs your zsh or bash startup files once per process and restores their result for each command. Run `/shell reload` after changing a file they source; reloading also resets remembered command approvals.
+- **Model details:** `pf models --json` describes each Gateway model with its display `name`, the `efforts` it accepts besides `auto`, and whether it has `fast` and `ultrafast` lanes.
+- **Status effort:** `pf status` and `pf status --json` report the reasoning `effort` a new session in the workspace starts with, after the model.
 
 ### Bug Fixes
 
+- **Tall prompts:** A submitted prompt or steering message taller than the screen stays whole in the terminal scrollback instead of losing its first lines.
 - **Crash recovery on sessions v2:** Text the agent streamed before a tool call survives a crash or a killed process, and is sent once when the session resumes.
 - **Damaged compaction checkpoints:** A compaction checkpoint whose saved counts are out of range no longer stops pf; new records are numbered after the saved ones.
 - **Steering after a cancel:** Steering typed right after a tool result survives a canceled turn and appears exactly once when the session resumes.
