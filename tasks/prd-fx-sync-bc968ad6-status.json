@@ -41,7 +41,7 @@
     {
       "id": "EP-005",
       "title": "Native indexer, safe git, relative HOME, usage, and closure (merges 45 to 51)",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "stories_total": 6,
       "stories_done": 0
@@ -282,13 +282,13 @@
       "id": "US-017",
       "title": "Port fx #1196 (native indexer and safe git)",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-016"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T16:30:58+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -296,13 +296,13 @@
       "id": "US-018",
       "title": "Make safe git and the indexer correct on Windows",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-017"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T17:00:48+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -310,13 +310,13 @@
       "id": "US-019",
       "title": "Port fx #1240 (streaming grep, FIFO, relative HOME) with D-HOME",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-017"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T17:29:02+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -324,13 +324,13 @@
       "id": "US-020",
       "title": "Port merges 47 to 50 (benchmark, traces, CODEOWNERS skip, agent routing)",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-019"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T17:43:05+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -338,13 +338,13 @@
       "id": "US-021",
       "title": "Resolve fx #1226 (/usage from provider reports) per Q4",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-020"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T18:12:42+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -352,13 +352,13 @@
       "id": "US-022",
       "title": "Apply Arthur's answers and close the sync",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-021"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T18:33:43+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
