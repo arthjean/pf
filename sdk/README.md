@@ -1,6 +1,6 @@
 # libpf
 
-libpf is the agent from [fx](https://github.com/vercel-labs/fx), the open source coding agent from Vercel Labs, as a JavaScript library. You give it a model, instructions and your own tools, and it runs the conversation: the model loop, streaming, tool calls, retries, steering and images. It's the same Zig engine that runs pf in a terminal, built as a Node.js addon and as WebAssembly.
+libpf is the agent of Paneflow Agent (`pf`), which derives from [fx](https://github.com/vercel-labs/fx), the open source coding agent from Vercel Labs, as a JavaScript library. You give it a model, instructions and your own tools, and it runs the conversation: the model loop, streaming, tool calls, retries, steering and images. It's the same Zig engine that runs pf in a terminal, built as a Node.js addon and as WebAssembly.
 
 The hard part of running an agent on a server is that the server goes away. A function reaches its time limit in the middle of a reply, a deploy replaces the process, or it crashes during a tool call. libpf stores every prompt before it accepts it and every step of a turn as the turn runs, so the next process that picks up the session continues the turn where it stopped. On Vercel, that takes one route and one line of `vercel.json`.
 
@@ -28,7 +28,7 @@ Set `AI_GATEWAY_API_KEY` and run it with Node.js 20 or newer. Model calls go thr
 
 Importing libpf and calling `createPfAgent()` touch no network, files or processes. The engine loads when a session runs its first turn.
 
-The full documentation is at [paneflow.dev/agent/docs/lib](https://paneflow.dev/agent/docs/lib).
+The declarations in `types/` are the exact API.
 
 ## How it fits together
 
@@ -112,6 +112,8 @@ Where sessions live depends on where your code runs. libpf picks for you:
 | Vercel | `vercel()` | Vercel's [Workflow World](https://workflow-sdk.dev/worlds), the store and queue behind Vercel Workflow |
 | Node.js | `local()` | Files in `PF_SESSIONS_DIR`, or in `libpf/sessions` under the system's temporary directory |
 | Browsers | `memory()` | The page's memory |
+
+`local()`, `vercel()` and `world()` run on Vercel Workflow's World packages, `@workflow/world-local` and `@workflow/world-vercel`, which a libpf build bundles from `sdk/durable/`. `vercel()` authenticates with the deployment's OIDC token. Only `memory()` needs no Vercel package.
 
 To choose yourself, pass `durability`:
 
@@ -321,13 +323,39 @@ const agent = createPfAgent({
 
 libpf calls `credentials()` in whichever process runs the turn. It refreshes the credentials shortly before they expire and once after a rejected request, then passes the new ones to `onCredentials` for you to save. Codex doesn't accept requests from web pages, so these turns run on your server.
 
-libpf does not sign users in: the host obtains the ChatGPT credentials itself.
+To sign a user in, use `libpf/chatgpt`:
+
+```js
+import { startSignIn, finishSignIn } from "libpf/chatgpt";
+
+// One request: send the user to signIn.url and keep signIn on the server.
+const signIn = await startSignIn();
+
+// A later request: the user pastes back the address OpenAI opened.
+const credentials = await finishSignIn(signIn, pastedAddress);
+```
+
+After the user signs in, OpenAI opens a page at `localhost:1455` that doesn't load. That's expected: ask the user to copy the page's whole address and paste it back. If their account or ChatGPT workspace allows device code sign-in, `startDeviceSignIn()` returns a short code to enter on OpenAI's site instead, and `pollDeviceSignIn()` or `completeDeviceSignIn()` waits for it. Each step returns plain data, so a later request or function can finish it.
+
+The sign-in uses the same OpenAI client as the Codex CLI, and the user's ChatGPT plan and OpenAI's terms apply to the turns.
 
 ### Grok plans
 
 `provider: "grok"` runs on a user's Grok plan, with the same `credentials` and `onCredentials` callbacks, called with `provider: "grok"`. libpf also checks that refreshed credentials still belong to the same xAI account. These turns run on your server too.
 
-libpf does not sign users in to Grok either: the host obtains the credentials itself, and the user's Grok plan and xAI's terms apply to the turns.
+To sign a user in, use `libpf/grok`. Device code is the simplest:
+
+```js
+import { startDeviceSignIn, completeDeviceSignIn } from "libpf/grok";
+
+// Show device.userCode and a link to device.verificationUrl.
+const device = await startDeviceSignIn();
+
+// Waits until the user enters the code. pollDeviceSignIn() checks once, for a later request.
+const credentials = await completeDeviceSignIn(device);
+```
+
+`startSignIn()` and `finishSignIn()` work as for ChatGPT, except that xAI opens a page at `127.0.0.1`. The sign-in uses the same xAI client as the pf CLI, and the user's Grok plan and xAI's terms apply to the turns.
 
 ### Several servers, one account
 
@@ -460,7 +488,7 @@ const terminal = await createPfTerminal({
 await terminal.interactive;
 ```
 
-This is the pf CLI's interface compiled to WebAssembly. Your page supplies storage for its sessions, settings and sign-in, and can give it a workspace that runs commands. See [Terminal](https://paneflow.dev/agent/docs/lib/terminal).
+This is the pf CLI's interface compiled to WebAssembly. Your page supplies storage for its sessions, settings and sign-in, and can give it a workspace that runs commands.
 
 ## Entry points
 
@@ -470,6 +498,7 @@ This is the pf CLI's interface compiled to WebAssembly. Your page supplies stora
 | `libpf/node`, `libpf/browser` | The same, for Node.js or browsers explicitly |
 | `libpf/wasm` | The WebAssembly SDK without packaged asset paths, so you pass `wasm` yourself |
 | `libpf/durable-local`, `libpf/durable-vercel`, `libpf/durable-world` | `local()`, `vercel()` and `world()` |
+| `libpf/chatgpt`, `libpf/grok` | Sign-in for ChatGPT and Grok plans, and `refreshCredentials` |
 | `libpf/mcp` | `createMcpAdapter` |
 | `libpf/skills`, `libpf/skills/node` | `createSkillsAdapter`, and `loadSkillFile` for Node.js and Bun |
 
@@ -477,7 +506,7 @@ Every entry point ships TypeScript types, and the package has no runtime depende
 
 ## For coding agents
 
-- **Docs as Markdown:** [paneflow.dev/agent/llms.txt](https://paneflow.dev/agent/llms.txt) indexes every page, and each page has a `.md` version, such as `https://paneflow.dev/agent/docs/lib/durability.md`. The declarations in `types/` are the exact API.
+- **API:** the declarations in `types/` are the exact API.
 - **Agents at module scope:** create each agent once at module scope, not per request, and open `agent.session(id)` for each conversation.
 - **Session ids:** take them from `turn.accepted` or `agent.newSessionId()`. On every durability except `memory()`, an id that isn't a Workflow run id throws.
 - **Side effects:** every tool sets `idempotent`. Set it to `true` only on tools that are safe to run twice, and pass `executionId` to services that take an idempotency key.
@@ -485,13 +514,7 @@ Every entry point ships TypeScript types, and the package has no runtime depende
 - **Several agents:** give each durable agent its own `name`, and never rename one that has sessions.
 - **Credentials:** keep keys and ChatGPT or Grok credentials on the server, and the object `startSignIn()` returns too.
 - **Checking a setup:** `getBackendInfo()` reports which backend would load without creating anything or making requests.
-- **Changing libpf:** the source is in the [pf repository](https://github.com/vercel-labs/fx) under `sdk/`. Its `AGENTS.md` files name the tests each change needs.
-
-## Upgrading from 0.0.13
-
-In libpf 0.0.13 and earlier, `createPfAgent()` created the engine. It now creates the durable agent, so rename those calls to `createPfEngine()`. Old code runs against the agent once its tools set `idempotent`, with a few differences: breaking out of a turn's events no longer cancels it, turns have no `cancel()` or `steer()` (the session does), and `persistence` and `sessionId` throw because the durability holds the session.
-
-`libpfApiVersion` is now 3. Every tool given to `createPfAgent()` must set `idempotent`, and a tool's `writes` now defaults to the opposite of `idempotent`, in the engine too, so a tool that isn't marked idempotent runs alone. A journal written by this libpf can't be loaded by an older one, which fails with `PfJournalVersionError`.
+- **Changing libpf:** the source is in this repository under `sdk/`. Its `AGENTS.md` files name the tests each change needs.
 
 ## Security
 
@@ -499,8 +522,8 @@ Your tools, MCP clients and skill loaders have whatever access your code gives t
 
 ## Contributing
 
-libpf is developed in the [pf repository](https://github.com/vercel-labs/fx), under `sdk/`. Bug reports and pull requests are welcome. See [CONTRIBUTING.md](https://github.com/vercel-labs/fx/blob/main/CONTRIBUTING.md) to get started.
+libpf is developed in this repository, under `sdk/`. See [CONTRIBUTING.md](../CONTRIBUTING.md) to get started.
 
 ## License
 
-[Apache-2.0](https://github.com/vercel-labs/fx/blob/main/LICENSE)
+[Apache-2.0](../LICENSE)

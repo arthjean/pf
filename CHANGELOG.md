@@ -26,6 +26,8 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **MCP-v2 fixes:** With `PF_MCP_ENGINE=v2`, Ctrl+C leaves `/mcp`, typing filters its menu, the status line shows the servers' state and any sign-in in progress, servers start in the background once the first screen is up, `"type": "streamable-http"` reads as HTTP on both engines, project stdio servers start in the ACP session's directory, and a login made with the default engine carries over once.
 - **Agent detection:** Every command pf runs, including terminals and PowerShell on Windows, receives `AI_AGENT=pf` in its environment, replacing any inherited value, so development tools can detect pf.
 - **Program Status reports:** The interactive shell reports whether it is idle, working, waiting for your approval or answer, done, or stopped by an error through the Program Status Protocol (OSC 7501), and clears its reports when it exits or is suspended. Terminals without support ignore them. `pf ask` and `pf acp` do not send them.
+- **MCP-v2 Slack:** With `PF_MCP_ENGINE=v2`, `pf mcp add slack` and `/mcp add slack` add Slack's MCP server, and a `mcp.slack.com` server without a client id of its own signs in with the fx Slack app through its bridge on fx.sh, which Vercel operates.
+- **libpf sign-in:** `libpf/chatgpt` and `libpf/grok` sign a user in to their ChatGPT or Grok plan, by device code or by pasting back the address the provider opens, with the same OpenAI and xAI clients as the pf CLI.
 
 ### Improvements
 

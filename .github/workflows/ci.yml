@@ -38,7 +38,7 @@ jobs:
         id: zig
         uses: ./.github/actions/setup-zig
         with:
-          version: "0.16.0"
+          version: "0.17.0"
           cache-key: ci-unit-${{ matrix.optimize }}
 
       - name: Check formatting
@@ -52,6 +52,9 @@ jobs:
 
       - name: Check compactor boundary
         run: ./scripts/check-compactor-boundary.sh
+
+      - name: Check indexer boundary
+        run: ./scripts/check-indexer-boundary.sh
 
       - name: Test CI and release scripts
         run: python3 -m unittest scripts.tests.test_macos_signing scripts.tests.test_signed_macos scripts.tests.test_sign_release_archives scripts.tests.test_publish_release scripts.tests.test_detect_macos_need scripts.tests.test_detect_windows_need -q
@@ -102,7 +105,7 @@ jobs:
         id: zig
         uses: ./.github/actions/setup-zig
         with:
-          version: "0.16.0"
+          version: "0.17.0"
           cache-key: ci-build-ReleaseSafe
 
       # Other runners execute this binary, and their CPUs can differ from this
@@ -139,7 +142,7 @@ jobs:
         id: zig
         uses: ./.github/actions/setup-zig
         with:
-          version: "0.16.0"
+          version: "0.17.0"
           cache-key: ci-sdk-wasm
 
       - name: Build WASM surfaces (ReleaseSmall)
@@ -192,7 +195,7 @@ jobs:
         id: zig
         uses: ./.github/actions/setup-zig
         with:
-          version: "0.16.0"
+          version: "0.17.0"
           cache-key: ci-sdk-napi-${{ matrix.platform }}
 
       - name: Build N-API addon (ReleaseSafe)
@@ -253,6 +256,7 @@ jobs:
         run: |
           node --experimental-wasm-jspi sdk/tests/test-durable.mjs memory wasm
           node --experimental-wasm-jspi sdk/tests/test-durable.mjs local wasm
+          node --experimental-wasm-jspi sdk/tests/test-durable-provider-crash.mjs wasm
 
       - name: Type-check the TypeScript declarations
         run: node sdk/tests/test-types.mjs
@@ -299,9 +303,11 @@ jobs:
           node sdk/tests/test-durable.mjs memory native
           node sdk/tests/test-durable.mjs local native
           node sdk/tests/test-durable.mjs world native
+          node sdk/tests/test-durable-provider-crash.mjs native
           node sdk/tests/test-durable-core.mjs memory
           node sdk/tests/test-durable-core.mjs local
           node sdk/tests/test-durable-core.mjs world
+          node sdk/tests/test-durable-core.mjs queue
 
   sdk-bun:
     name: SDK (Bun + N-API/WASM)
@@ -373,8 +379,12 @@ jobs:
           bun sdk/tests/model/drive.mjs lookup --walks 40 --seed 7
           bun sdk/tests/model/drive.mjs send --walks 20 --seed 3 --durability world
           bun sdk/tests/model/drive.mjs lookup --walks 20 --seed 9 --durability world
+          bun sdk/tests/model/drive.mjs write --walks 20 --seed 4
           bun sdk/tests/model/drive.mjs cutoff --walks 20 --seed 5
           bun sdk/tests/model/drive.mjs leased --walks 40 --seed 12
+          bun sdk/tests/model/drive.mjs queue --walks 40 --seed 4
+          bun sdk/tests/model/drive-agents.mjs send --walks 60 --seed 11
+          bun sdk/tests/model/drive-agents.mjs consume --walks 60 --seed 13
 
       - name: Test libpf on a World
         run: |
@@ -529,7 +539,7 @@ jobs:
         id: zig
         uses: ./.github/actions/setup-zig
         with:
-          version: "0.16.0"
+          version: "0.17.0"
           cache-key: ci-e2e-fixtures
 
       - name: Setup Bun
@@ -632,7 +642,7 @@ jobs:
         id: zig
         uses: ./.github/actions/setup-zig
         with:
-          version: "0.16.0"
+          version: "0.17.0"
           cache-key: ci-mcp-fixtures
 
       - name: Setup Bun
@@ -688,6 +698,7 @@ jobs:
           scripts=(
             benchmarks/startup.sh
             scripts/check-compactor-boundary.sh
+            scripts/check-indexer-boundary.sh
             scripts/check-public-surface.sh
             scripts/detect-macos-need.sh
             scripts/detect-windows-need.sh
@@ -711,7 +722,7 @@ jobs:
         id: zig
         uses: ./.github/actions/setup-zig
         with:
-          version: "0.16.0"
+          version: "0.17.0"
           cache-key: ci-unit-ReleaseSafe
 
       - name: Build
