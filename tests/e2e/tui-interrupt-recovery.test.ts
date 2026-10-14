@@ -871,8 +871,9 @@ while :; do sleep 1; done
       writeFileSync(join(home, ".pf", "settings.json"), "{}");
       // The search must still be running when the second Escape lands, about
       // half a second after it starts. Linux searches 30,000 files in about a
-      // third of a second, so it needs a larger corpus than macOS.
-      const corpusFiles = process.platform === "darwin" ? 30_000 : 120_000;
+      // third of a second, and since the native indexer it finishes 120,000
+      // before that Escape, so it needs a much larger corpus than macOS.
+      const corpusFiles = process.platform === "darwin" ? 30_000 : 400_000;
       for (let index = 0; index < corpusFiles; index += 1) {
         writeFileSync(
           join(corpus, `candidate-${String(index).padStart(6, "0")}.txt`),
