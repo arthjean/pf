@@ -788,6 +788,12 @@ fn windowsMsysUsrBin(alloc: std.mem.Allocator) ![]const u8 {
 /// the Git for Windows `git.exe` that Git Bash puts first on its `PATH`.
 fn windowsDirectArgv(alloc: std.mem.Allocator, usr_bin: []const u8, argv: []const []const u8) ![]const []const u8 {
     const mapped = try alloc.dupe([]const u8, argv);
+    // Safe git already names the selected Git Bash's own `git.exe` by a
+    // drive or UNC path; planned names such as `/usr/bin/git` are MSYS paths.
+    if (isDriveOrUncPath(argv[0])) {
+        if (!std.ascii.eqlIgnoreCase(std.Io.Dir.path.basenameWindows(argv[0]), "git.exe")) return error.DirectExecutableUnavailable;
+        return mapped;
+    }
     const name = std.Io.Dir.path.basenamePosix(argv[0]);
     if (std.mem.eql(u8, name, "git")) {
         const root = std.Io.Dir.path.dirname(std.Io.Dir.path.dirname(usr_bin) orelse usr_bin) orelse usr_bin;
@@ -802,6 +808,41 @@ fn windowsDirectArgv(alloc: std.mem.Allocator, usr_bin: []const u8, argv: []cons
     }
     mapped[0] = try alloc.print("{s}\\{s}.exe", .{ usr_bin, name });
     return mapped;
+}
+
+fn isDriveOrUncPath(path: []const u8) bool {
+    if (path.len >= 3 and std.ascii.isAlphabetic(path[0]) and path[1] == ':' and (path[2] == '\\' or path[2] == '/')) return true;
+    return std.mem.startsWith(u8, path, "\\\\");
+}
+
+test "Windows direct argv keeps safe git's absolute git.exe and maps planned names" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
+    const usr_bin = try std.Io.Dir.path.join(arena, &.{ root, "usr", "bin" });
+
+    const absolute_git = [_][]const u8{ "C:\\Program Files\\Git\\mingw64\\bin\\git.exe", "--no-pager", "status" };
+    const kept = try windowsDirectArgv(arena, usr_bin, &absolute_git);
+    for (absolute_git, kept) |want, have| try std.testing.expectEqualStrings(want, have);
+    try std.testing.expectError(
+        error.DirectExecutableUnavailable,
+        windowsDirectArgv(arena, usr_bin, &.{ "C:\\Windows\\System32\\cmd.exe", "/c" }),
+    );
+    const unc_git = try windowsDirectArgv(arena, usr_bin, &.{ "\\\\server\\Git\\cmd\\git.exe", "log" });
+    try std.testing.expectEqualStrings("\\\\server\\Git\\cmd\\git.exe", unc_git[0]);
+
+    // A planned `/usr/bin/git` maps to the Git Bash root's git.exe.
+    if (comptime builtin.target.os.tag == .windows) try tmp.dir.createDirPath(std.testing.io, "mingw64\\bin");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "mingw64\\bin\\git.exe", .data = "" });
+    const planned_git = try windowsDirectArgv(arena, usr_bin, &.{ "/usr/bin/git", "status" });
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, "mingw64\\bin\\git.exe" }), planned_git[0]);
+    try std.testing.expectEqualStrings("status", planned_git[1]);
+
+    const planned_ls = try windowsDirectArgv(arena, usr_bin, &.{ "/usr/bin/ls", "-a" });
+    try std.testing.expectEqualStrings(try arena.print("{s}\\ls.exe", .{usr_bin}), planned_ls[0]);
 }
 
 fn signalGroup(group_id: ?io_mod.ProcessId, job: DirectJob, force: bool) void {

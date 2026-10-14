@@ -3,6 +3,7 @@
 //! `gitdir:` pointer (linked worktrees and submodules), and `commondir`.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const bounded_read = @import("bounded_read.zig");
 
@@ -34,12 +35,7 @@ pub fn discover(arena: Allocator, start: []const u8) DiscoverError!?Layout {
     var candidate: []const u8 = normalized;
     while (true) {
         if (try layoutAt(arena, candidate)) |found| {
-            const prefix = if (found.worktree_root.len == normalized.len)
-                ""
-            else if (std.mem.eql(u8, found.worktree_root, "/"))
-                normalized[1..]
-            else
-                normalized[found.worktree_root.len + 1 ..];
+            const prefix = try workspacePrefix(arena, found.worktree_root, normalized, builtin.target.os.tag);
             return .{
                 .worktree_root = found.worktree_root,
                 .git_dir = found.git_dir,
@@ -51,6 +47,21 @@ pub fn discover(arena: Allocator, start: []const u8) DiscoverError!?Layout {
         if (std.mem.eql(u8, parent, candidate)) return null;
         candidate = parent;
     }
+}
+
+/// `start` relative to the `worktree_root` that contains it, with `/`
+/// separators on every OS, because git's index and rules use `/`. A root such
+/// as `/` or `C:\` already ends with its separator.
+fn workspacePrefix(arena: Allocator, worktree_root: []const u8, start: []const u8, os_tag: std.Target.Os.Tag) Allocator.Error![]const u8 {
+    if (worktree_root.len == start.len) return "";
+    const windows = os_tag == .windows;
+    const last = worktree_root[worktree_root.len - 1];
+    const rooted = last == '/' or (windows and last == '\\');
+    const rest = start[worktree_root.len + @intFromBool(!rooted) ..];
+    if (!windows) return rest;
+    const prefix = try arena.dupe(u8, rest);
+    std.mem.replaceScalar(u8, prefix, '\\', '/');
+    return prefix;
 }
 
 /// Whether the absolute directory `dir` holds a repository of its own, as
@@ -176,6 +187,19 @@ fn makeTestRepo(dir: std.Io.Dir, git_dir: []const u8) !void {
         defer std.testing.allocator.free(path);
         try dir.createDirPath(std.testing.io, path);
     }
+}
+
+test "workspace prefixes use forward slashes for Windows paths on every OS" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try std.testing.expectEqualStrings("src/core", try workspacePrefix(arena, "C:\\repo", "C:\\repo\\src\\core", .windows));
+    try std.testing.expectEqualStrings("src", try workspacePrefix(arena, "C:\\", "C:\\src", .windows));
+    try std.testing.expectEqualStrings("", try workspacePrefix(arena, "C:\\repo", "C:\\repo", .windows));
+    try std.testing.expectEqualStrings("a/b", try workspacePrefix(arena, "/", "/a/b", .linux));
+    try std.testing.expectEqualStrings("a/b", try workspacePrefix(arena, "/repo", "/repo/a/b", .linux));
+    // On POSIX a backslash is an ordinary file name byte.
+    try std.testing.expectEqualStrings("a\\b", try workspacePrefix(arena, "/repo", "/repo/a\\b", .macos));
 }
 
 test "layout discovery finds the innermost repository and the workspace prefix" {

@@ -52,6 +52,8 @@ and has been modified since. Notable modifications:
   reloading them. Sessions v2 compiles on Windows but is refused there.
 - MCP-v2 (`PF_MCP_ENGINE=v2`) is refused on Windows, where pf keeps the
   default MCP engine.
+- On Windows, `safe_git` runs the git of the Git Bash that pf selected,
+  with the Windows profile variables, instead of a fixed install path.
 
 "fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
 where this code comes from.

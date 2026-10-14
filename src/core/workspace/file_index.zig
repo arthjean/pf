@@ -3724,10 +3724,10 @@ test "snapshot path changes with where git config is located" {
     const alloc = std.testing.allocator;
     const roots = [_][]const u8{"/work"};
     const cases = [_][indexer.config_environment_names.len]?[]const u8{
-        .{ "/home/u", null, null, null, null },
-        .{ "/home/u", "/home/u/.xdg", null, null, null },
-        .{ "/home/u", "/home/u/.other", null, null, null },
-        .{ "/home/u", null, "/home/u/gitconfig", null, null },
+        environmentCase(.{ "/home/u", null, null, null, null }, null),
+        environmentCase(.{ "/home/u", "/home/u/.xdg", null, null, null }, null),
+        environmentCase(.{ "/home/u", "/home/u/.other", null, null, null }, null),
+        environmentCase(.{ "/home/u", null, "/home/u/gitconfig", null, null }, null),
     };
     var paths: [cases.len][]const u8 = undefined;
     for (cases, &paths) |case, *path| path.* = try snapshotPathIn(alloc, "/home/u", &roots, &case);
@@ -3738,4 +3738,21 @@ test "snapshot path changes with where git config is located" {
     defer alloc.free(again);
     try std.testing.expectEqualStrings(paths[1], again);
     try std.testing.expect(std.mem.startsWith(u8, again, "/home/u/.pf/file-index/"));
+
+    // On Windows the profile home also keys the listing.
+    if (indexer.config_environment_names.len > 5) {
+        const with_profile = environmentCase(.{ "/home/u", null, null, null, null }, "C:\\Users\\u");
+        const profile_path = try snapshotPathIn(alloc, "/home/u", &roots, &with_profile);
+        defer alloc.free(profile_path);
+        try std.testing.expect(!std.mem.eql(u8, paths[0], profile_path));
+    }
+}
+
+/// A test value for every config variable: the five shared ones, then the
+/// Windows-only `USERPROFILE` where the list has it.
+fn environmentCase(shared: [5]?[]const u8, user_profile: ?[]const u8) [indexer.config_environment_names.len]?[]const u8 {
+    var values: [indexer.config_environment_names.len]?[]const u8 = @splat(null);
+    values[0..5].* = shared;
+    if (values.len > 5) values[5] = user_profile;
+    return values;
 }

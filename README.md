@@ -214,6 +214,8 @@ pf does not cache shell startup files on Windows: Git Bash reads its login files
 
 Under Git Bash, permission analysis works as on Linux and macOS. pf does not parse PowerShell, so under PowerShell every command needs an exact approval of that command or a configured rule that names it exactly; in `auto` mode, each one goes through the security review. Wildcard allow rules and the automatic approval of routine read-only commands never apply to PowerShell commands.
 
+Workspace file listing for `@`-completion, `glob_files`, and `grep_files` reads git's rules as data on Windows too. It reads your global git config and excludes file, but not the system config of Git for Windows (`<install>\etc\gitconfig`), so an ignore or exclude rule set only there is not applied. The git that pf runs itself, for `pf pr`, `pf issue`, and direct `git status`, `git diff`, and `git log`, is the `git.exe` of the selected Git Bash; when PowerShell is the selected shell, pf does not run git itself.
+
 ### Interactive sessions
 
 Interactive programs that the `shell` tool runs with a terminal, such as REPLs, run in a Windows pseudo console (ConPTY) inside the pf process, under the selected Git Bash or PowerShell. Each session runs inside a Job Object that pf holds, so a session and every process it started end when pf exits or crashes. A later pf run, such as `pf ask --resume last`, reports those sessions as ended. Each session keeps its control files in a private directory under `%USERPROFILE%\.pf`.

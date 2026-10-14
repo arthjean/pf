@@ -10,6 +10,7 @@ const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const indexer = @import("../indexer/indexer.zig");
+const shell_selection = @import("../execution/shell_selection.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -34,7 +35,7 @@ pub const Refusal = enum {
 };
 
 pub const Ready = struct {
-    /// Static path from `trustedExecutable`.
+    /// Path from `trustedExecutable`, static or kept for the process.
     executable: []const u8,
     /// Filter drivers defined by repository-scope config.
     filter_names: []const []const u8,
@@ -120,9 +121,32 @@ fn appendPrelude(arena: Allocator, argv: *std.ArrayList([]const u8), ready: Read
 /// user's own git config. Nothing else from pf's environment, such as
 /// `GIT_DIR` or `GIT_CONFIG_PARAMETERS`, reaches git.
 pub fn environment(alloc: Allocator) Allocator.Error!std.process.Environ.Map {
+    const git_bash_root = if (comptime builtin.target.os.tag == .windows) windowsGit().root else null;
+    return environmentFor(alloc, builtin.target.os.tag, io_mod.getenv, git_bash_root);
+}
+
+/// `environment` for `os_tag`, reading pf's variables through `getenv`. On
+/// Windows, PATH holds only the selected Git Bash's own tool folders, so
+/// `core.fsmonitor=false` runs Git Bash's `false` as `/usr/bin/false` does
+/// on POSIX, and git finds the profile through the Windows home variables
+/// and the system DLLs through `SYSTEMROOT`.
+fn environmentFor(
+    alloc: Allocator,
+    os_tag: std.Target.Os.Tag,
+    getenv: *const fn ([]const u8) ?[]const u8,
+    git_bash_root: ?[]const u8,
+) Allocator.Error!std.process.Environ.Map {
     var map = std.process.Environ.Map.init(alloc);
     errdefer map.deinit();
-    try map.put("PATH", "/usr/bin:/bin");
+    if (os_tag == .windows) {
+        if (git_bash_root) |root| {
+            const path = try alloc.print("{s}\\usr\\bin;{s}\\mingw64\\bin", .{ root, root });
+            defer alloc.free(path);
+            try map.put("PATH", path);
+        }
+    } else {
+        try map.put("PATH", "/usr/bin:/bin");
+    }
     try map.put("LC_ALL", "C");
     try map.put("LANG", "C");
     try map.put("GIT_OPTIONAL_LOCKS", "0");
@@ -130,33 +154,90 @@ pub fn environment(alloc: Allocator) Allocator.Error!std.process.Environ.Map {
     try map.put("GIT_PAGER", "cat");
     try map.put("PAGER", "cat");
     for ([_][]const u8{ "HOME", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM" }) |key| {
-        if (io_mod.getenv(key)) |value| try map.put(key, value);
+        if (getenv(key)) |value| try map.put(key, value);
+    }
+    if (os_tag == .windows) {
+        for ([_][]const u8{ "SYSTEMROOT", "USERPROFILE", "HOMEDRIVE", "HOMEPATH" }) |key| {
+            if (getenv(key)) |value| try map.put(key, value);
+        }
     }
     return map;
 }
 
 /// The first git found at a fixed system location. git from PATH is never
-/// used, because PATH can include directories a repository controls.
+/// used, because PATH can include directories a repository controls. On
+/// Windows it is the git of the Git Bash that pf selected to run commands,
+/// so the direct route and the shell run the same git.
 fn trustedExecutable() ?[]const u8 {
-    const candidates = switch (builtin.target.os.tag) {
-        .windows => &[_][]const u8{
-            "C:\\Program Files\\Git\\cmd\\git.exe",
-            "C:\\Program Files\\Git\\bin\\git.exe",
-        },
-        else => &[_][]const u8{
-            "/usr/bin/git",
-            "/bin/git",
-            "/usr/local/bin/git",
-            "/opt/homebrew/bin/git",
-            "/opt/local/bin/git",
-            "/run/current-system/sw/bin/git",
-        },
+    if (comptime builtin.target.os.tag == .windows) return windowsGit().executable;
+    const candidates = [_][]const u8{
+        "/usr/bin/git",
+        "/bin/git",
+        "/usr/local/bin/git",
+        "/opt/homebrew/bin/git",
+        "/opt/local/bin/git",
+        "/run/current-system/sw/bin/git",
     };
     for (candidates) |candidate| {
-        const stat = std.Io.Dir.cwd().statFile(io_mod.getIo(), candidate, .{ .follow_symlinks = true }) catch continue;
-        if (stat.kind == .file) return candidate;
+        if (isFile(candidate)) return candidate;
     }
     return null;
+}
+
+fn isFile(path: []const u8) bool {
+    const stat = std.Io.Dir.cwd().statFile(io_mod.getIo(), path, .{ .follow_symlinks = true }) catch return false;
+    return stat.kind == .file;
+}
+
+/// The Git for Windows install behind the selected Git Bash. Both fields are
+/// null when Git Bash is not the selected shell.
+const WindowsGit = struct {
+    root: ?[]const u8 = null,
+    executable: ?[]const u8 = null,
+};
+
+var windows_git_lock: std.Io.Mutex = .init;
+var windows_git_arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+var windows_git: ?WindowsGit = null;
+
+/// Resolves the selected Git Bash's git once per process, like the shell
+/// selection it follows. A failed allocation is not cached.
+fn windowsGit() WindowsGit {
+    const io = io_mod.getIo();
+    windows_git_lock.lockUncancelable(io);
+    defer windows_git_lock.unlock(io);
+    if (windows_git) |cached| return cached;
+    const shell = shell_selection.current() catch |err| {
+        if (err != error.OutOfMemory) windows_git = .{};
+        return .{};
+    };
+    const resolved = resolveWindowsGit(windows_git_arena.allocator(), shell, isFile) catch return .{};
+    windows_git = resolved;
+    return resolved;
+}
+
+/// `<root>\mingw64\bin\git.exe`, else `<root>\cmd\git.exe`, under the root of
+/// the Git Bash `shell` names, where `exists` reports a regular file.
+fn resolveWindowsGit(alloc: Allocator, shell: shell_selection.Shell, exists: *const fn ([]const u8) bool) Allocator.Error!WindowsGit {
+    if (shell.dialect != .posix_sh) return .{};
+    const root = gitBashRoot(shell.path) orelse return .{};
+    for ([_][]const u8{ "mingw64\\bin\\git.exe", "cmd\\git.exe" }) |relative| {
+        const candidate = try alloc.print("{s}\\{s}", .{ root, relative });
+        if (exists(candidate)) return .{ .root = root, .executable = candidate };
+        alloc.free(candidate);
+    }
+    return .{ .root = root };
+}
+
+/// The Git for Windows root of `bash_path`, which is `<root>\bin\bash.exe`
+/// or `<root>\usr\bin\bash.exe`.
+fn gitBashRoot(bash_path: []const u8) ?[]const u8 {
+    const bin = std.Io.Dir.path.dirnameWindows(bash_path) orelse return null;
+    const parent = std.Io.Dir.path.dirnameWindows(bin) orelse return null;
+    if (std.ascii.eqlIgnoreCase(std.Io.Dir.path.basenameWindows(parent), "usr")) {
+        return std.Io.Dir.path.dirnameWindows(parent);
+    }
+    return parent;
 }
 
 const VersionCheck = enum { supported, too_old, unknown };
@@ -279,13 +360,77 @@ test "safe git argv turns off repository programs for every subcommand" {
 test "safe git environment keeps only fixed values and user config locations" {
     var env = try environment(std.testing.allocator);
     defer env.deinit();
-    try std.testing.expectEqualStrings("/usr/bin:/bin", env.get("PATH").?);
+    if (comptime builtin.target.os.tag != .windows) try std.testing.expectEqualStrings("/usr/bin:/bin", env.get("PATH").?);
     try std.testing.expectEqualStrings("0", env.get("GIT_OPTIONAL_LOCKS").?);
     try std.testing.expectEqualStrings("0", env.get("GIT_TERMINAL_PROMPT").?);
     try std.testing.expectEqualStrings("cat", env.get("GIT_PAGER").?);
     for ([_][]const u8{ "GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_EXEC_PATH" }) |key| {
         try std.testing.expect(env.get(key) == null);
     }
+}
+
+fn everyVariableSet(_: []const u8) ?[]const u8 {
+    return "set";
+}
+
+fn expectKeys(env: *const std.process.Environ.Map, expected: []const []const u8) !void {
+    try std.testing.expectEqual(expected.len, env.count());
+    for (expected) |key| try std.testing.expect(env.get(key) != null);
+}
+
+test "safe git environment holds exactly its keys on Linux and on Windows" {
+    const shared = [_][]const u8{
+        "PATH",               "LC_ALL",              "LANG",
+        "GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT", "GIT_PAGER",
+        "PAGER",              "HOME",                "XDG_CONFIG_HOME",
+        "GIT_CONFIG_GLOBAL",  "GIT_CONFIG_SYSTEM",   "GIT_CONFIG_NOSYSTEM",
+    };
+    var linux = try environmentFor(std.testing.allocator, .linux, everyVariableSet, null);
+    defer linux.deinit();
+    try expectKeys(&linux, &shared);
+    try std.testing.expectEqualStrings("/usr/bin:/bin", linux.get("PATH").?);
+
+    var windows = try environmentFor(std.testing.allocator, .windows, everyVariableSet, "C:\\Program Files\\Git");
+    defer windows.deinit();
+    try expectKeys(&windows, &(shared ++ [_][]const u8{ "SYSTEMROOT", "USERPROFILE", "HOMEDRIVE", "HOMEPATH" }));
+    try std.testing.expectEqualStrings(
+        "C:\\Program Files\\Git\\usr\\bin;C:\\Program Files\\Git\\mingw64\\bin",
+        windows.get("PATH").?,
+    );
+
+    // Without a selected Git Bash, git cannot run, and no PATH is offered.
+    var no_bash = try environmentFor(std.testing.allocator, .windows, everyVariableSet, null);
+    defer no_bash.deinit();
+    try std.testing.expect(no_bash.get("PATH") == null);
+}
+
+fn fakeGitFiles(path: []const u8) bool {
+    for ([_][]const u8{ "C:\\Program Files\\Git\\mingw64\\bin\\git.exe", "D:\\Git\\cmd\\git.exe" }) |file| {
+        if (std.mem.eql(u8, path, file)) return true;
+    }
+    return false;
+}
+
+test "Windows safe git uses the selected Git Bash's git and nothing else" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const bin_bash = try resolveWindowsGit(arena, .{ .dialect = .posix_sh, .path = "C:\\Program Files\\Git\\bin\\bash.exe", .reason = .program_files }, fakeGitFiles);
+    try std.testing.expectEqualStrings("C:\\Program Files\\Git", bin_bash.root.?);
+    try std.testing.expectEqualStrings("C:\\Program Files\\Git\\mingw64\\bin\\git.exe", bin_bash.executable.?);
+
+    // `PF_GIT_BASH_PATH` may name the MSYS bash; only `cmd\git.exe` exists here.
+    const usr_bash = try resolveWindowsGit(arena, .{ .dialect = .posix_sh, .path = "D:\\Git\\usr\\bin\\bash.exe", .reason = .git_bash_path_env }, fakeGitFiles);
+    try std.testing.expectEqualStrings("D:\\Git", usr_bash.root.?);
+    try std.testing.expectEqualStrings("D:\\Git\\cmd\\git.exe", usr_bash.executable.?);
+
+    const no_git = try resolveWindowsGit(arena, .{ .dialect = .posix_sh, .path = "E:\\Tools\\bin\\bash.exe", .reason = .git_bash_path_env }, fakeGitFiles);
+    try std.testing.expectEqualStrings("E:\\Tools", no_git.root.?);
+    try std.testing.expect(no_git.executable == null);
+
+    const powershell = try resolveWindowsGit(arena, .{ .dialect = .powershell, .path = "C:\\Program Files\\PowerShell\\7\\pwsh.exe", .reason = .pwsh_on_path }, fakeGitFiles);
+    try std.testing.expect(powershell.root == null and powershell.executable == null);
 }
 
 /// A real repository with a sentinel program that appends to a log whenever

@@ -79,6 +79,16 @@ fn clampNs(value: anytype) i64 {
     return std.math.cast(i64, value) orelse if (value < 0) std.math.minInt(i64) else std.math.maxInt(i64);
 }
 
+/// The 64 bits of a file id. Windows reports the NTFS file id as a signed
+/// `LARGE_INTEGER`, which `@intCast` would reject in safe builds once its
+/// high bit is set, so a signed id keeps its bits instead.
+pub fn inodeBits(inode: anytype) u64 {
+    return switch (@typeInfo(@TypeOf(inode)).int.signedness) {
+        .signed => @bitCast(@as(i64, inode)),
+        .unsigned => @intCast(inode),
+    };
+}
+
 fn reusableTimes(mtime_ns: i64, ctime_ns: i64, scan_started_ns: i64) bool {
     const limit = scan_started_ns -| granularity_margin_ns;
     return mtime_ns < limit and ctime_ns < limit;
@@ -89,7 +99,7 @@ pub fn folderStamp(rel: []const u8, stat: std.Io.File.Stat, scan_started_ns: i64
     const ctime = clampNs(stat.ctime.nanoseconds);
     return .{
         .rel = rel,
-        .inode = @intCast(stat.inode),
+        .inode = inodeBits(stat.inode),
         .mtime_ns = mtime,
         .ctime_ns = ctime,
         .reusable = reusableTimes(mtime, ctime, scan_started_ns),
@@ -110,7 +120,7 @@ pub fn sourceStamp(path: []const u8, identity_only: bool, follow_symlinks: bool,
         .path = path,
         .exists = true,
         .identity_only = identity,
-        .inode = @intCast(stat.inode),
+        .inode = inodeBits(stat.inode),
         .size = if (identity) 0 else stat.size,
         .mtime_ns = if (identity) 0 else mtime,
         .ctime_ns = if (identity) 0 else ctime,
@@ -140,7 +150,7 @@ pub fn isCurrent(tree: *const Tree, root: []const u8, skipped_names: []const []c
     var root_dir = std.Io.Dir.openDirAbsolute(io, root, .{}) catch return false;
     defer root_dir.close(io);
     const root_stat = root_dir.stat(io) catch return false;
-    if (@as(u64, @intCast(root_stat.inode)) != tree.root_inode) return false;
+    if (inodeBits(root_stat.inode) != tree.root_inode) return false;
 
     for (tree.sources) |source| {
         if (!source.reusable) return false;
@@ -178,6 +188,13 @@ test "a subtree check covers the folder, the folders below it and the folders ab
     try std.testing.expect(!onSubtreePath("ab", "a/b"));
     try std.testing.expect(!onSubtreePath("a/c", "a/b"));
     try std.testing.expect(!onSubtreePath("b", "a/b"));
+}
+
+test "file ids keep their bits whether the platform reports them signed or not" {
+    try std.testing.expectEqual(@as(u64, std.math.maxInt(u64)), inodeBits(@as(i64, -1)));
+    try std.testing.expectEqual(@as(u64, 0x8000_0000_0000_0001), inodeBits(@as(i64, std.math.minInt(i64) + 1)));
+    try std.testing.expectEqual(@as(u64, 42), inodeBits(@as(i64, 42)));
+    try std.testing.expectEqual(@as(u64, 0xffff_ffff_ffff_fffe), inodeBits(@as(u64, 0xffff_ffff_ffff_fffe)));
 }
 
 test "stamps reuse only times older than the scan start by the margin" {

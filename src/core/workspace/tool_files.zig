@@ -8,6 +8,7 @@
 //! trace under `~/.pf/file-index/`.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const debug_trace = @import("../shared/debug_trace.zig");
 const file_index = @import("file_index.zig");
 const indexer = @import("../indexer/indexer.zig");
@@ -46,7 +47,7 @@ pub const Error = Allocator.Error || error{FileNotFound};
 /// Lists the files under `absolute_root`. `alloc` must be thread-safe; the
 /// result is owned by `arena`.
 pub fn list(alloc: Allocator, arena: Allocator, workspace_root: []const u8, absolute_root: []const u8, options: Options) Error!Listing {
-    if (relativeInside(workspace_root, absolute_root)) |subtree| {
+    if (try relativeInside(arena, workspace_root, absolute_root)) |subtree| {
         if (try listFromSnapshot(alloc, arena, workspace_root, subtree, options)) |listing| return listing;
     }
     var result = indexer.scan(alloc, absolute_root, .{
@@ -63,11 +64,21 @@ pub fn list(alloc: Allocator, arena: Allocator, workspace_root: []const u8, abso
     return collect(arena, &result.tree, "", options);
 }
 
-/// `absolute_root` relative to `workspace_root`, "" for the root itself, or
-/// null when it lies outside.
-fn relativeInside(workspace_root: []const u8, absolute_root: []const u8) ?[]const u8 {
+/// `absolute_root` relative to `workspace_root` with `/` separators, as the
+/// workspace tree records folders, "" for the root itself, or null when it
+/// lies outside. Memory belongs to `arena`.
+fn relativeInside(arena: Allocator, workspace_root: []const u8, absolute_root: []const u8) Allocator.Error!?[]const u8 {
     if (workspace_root.len == 0 or !pathing.pathInside(workspace_root, absolute_root)) return null;
-    return std.mem.trimStart(u8, absolute_root[workspace_root.len..], "/");
+    return try treeRelative(arena, absolute_root[workspace_root.len..], builtin.target.os.tag);
+}
+
+/// The part of a path below the workspace root, as a tree folder name:
+/// leading separators dropped, and on Windows `\` read as `/`.
+fn treeRelative(arena: Allocator, below_root: []const u8, os_tag: std.Target.Os.Tag) Allocator.Error![]const u8 {
+    if (os_tag != .windows) return std.mem.trimStart(u8, below_root, "/");
+    const relative = try arena.dupe(u8, std.mem.trimStart(u8, below_root, "/\\"));
+    std.mem.replaceScalar(u8, relative, '\\', '/');
+    return relative;
 }
 
 /// Whether the workspace tree's entries below `subtree` are exactly what a
@@ -237,10 +248,19 @@ test "subfolder searches reuse the workspace tree only for ordinary folders" {
     try std.testing.expect(!subtreeFromSnapshot(&tree, "inner"));
     try std.testing.expect(!subtreeFromSnapshot(&tree, "build"));
     try std.testing.expect(!subtreeFromSnapshot(&tree, "vendor"));
-    try std.testing.expectEqualStrings("src/core", relativeInside("/w", "/w/src/core").?);
-    try std.testing.expectEqualStrings("", relativeInside("/w", "/w").?);
-    try std.testing.expect(relativeInside("/w", "/workspace") == null);
-    try std.testing.expect(relativeInside("/w", "/other") == null);
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try std.testing.expectEqualStrings("src/core", (try relativeInside(arena, "/w", "/w/src/core")).?);
+    try std.testing.expectEqualStrings("", (try relativeInside(arena, "/w", "/w")).?);
+    try std.testing.expect(try relativeInside(arena, "/w", "/workspace") == null);
+    try std.testing.expect(try relativeInside(arena, "/w", "/other") == null);
+    // A Windows subfolder search names the same tree folder on every OS.
+    try std.testing.expectEqualStrings("src/core", try treeRelative(arena, "\\src\\core", .windows));
+    try std.testing.expectEqualStrings("src", try treeRelative(arena, "/src", .windows));
+    try std.testing.expectEqualStrings("src/core", try treeRelative(arena, "/src/core", .linux));
+    try std.testing.expectEqualStrings("\\src", try treeRelative(arena, "\\src", .linux));
+    try std.testing.expect(subtreeFromSnapshot(&tree, try treeRelative(arena, "\\src", .windows)));
 }
 
 test "a tree cut at the cap answers only a whole-workspace search with the same cap" {

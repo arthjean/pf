@@ -12,6 +12,7 @@
 //! folders it holds can vary between runs.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const git_config = @import("git_config.zig");
@@ -298,7 +299,7 @@ pub fn scan(alloc: Allocator, root: []const u8, options: Options, stop: ?*std.at
         .arena = result_arena,
         .tree = .{
             .root = root_copy,
-            .root_inode = @intCast(root_stat.inode),
+            .root_inode = tree_mod.inodeBits(root_stat.inode),
             .scan_started_ns = scan_started_ns,
             .repository = rules.repository,
             .incomplete = incomplete,
@@ -704,6 +705,9 @@ fn expectEntries(result: Result, expected: []const Entry) !void {
 }
 
 test "repository scan follows git: index, ignore rules, folder rules and boundaries" {
+    // The fixture's `link` and `dirlink` are symlinks, which Windows creates
+    // only with Developer Mode or an elevated token.
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();

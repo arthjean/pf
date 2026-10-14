@@ -10,6 +10,7 @@
 //!   must over-approximate, such as finding filter drivers to disable.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const bounded_read = @import("bounded_read.zig");
@@ -284,8 +285,10 @@ fn keyMatches(entry: *const Entry, section: []const u8, subsection: ?[]const u8,
 }
 
 /// Every environment variable `Context.fromEnvironment` reads to locate
-/// config, so a saved listing is reused only under the same values.
-pub const environment_names = [_][]const u8{ "HOME", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM" };
+/// config, so a saved listing is reused only under the same values. On
+/// Windows the home comes from `USERPROFILE` before `HOME`.
+pub const environment_names = [_][]const u8{ "HOME", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM" } ++
+    if (builtin.target.os.tag == .windows) [_][]const u8{"USERPROFILE"} else [_][]const u8{};
 
 /// Where config comes from and what conditions are evaluated against.
 pub const Context = struct {
