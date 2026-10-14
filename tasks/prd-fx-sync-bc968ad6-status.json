@@ -25,7 +25,7 @@
     {
       "id": "EP-003",
       "title": "MCP-v2, libpf providers, gateway robustness, and Release 1 validation on Linux (merges 17 to 29)",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "stories_total": 6,
       "stories_done": 0
@@ -128,13 +128,13 @@
       "id": "US-006",
       "title": "Port fx #1206 (MCP-v2) and refuse it on Windows",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-005"
       ],
-      "started_at": null,
+      "started_at": "2026-10-13T22:27:13+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -142,13 +142,13 @@
       "id": "US-007",
       "title": "Port merges 18 and 19 (tool intent, README)",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-006"
       ],
-      "started_at": null,
+      "started_at": "2026-10-13T22:52:25+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -156,13 +156,13 @@
       "id": "US-008",
       "title": "Port merges 20 and 21 (libpf on Codex, MCP-v2 dogfood fixes) with holds",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-007"
       ],
-      "started_at": null,
+      "started_at": "2026-10-13T23:07:25+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -170,13 +170,13 @@
       "id": "US-009",
       "title": "Port merges 22 to 25 (AI_AGENT, libpf credentials, Grok, custom providers)",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-008"
       ],
-      "started_at": null,
+      "started_at": "2026-10-13T23:36:19+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -184,13 +184,13 @@
       "id": "US-010",
       "title": "Port merges 26 to 29 (gateway timers, host statuses, error handling, image budget)",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-009"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T00:04:21+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
@@ -198,13 +198,13 @@
       "id": "US-011",
       "title": "Validate Release 1 on Linux",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-010"
       ],
-      "started_at": null,
+      "started_at": "2026-10-14T00:19:23+02:00",
       "completed_at": null,
       "reviewed_at": null
     },
