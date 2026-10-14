@@ -1206,7 +1206,7 @@ test "catalog fingerprint detects event appends and child directory permissions"
     const appended = (try fingerprint(tmp.dir, "session")).?;
     try std.testing.expect(!std.mem.eql(u8, &first, &appended));
     // Windows has no directory mode bits for the fingerprint to observe.
-    if (comptime @import("builtin").os.tag == .windows) return;
+    if (comptime @import("builtin").target.os.tag == .windows) return;
     var child = try tmp.dir.openDir(std.testing.io, "session/subagent", .{ .iterate = true });
     defer child.close(std.testing.io);
     try child.setPermissions(std.testing.io, io_mod.private_dir_permissions);

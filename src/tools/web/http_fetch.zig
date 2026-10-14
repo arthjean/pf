@@ -1519,7 +1519,7 @@ fn classifyWriteErrno(err: posix.E) SyscallErrorAction {
 }
 
 fn rawRead(fd: posix.fd_t, buf: []u8, options: FetchOptions) !usize {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         try checkControl(options);
         return runControlled(usize, streamRead, .{ fd, buf }, options);
     }
@@ -1567,7 +1567,7 @@ fn rawReadWith(
 }
 
 fn rawWriteAll(fd: posix.fd_t, bytes: []const u8, options: FetchOptions) !void {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         try checkControl(options);
         return runControlled(void, streamWriteAll, .{ fd, bytes }, options);
     }
@@ -2487,7 +2487,7 @@ fn pipeBackedTlsBoundaryReader(
 
 test "web_fetch TLS boundary completes self delimited response without reading eof" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var transport_reader: PlainDeadlineReader = undefined;
     var boundary_reader: ScriptedTlsBoundaryReader = undefined;
@@ -2513,7 +2513,7 @@ test "web_fetch TLS boundary completes self delimited response without reading e
 
 test "web_fetch TLS boundary accepts clean close delimited eof" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var transport_reader: PlainDeadlineReader = undefined;
     var boundary_reader: ScriptedTlsBoundaryReader = undefined;
@@ -2536,7 +2536,7 @@ test "web_fetch TLS boundary accepts clean close delimited eof" {
 
 test "web_fetch TLS boundary unwraps truncated close delimited eof" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var transport_reader: PlainDeadlineReader = undefined;
     var boundary_reader: ScriptedTlsBoundaryReader = undefined;
@@ -2618,7 +2618,7 @@ test "web_fetch response parser ignores pending bytes beyond content length" {
 
 test "web_fetch TLS encrypted transport buffers satisfy stdlib minimums" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var reader: TlsDeadlineReader = undefined;
     reader.init(-1, .{});
     try std.testing.expect(reader.interface.buffer.len >= std.crypto.tls.Client.min_buffer_len);
@@ -2630,7 +2630,7 @@ test "web_fetch TLS encrypted transport buffers satisfy stdlib minimums" {
 
 test "web_fetch TLS deadline reader fills internal buffer for zero length readVec" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var fds: [2]std.c.fd_t = undefined;
     if (std.c.pipe(&fds) != 0) return error.PipeFailed;
     defer closeFd(fds[0]);
@@ -3350,7 +3350,7 @@ fn expectAndTraceTlsTruncation(
 
 test "web_fetch transport traces stable stages and redact sensitive values" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -3463,7 +3463,7 @@ const ScriptedDialer = struct {
 
 test "web_fetch admitted dialing preserves order and one shared deadline" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var fds: [2]std.c.fd_t = undefined;
     if (std.c.pipe(&fds) != 0) return error.PipeFailed;
     defer closeFd(fds[1]);
@@ -3491,7 +3491,7 @@ test "web_fetch admitted dialing preserves order and one shared deadline" {
 }
 
 /// A descriptor value that scripted dialers return and nothing reads.
-const no_test_fd: posix.fd_t = if (builtin.os.tag == .windows) std.os.windows.INVALID_HANDLE_VALUE else -1;
+const no_test_fd: posix.fd_t = if (builtin.target.os.tag == .windows) std.os.windows.INVALID_HANDLE_VALUE else -1;
 
 test "web_fetch admitted dialing stops on control and local resource failures" {
     const addresses = [_]IpAddress{
@@ -3711,7 +3711,7 @@ const ScriptedPoller = struct {
 
 test "web_fetch poll events preserve requested readiness and hangup semantics" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     try classifyPollEvents(-1, posix.POLL.IN, posix.POLL.IN | posix.POLL.HUP);
     try classifyPollEvents(-1, posix.POLL.IN, posix.POLL.IN | posix.POLL.ERR);
     try classifyPollEvents(-1, posix.POLL.OUT, posix.POLL.OUT | posix.POLL.HUP);
@@ -3738,7 +3738,7 @@ test "web_fetch poll events preserve requested readiness and hangup semantics" {
 
 test "web_fetch injected poll failures and arguments remain exact" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var interrupted = ScriptedPoller{
         .result = .interrupted_once,
         .revents = posix.POLL.IN,
@@ -3791,7 +3791,7 @@ const PollSignalStorm = struct {
 
 test "web_fetch poll deadline is not extended by interrupted syscalls" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const action: posix.Sigaction = .{
         .handler = .{ .handler = noOpSignalHandler },
         .mask = posix.sigemptyset(),
@@ -3886,7 +3886,7 @@ const InterruptingRead = struct {
 
 test "web_fetch interrupted socket read rechecks cancellation before retry" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var cancel_flag: std.atomic.Value(bool) = .init(false);
     var poller = ScriptedPoller{ .revents = posix.POLL.IN };
     var read = InterruptingRead{ .cancel_flag = &cancel_flag };
@@ -3905,7 +3905,7 @@ test "web_fetch interrupted socket read rechecks cancellation before retry" {
 
 test "web_fetch deadline reader drains bytes after hangup and then returns eof" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var fds: [2]std.c.fd_t = undefined;
     if (std.c.pipe(&fds) != 0) return error.PipeFailed;
     defer closeFd(fds[0]);
@@ -3932,7 +3932,7 @@ test "web_fetch deadline reader drains bytes after hangup and then returns eof" 
 
 test "web_fetch deadline adapters retain invalid descriptor causes" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var fds: [2]std.c.fd_t = undefined;
     if (std.c.pipe(&fds) != 0) return error.PipeFailed;
     closeFd(fds[0]);
@@ -3960,7 +3960,7 @@ test "web_fetch deadline adapters retain invalid descriptor causes" {
 
 test "web_fetch closed peer write returns a cause without terminating process" {
     // Drives the POSIX poll transport with raw descriptors; Windows reads sockets through std.Io.net.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var sockets: [2]std.c.fd_t = undefined;
     if (std.c.socketpair(posix.AF.UNIX, posix.SOCK.STREAM, 0, &sockets) != 0)
         return error.SocketPairFailed;

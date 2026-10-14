@@ -241,7 +241,7 @@ fn loadResolvedImageAttachment(
 
 pub fn createTempSnapshotDir(alloc: std.mem.Allocator) ![]u8 {
     // Windows has no /tmp, so snapshots go to its resolved temp directory.
-    const temp_root = try io_mod.realpathAlloc(alloc, if (comptime builtin.os.tag == .windows) io_mod.tempDir() else "/tmp");
+    const temp_root = try io_mod.realpathAlloc(alloc, if (comptime builtin.target.os.tag == .windows) io_mod.tempDir() else "/tmp");
     defer alloc.free(temp_root);
     for (0..16) |_| {
         var suffix: u64 = undefined;
@@ -996,7 +996,7 @@ fn unsafeSnapshotPathError(err: anyerror) anyerror {
 /// A no-follow open on Windows returns a handle to the symlink itself instead
 /// of failing, so the opened handle must be checked for the expected kind.
 fn rejectWindowsSymlink(handle: anytype, expected: std.Io.File.Kind) !void {
-    if (comptime builtin.os.tag != .windows) return;
+    if (comptime builtin.target.os.tag != .windows) return;
     const stat = handle.stat(io_mod.getIo()) catch |err| return unsafeSnapshotPathError(err);
     if (stat.kind != expected) return error.ImageSnapshotPathUnsafe;
 }
@@ -1657,7 +1657,7 @@ fn findImageById(images: []const types.ImageAttachment, id: usize) ?types.ImageA
 /// `/` separators.
 fn writeFileUri(writer: *std.Io.Writer, abs_path: []const u8) !void {
     try writer.writeAll("file://");
-    if (comptime builtin.os.tag != .windows) return writePercentEncodedPath(writer, abs_path);
+    if (comptime builtin.target.os.tag != .windows) return writePercentEncodedPath(writer, abs_path);
     if (abs_path.len >= 2 and std.ascii.isAlphabetic(abs_path[0]) and abs_path[1] == ':') {
         try writer.writeByte('/');
         try writer.writeAll(abs_path[0..2]);
@@ -1673,7 +1673,7 @@ fn isWindowsPathSeparator(byte: u8) bool {
 
 fn writePercentEncodedPath(writer: *std.Io.Writer, path: []const u8) !void {
     for (path) |byte| {
-        if (builtin.os.tag == .windows and byte == '\\') {
+        if (builtin.target.os.tag == .windows and byte == '\\') {
             try writer.writeByte('/');
         } else if (isUriPathSafe(byte)) {
             try writer.writeByte(byte);
@@ -1894,7 +1894,7 @@ fn normalizePathInput(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
     const trimmed = std.mem.trim(u8, input, " \t\r\n");
     const slice = stripBalancedOuterQuotes(trimmed);
     // Backslash separates Windows path components; it escapes nothing there.
-    if (comptime builtin.os.tag == .windows) return alloc.dupe(u8, slice);
+    if (comptime builtin.target.os.tag == .windows) return alloc.dupe(u8, slice);
 
     var out: std.Io.Writer.Allocating = .init(alloc);
     errdefer out.deinit();
@@ -2067,7 +2067,7 @@ test "writeImageBadge percent-encodes spaces in path" {
 }
 
 test "writeImageBadge writes Windows drive and UNC paths as file URIs" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     const cases = [_]struct { path: []const u8, uri: []const u8 }{
         .{ .path = "C:\\Users\\me\\shot 1.png", .uri = "file:///C:/Users/me/shot%201.png" },
         .{ .path = "\\\\server\\share\\a.png", .uri = "file://server/share/a.png" },
@@ -2076,7 +2076,7 @@ test "writeImageBadge writes Windows drive and UNC paths as file URIs" {
         var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
         defer out.deinit();
         try writeImageBadge(&out.writer, 1, case.path);
-        const expected = try std.fmt.allocPrint(std.testing.allocator, "\x1b]8;;{s}\x1b\\[Image 1]\x1b]8;;\x1b\\", .{case.uri});
+        const expected = try std.testing.allocator.print("\x1b]8;;{s}\x1b\\[Image 1]\x1b]8;;\x1b\\", .{case.uri});
         defer std.testing.allocator.free(expected);
         try std.testing.expectEqualStrings(expected, out.written());
     }
@@ -2516,14 +2516,14 @@ test "extractInlineImageAttachments promotes workspace relative mentions" {
 test "normalizePathInput unescapes finder style spaces" {
     // `\` is a path separator on Windows, so `\ ` is not an escape there; see
     // "normalizePathInput keeps Windows backslashes".
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const normalized = try normalizePathInput(std.testing.allocator, "/Users/me/CleanShot\\ 2026-04-08\\ at\\ 12.16.27.png");
     defer std.testing.allocator.free(normalized);
     try std.testing.expectEqualStrings("/Users/me/CleanShot 2026-04-08 at 12.16.27.png", normalized);
 }
 
 test "normalizePathInput keeps Windows backslashes" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     const normalized = try normalizePathInput(std.testing.allocator, "\"C:\\Users\\me\\shot.png\"");
     defer std.testing.allocator.free(normalized);
     try std.testing.expectEqualStrings("C:\\Users\\me\\shot.png", normalized);
@@ -2552,7 +2552,7 @@ test "extractInlineImageAttachments replaces supported paths with matching place
         try arena.print("look this '{s}' now", .{path}),
     };
     // Backslash escapes nothing on Windows, so only quoted paths apply there.
-    const first_input: usize = if (comptime builtin.os.tag == .windows) 1 else 0;
+    const first_input: usize = if (comptime builtin.target.os.tag == .windows) 1 else 0;
     for (inputs[first_input..]) |input| {
         const result = try extractInlineImageAttachments(arena, "/", input, 1);
         defer result.deinit(arena);
@@ -2688,7 +2688,7 @@ test "canonical at images load exact filenames and preserve legacy eligibility" 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     // Windows filenames cannot contain a backslash or a double quote.
-    const names: []const []const u8 = if (comptime builtin.os.tag == .windows)
+    const names: []const []const u8 = if (comptime builtin.target.os.tag == .windows)
         &.{ "photo.png", ".png", " leading.png" }
     else
         &.{ "photo.png", ".png", "a\\b.png", "a\"b.png", " leading.png" };
@@ -2716,7 +2716,7 @@ test "canonical at images load exact filenames and preserve legacy eligibility" 
     try std.testing.expectEqualStrings(selected, unchanged.text);
     try std.testing.expectEqual(@as(usize, 0), unchanged.images.len);
     // A backslash is literal in Windows @ paths, so the noncanonical escape applies elsewhere only.
-    const invalid_tokens: []const []const u8 = if (comptime builtin.os.tag == .windows)
+    const invalid_tokens: []const []const u8 = if (comptime builtin.target.os.tag == .windows)
         &.{ "@\"photo.png\"other.png", "@\"photo.png", "(@\"photo.png\")" }
     else
         &.{ "@\"photo.png\"other.png", "@\"photo.png", "@\"photo\\.png\"", "(@\"photo.png\")" };

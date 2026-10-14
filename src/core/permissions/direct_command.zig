@@ -206,7 +206,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
     defer mem_utils.deinit_arena(scratch_state);
     const scratch = scratch_state.allocator();
 
-    const msys_usr_bin = if (builtin.os.tag == .windows) try windowsMsysUsrBin(scratch) else {};
+    const msys_usr_bin = if (builtin.target.os.tag == .windows) try windowsMsysUsrBin(scratch) else {};
     var job = try createDirectJob();
     defer closeDirectJob(&job);
 
@@ -224,11 +224,11 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
         const stage = plan.stages[child_count];
         var environment = try environmentForProfile(scratch, stage.environment_profile);
         defer environment.deinit();
-        const argv = if (builtin.os.tag == .windows)
+        const argv = if (builtin.target.os.tag == .windows)
             try windowsDirectArgv(scratch, msys_usr_bin, stage.argv)
         else
             stage.argv;
-        if (builtin.os.tag == .windows) try environment.put("PATH", msys_usr_bin);
+        if (builtin.target.os.tag == .windows) try environment.put("PATH", msys_usr_bin);
         try command_runner.applyAgentEnvironment(&environment);
 
         const child = spawnDirect(.{
@@ -432,7 +432,7 @@ fn environmentForProfile(
             try environment.put("LANG", "C");
         },
     }
-    if (builtin.os.tag == .windows) {
+    if (builtin.target.os.tag == .windows) {
         // Windows system DLLs that the MSYS runtime loads need SYSTEMROOT.
         if (io_mod.getenv("SYSTEMROOT")) |system_root| try environment.put("SYSTEMROOT", system_root);
     }

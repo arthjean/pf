@@ -1079,7 +1079,7 @@ fn listenPinnedCallback(address: std.Io.net.IpAddress) PinnedCallbackListenError
     // A `std.Io.net` listener on Windows binds with shared access, so another
     // program could hold the pinned port too. The exclusive Winsock bind
     // refuses a port in use, as the POSIX path below does.
-    if (comptime builtin.os.tag == .windows) return browser_callback.listenExclusiveWindows(address);
+    if (comptime builtin.target.os.tag == .windows) return browser_callback.listenExclusiveWindows(address);
     const posix = std.posix;
     const SocketAddress = extern union {
         any: posix.sockaddr,
@@ -1212,7 +1212,7 @@ pub fn authorizeInteractive(
     var address = try std.Io.net.IpAddress.parse("127.0.0.1", configured_port orelse 0);
     var listener = if (configured_port) |port|
         listenPinnedCallback(address) catch return pinnedPortUnavailable(port)
-    else if (comptime builtin.os.tag == .windows)
+    else if (comptime builtin.target.os.tag == .windows)
         // A shared Windows bind would let another program bind the picked
         // port too and receive the redirect.
         try browser_callback.listenExclusiveWindows(address)
@@ -1336,7 +1336,7 @@ pub fn authentication_error_message(err: anyerror) []const u8 {
         error.McpCallbackPortUnavailable => port: {
             const port = unavailable_callback_port.load(.acquire);
             if (port == 0) break :port "The OAuth callback port is in use. Close the program using it and retry";
-            break :port std.fmt.bufPrint(
+            break :port std.mem.print(
                 &port_message_buf,
                 "Port {d} is in use. Close the program using it and retry",
                 .{port},
@@ -1631,7 +1631,7 @@ fn requestInteractiveAuthorization(
     if (!try ctx.open_url(ctx.open_ctx, alloc, authorization.url)) {
         return error.McpAuthorizationBrowserOpenFailed;
     }
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         return awaitInteractiveCallbackWindows(
             alloc,
             .{ ctx.listener, ctx.ipv6_listener },
@@ -2358,7 +2358,7 @@ fn setSocketTimeouts(socket: std.posix.socket_t, seconds: i64) void {
     if (comptime host_target.is_wasm) return;
     // std.Io sockets on Windows accept no socket timeout option; interactive
     // MCP authorization stays unavailable there.
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         debug_trace.logf("mcp", "OAuth socket timeouts unavailable on Windows seconds={d}", .{seconds});
         return;
     }
@@ -3124,7 +3124,7 @@ test "interactive callback treats unavailable IPv6 as optional" {
 
 test "pinned callback sockets create close-on-exec atomically where supported" {
     // Checks POSIX socket flags; the Windows MCP OAuth callback listener is US-029.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const linux = callbackSocketCreation(.linux);
     try std.testing.expect((linux.flags & std.posix.SOCK.CLOEXEC) != 0);
     try std.testing.expect(!linux.needs_cloexec_fallback);
@@ -3160,7 +3160,7 @@ test "interactive callback wait observes caller and lifecycle cancellation" {
             .caller = &caller,
             .runtime = &runtime,
         };
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             try std.testing.expectError(
                 error.Cancelled,
                 awaitInteractiveCallbackWindows(std.testing.allocator, .{ &listener, null }, cancellation, 60_000),
@@ -3173,7 +3173,7 @@ test "interactive callback wait observes caller and lifecycle cancellation" {
 }
 
 test "interactive callback on Windows answers stray requests and returns the redirect" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var listener = try browser_callback.listenLoopback(0);
     defer listener.deinit(std.testing.io);
@@ -3218,7 +3218,7 @@ test "interactive callback on Windows answers stray requests and returns the red
 }
 
 test "interactive callback on Windows reports the end of the authorization window" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     var listener = try browser_callback.listenLoopback(0);
     defer listener.deinit(std.testing.io);
     const started_ms = io_mod.milliTimestamp();

@@ -1522,7 +1522,7 @@ test "a v2 parent's folded children rebuild the registry v1 would hold (D22)" {
 
 test "v2 children live in the parent's log and come back after a reopen (D22)" {
     // Writes v2 sessions, which pf refuses on Windows.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

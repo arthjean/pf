@@ -7,7 +7,7 @@ pub fn profileUser(buffer: *[64]u8) ?[]const u8 {
     if (comptime builtin.target.os.tag == .macos or builtin.target.os.tag == .linux) {
         return std.mem.print(buffer, "uid-{d}", .{std.c.getuid()}) catch null;
     }
-    if (comptime builtin.os.tag == .windows) return windowsUserSid(buffer);
+    if (comptime builtin.target.os.tag == .windows) return windowsUserSid(buffer);
     return null;
 }
 
@@ -25,7 +25,7 @@ fn windowsUserSid(buffer: *[64]u8) ?[]const u8 {
     var text: ?[*:0]u8 = null;
     if (win32.ConvertSidToStringSidA(user.Sid, &text) == .FALSE) return null;
     defer _ = win32.LocalFree(text);
-    return std.fmt.bufPrint(buffer, "sid-{s}", .{std.mem.span(text.?)}) catch null;
+    return std.mem.print(buffer, "sid-{s}", .{std.mem.span(text.?)}) catch null;
 }
 
 test "profile identity is available exactly on supported terminal hosts" {
@@ -34,7 +34,7 @@ test "profile identity is available exactly on supported terminal hosts" {
     if (comptime builtin.target.os.tag == .macos or builtin.target.os.tag == .linux) {
         try std.testing.expect(value != null);
         try std.testing.expect(std.mem.startsWith(u8, value.?, "uid-"));
-    } else if (comptime builtin.os.tag == .windows) {
+    } else if (comptime builtin.target.os.tag == .windows) {
         try std.testing.expect(value != null);
         try std.testing.expect(std.mem.startsWith(u8, value.?, "sid-S-1-"));
         var again: [64]u8 = undefined;

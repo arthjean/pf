@@ -785,7 +785,7 @@ fn waitForLogin(c: Context, arena: Allocator, host: *Host, waiter: *Waiter, open
 /// A complete line from stdin, waiting at most 100 ms for one.
 /// pf: POSIX only; Windows refuses MCP-v2 before any verb runs.
 fn readPasted(arena: Allocator, line: *std.ArrayList(u8)) !?[]const u8 {
-    if (comptime builtin.os.tag == .windows) return error.Unsupported;
+    if (comptime builtin.target.os.tag == .windows) return error.Unsupported;
     var fds = [_]std.posix.pollfd{.{ .fd = std.posix.STDIN_FILENO, .events = std.posix.POLL.IN, .revents = 0 }};
     if (try std.posix.poll(&fds, 100) == 0) return null;
     var buffer: [1024]u8 = undefined;

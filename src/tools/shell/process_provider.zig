@@ -44,7 +44,7 @@ fn captureToken(
 fn captureWindowsToken(pid: io_mod.ProcessId) !process_identity.ProcessInstanceToken {
     const created = try process_tree.windowsProcessCreationTime(pid);
     var token_buf: [64]u8 = undefined;
-    const text = try std.fmt.bufPrint(&token_buf, "windows:{d}:{d}", .{ pid, created });
+    const text = try std.mem.print(&token_buf, "windows:{d}:{d}", .{ pid, created });
     return process_identity.ProcessInstanceToken.parse(text);
 }
 
@@ -252,7 +252,7 @@ fn signalProcess(
     if (!host.current().process_control) return error.Unsupported;
     const pid = std.fmt.parseInt(io_mod.ProcessId, pid_text, 10) catch
         return error.InvalidPid;
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         const created = windowsTokenCreationTime(expected) orelse return error.ProcessIdentityMismatch;
         _ = process_tree.terminateWindowsTree(alloc, pid, created) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
@@ -304,7 +304,7 @@ test "native process provider delegates tree signaling to the neutral tracker" {
 }
 
 test "Windows stop verifies the process token and ends the whole tree" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Windows process tokens and Job Objects.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Windows process tokens and Job Objects.
     const alloc = std.testing.allocator;
     const process_job = @import("../../core/shared/process_job.zig");
     var child = try std.process.spawn(io_mod.getIo(), .{
@@ -316,7 +316,7 @@ test "Windows stop verifies the process token and ends the whole tree" {
     defer _ = child.wait(io_mod.getIo()) catch {};
     const cmd_pid = io_mod.childProcessId(child.id.?);
     var pid_buf: [16]u8 = undefined;
-    const pid_text = try std.fmt.bufPrint(&pid_buf, "{d}", .{cmd_pid});
+    const pid_text = try std.mem.print(&pid_buf, "{d}", .{cmd_pid});
 
     var descendants: []u32 = &.{};
     defer alloc.free(descendants);
@@ -334,7 +334,7 @@ test "Windows stop verifies the process token and ends the whole tree" {
 
     // A token from another instance of the same id is refused without effect.
     var stale_buf: [64]u8 = undefined;
-    const stale = try process_identity.ProcessInstanceToken.parse(try std.fmt.bufPrint(
+    const stale = try process_identity.ProcessInstanceToken.parse(try std.mem.print(
         &stale_buf,
         "windows:{d}:{d}",
         .{ cmd_pid, windowsTokenCreationTime(token).? - 1 },

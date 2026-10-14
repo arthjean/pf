@@ -305,7 +305,7 @@ test "path completion browses bare current and parent directories" {
 
 test "path completion enumerates immediate entries with deterministic bounded order" {
     // Windows reserves `"` in file names, so the quote-bearing name uses `'` there.
-    const quoted_name = if (comptime builtin.os.tag == .windows) "space ' file.txt" else "space \" file.txt";
+    const quoted_name = if (comptime builtin.target.os.tag == .windows) "space ' file.txt" else "space \" file.txt";
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -380,7 +380,7 @@ test "path completion follows listed symlinks and filters unsafe names" {
     try tmp.dir.createDirPath(std.testing.io, "workspace/target-dir");
     try writeTestFile(tmp.dir, "workspace/target.txt");
     // Windows forbids control characters such as ESC in file names.
-    const unsafe_names = comptime builtin.os.tag != .windows;
+    const unsafe_names = comptime builtin.target.os.tag != .windows;
     if (unsafe_names) try writeTestFile(tmp.dir, "workspace/unsafe-\x1b.txt");
     try tmp.dir.symLink(std.testing.io, "target-dir", "workspace/linked-dir", .{ .is_directory = true });
     try tmp.dir.symLink(std.testing.io, "target.txt", "workspace/linked-file", .{ .is_directory = false });
@@ -473,7 +473,7 @@ test "path completion cancellable operation uses captured HOME and literal paren
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     // Win32 path normalization strips a trailing space, so Windows keeps the space inside the parent name.
-    const parent = if (comptime builtin.os.tag == .windows) "di r" else "dir ";
+    const parent = if (comptime builtin.target.os.tag == .windows) "di r" else "dir ";
     try writeTestFile(tmp.dir, parent ++ "/chosen.txt");
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);

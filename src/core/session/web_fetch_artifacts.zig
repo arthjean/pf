@@ -435,7 +435,7 @@ test "web_fetch binary artifact write is byte exact" {
 test "web_fetch on a v2 session keeps a download as a blob the model opens by path (D44, D49)" {
     // Expects AccessDenied when writing a read-only blob, which Windows does
     // not enforce through mode bits; pf refuses sessions v2 there.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

@@ -2039,7 +2039,7 @@ test "terminal tombstone retains raw output behind an opaque replay handle" {
     // command_replay_store's EphemeralStore is unavailable on Windows
     // (EphemeralReplayUnavailable), so an unsaved session has no replay
     // handle for truncated output.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var runtime = Runtime.init(alloc);
     defer runtime.deinit();

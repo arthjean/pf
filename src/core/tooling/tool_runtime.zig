@@ -3880,7 +3880,7 @@ test "run_command default user profile requires configured or reviewed shell aut
         .name = "shell",
         .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\"}",
     }, .ask, &.{}));
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         // Windows has no login shell profile: the legacy environment admits
         // the direct plan, as it does on Linux and macOS.
         try std.testing.expectEqual(ToolPermissionDecision.once, direct.decision);
@@ -4036,7 +4036,7 @@ test "local file mutations bypass review while external mutations use exact revi
 
 test "main file mutation producer rejects wildcard-bearing grant roots before prompt publication" {
     // Windows file names cannot contain the `*` and `?` this test creates.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -4922,7 +4922,7 @@ test "executeToolCall traces non-text grep skips in normal runtime" {
     const trace = try readTraceFileForTest(alloc, trace_path);
     defer alloc.free(trace);
     try expectContains(trace, "grep_files skipped non-text file path=");
-    try expectContains(trace, "binaryish" ++ std.fs.path.sep_str ++ "blob.bin");
+    try expectContains(trace, "binaryish" ++ std.Io.Dir.path.sep_str ++ "blob.bin");
 }
 
 test "executeToolCall traces oversized grep skips in normal runtime" {
@@ -4956,7 +4956,7 @@ test "executeToolCall traces oversized grep skips in normal runtime" {
     const trace = try readTraceFileForTest(alloc, trace_path);
     defer alloc.free(trace);
     try expectContains(trace, "grep_files skipped oversized file path=");
-    try expectContains(trace, "oversized" ++ std.fs.path.sep_str ++ "huge.txt");
+    try expectContains(trace, "oversized" ++ std.Io.Dir.path.sep_str ++ "huge.txt");
 }
 
 test "executeToolCall returns failure status for missing grep path" {

@@ -319,13 +319,13 @@ test "native clipboard accepts only a successful exit" {
     try std.testing.expect(copySucceeded(.{ .exited = 0 }));
     try std.testing.expect(!copySucceeded(.{ .exited = 1 }));
     try std.testing.expect(!copySucceeded(.{ .signal = .TERM }));
-    try std.testing.expect(!copySucceeded(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }));
+    try std.testing.expect(!copySucceeded(.{ .stopped = if (builtin.target.os.tag == .windows) .TERM else .STOP }));
     try std.testing.expect(!copySucceeded(.{ .unknown = 1 }));
 }
 
 test "Windows clipboard copy reports a clipboard another thread holds" {
     // The Win32 clipboard exists only on Windows.
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     const win32 = @import("../shared/win32.zig");
     const Holder = struct {
         opened: std.atomic.Value(bool) = .init(false),
@@ -363,7 +363,7 @@ test "Windows clipboard copy reports a clipboard another thread holds" {
 
 test "Windows clipboard copy places Unicode text and restores the previous text" {
     // Writes the real clipboard, so it runs only on request.
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     if (io_mod.getenv("PF_TEST_WINDOWS_CLIPBOARD") == null) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const previous = try readWindowsClipboardText(alloc);

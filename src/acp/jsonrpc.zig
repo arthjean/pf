@@ -320,7 +320,7 @@ pub const Reader = struct {
     // backend and let the host's fd_read import suspend through JSPI. Windows
     // stdin is a handle, so it streams through std.Io as well.
     fn readStdin(_: ?*anyopaque, destination: []u8) usize {
-        if (comptime host_target.is_wasm or builtin.os.tag == .windows) {
+        if (comptime host_target.is_wasm or builtin.target.os.tag == .windows) {
             return std.Io.File.stdin().readStreaming(
                 io_mod.getIo(),
                 &.{destination},

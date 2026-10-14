@@ -166,7 +166,7 @@ fn waitForWindowsProcessCount(exe_name: []const u8, expected: usize, timeout_ms:
 }
 
 test "Windows command timeout and cancellation end the whole process tree" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
     const shell = shell_selection.current() catch return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
@@ -175,12 +175,12 @@ test "Windows command timeout and cancellation end the whole process tree" {
     defer tmp.cleanup();
     // A uniquely named copy of ping makes the tree's descendants countable.
     const probe_name = "pf-command-tree-probe.exe";
-    try std.Io.Dir.copyFileAbsolute("C:\\Windows\\System32\\PING.EXE", try std.fs.path.join(arena, &.{ try io_mod.dirRealpathAlloc(arena, tmp.dir, "."), probe_name }), io_mod.getIo(), .{});
+    try std.Io.Dir.copyFileAbsolute("C:\\Windows\\System32\\PING.EXE", try std.Io.Dir.path.join(arena, &.{ try io_mod.dirRealpathAlloc(arena, tmp.dir, "."), probe_name }), io_mod.getIo(), .{});
     const root = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
-    const probe = try std.mem.replaceOwned(u8, arena, try std.fs.path.join(arena, &.{ root, probe_name }), "\\", "/");
+    const probe = try std.mem.replaceOwned(u8, arena, try std.Io.Dir.path.join(arena, &.{ root, probe_name }), "\\", "/");
     const command = switch (shell.dialect) {
-        .posix_sh => try std.fmt.allocPrint(arena, "'{s}' -n 30 127.0.0.1 >/dev/null & '{s}' -n 30 127.0.0.1", .{ probe, probe }),
-        .powershell => try std.fmt.allocPrint(arena, "Start-Process '{s}' -ArgumentList '-n 30 127.0.0.1' -NoNewWindow; & '{s}' -n 30 127.0.0.1", .{ probe, probe }),
+        .posix_sh => try arena.print("'{s}' -n 30 127.0.0.1 >/dev/null & '{s}' -n 30 127.0.0.1", .{ probe, probe }),
+        .powershell => try arena.print("Start-Process '{s}' -ArgumentList '-n 30 127.0.0.1' -NoNewWindow; & '{s}' -n 30 127.0.0.1", .{ probe, probe }),
     };
 
     const timeout_started = io_mod.milliTimestamp();

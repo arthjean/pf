@@ -43,7 +43,7 @@ pub fn signalServersForExit() void {
 /// PF_MCP_ENGINE=v2 selects MCP-v2. Never on Windows, where pf refuses
 /// MCP-v2 (`refusesOnWindows`).
 pub fn selected() bool {
-    if (comptime builtin.os.tag == .windows) return false;
+    if (comptime builtin.target.os.tag == .windows) return false;
     return requested();
 }
 
@@ -75,7 +75,7 @@ test "Windows refuses MCP-v2 only when PF_MCP_ENGINE asks for it" {
     try testing.expect(refusesOnWindows(.windows));
     try testing.expect(!refusesOnWindows(.linux));
     try testing.expect(!refusesOnWindows(.macos));
-    try testing.expectEqual(builtin.os.tag != .windows, selected());
+    try testing.expectEqual(builtin.target.os.tag != .windows, selected());
     for ([_][]const u8{ "v1", "V2", "" }) |value| {
         try environ.put("PF_MCP_ENGINE", value);
         try testing.expect(!refusesOnWindows(.windows));

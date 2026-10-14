@@ -286,7 +286,7 @@ fn Runtime(comptime App: type) type {
         }
 
         fn notifyDesktop(app: *App, event: DesktopEvent) void {
-            const sequence = desktopNotificationSequence(builtin.os.tag, io_mod.getenv("WT_SESSION"), event) orelse return;
+            const sequence = desktopNotificationSequence(builtin.target.os.tag, io_mod.getenv("WT_SESSION"), event) orelse return;
             app.shell.writeNotificationSequence(&app.metrics, sequence);
         }
 

@@ -1875,7 +1875,7 @@ fn localFileTargetPath(alloc: Allocator, uri_text: []const u8) Allocator.Error!?
     }
     var decoded_path = decoded_storage[0..write_index];
     // A Windows file URI names the drive after a slash: file:///C:/dir.
-    if (std_builtin.os.tag == .windows and decoded_path.len >= 3 and
+    if (std_builtin.target.os.tag == .windows and decoded_path.len >= 3 and
         decoded_path[0] == '/' and std.ascii.isAlphabetic(decoded_path[1]) and
         decoded_path[2] == ':')
     {
@@ -1886,7 +1886,7 @@ fn localFileTargetPath(alloc: Allocator, uri_text: []const u8) Allocator.Error!?
     var components = std.mem.splitAny(
         u8,
         decoded_path,
-        if (std_builtin.os.tag == .windows) "/\\" else "/",
+        if (std_builtin.target.os.tag == .windows) "/\\" else "/",
     );
     while (components.next()) |component| {
         if (std.mem.eql(u8, component, "..")) return null;
@@ -5472,7 +5472,7 @@ test "ACP default user commands require configured authority or review" {
         .name = "shell",
         .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\"}",
     }, .ask, &.{}, &.{}));
-    if (comptime std_builtin.os.tag == .windows) {
+    if (comptime std_builtin.target.os.tag == .windows) {
         // Windows has no login shell profile: the legacy environment admits
         // the direct plan, as it does on Linux and macOS.
         try std.testing.expectEqual(ToolPermissionDecision.once, direct.decision);
@@ -5561,8 +5561,8 @@ test "ACP auto mode uses automatic review clear and caution without prompting" {
     const direct = try requestToolPermissionOutcomeWithRequest(&ctx, arena, direct_call, direct_review.context(), .auto, &.{}, null, null, &.{}, null);
     // Windows has no login shell profile: the legacy environment admits the
     // direct plan without review, as it does on Linux and macOS.
-    const direct_reviews: usize = if (std_builtin.os.tag == .windows) 0 else 1;
-    if (comptime std_builtin.os.tag == .windows) {
+    const direct_reviews: usize = if (std_builtin.target.os.tag == .windows) 0 else 1;
+    if (comptime std_builtin.target.os.tag == .windows) {
         try std.testing.expect(direct.execution_authority.?.run_command == .direct_only);
     } else {
         try std.testing.expectEqual(

@@ -145,7 +145,7 @@ fn isWindowsSeparator(byte: u8) bool {
 
 fn existingFileAlloc(alloc: std.mem.Allocator, dir: []const u8, name: []const u8, extension: []const u8) error{OutOfMemory}!?[]u8 {
     const trimmed_dir = std.mem.trimEnd(u8, dir, "\\/");
-    const path = try std.fmt.allocPrint(alloc, "{s}\\{s}{s}", .{ trimmed_dir, name, extension });
+    const path = try alloc.print("{s}\\{s}{s}", .{ trimmed_dir, name, extension });
     const stat = std.Io.Dir.cwd().statFile(getIo(), path, .{}) catch {
         alloc.free(path);
         return null;
@@ -170,19 +170,18 @@ pub fn spawnFailureMessageAlloc(
     switch (err) {
         error.FileNotFound => {
             if (!isBareExecutableName(argv[0])) return null;
-            return try std.fmt.allocPrint(alloc, "{s} was not found on PATH", .{argv[0]});
+            return try alloc.print("{s} was not found on PATH", .{argv[0]});
         },
         error.InvalidBatchScriptArg => {
             for (argv[1..], 1..) |arg, position| {
                 if (std.mem.findAny(u8, arg, "\r\n\x00") != null) {
-                    return try std.fmt.allocPrint(
-                        alloc,
+                    return try alloc.print(
                         "Argument {d} contains a line break, which Windows batch files cannot receive safely",
                         .{position},
                     );
                 }
             }
-            return try std.fmt.allocPrint(alloc, "An argument contains a line break, which Windows batch files cannot receive safely", .{});
+            return try alloc.print("An argument contains a line break, which Windows batch files cannot receive safely", .{});
         },
         else => return null,
     }
@@ -413,7 +412,7 @@ const RegularFileOpenPolicy = struct {
 pub const OpenRegularFileError = std.Io.Dir.StatFileError ||
     std.Io.File.OpenError ||
     std.Io.File.StatError ||
-    (if (builtin.os.tag == .windows or builtin.os.tag == .wasi) error{} else std.posix.OpenError) ||
+    (if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) error{} else std.posix.OpenError) ||
     error{ DurablePathUnsafe, FileControlFailed };
 
 fn openExistingRegularFileWithPolicy(
@@ -621,7 +620,7 @@ pub fn setEnvironBlock(block: std.process.Environ.Block) void {
 }
 
 pub fn setRawEnviron(raw: RawEnviron) void {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         // The C runtime's environment uses the ANSI code page. Read the
         // WTF-16 process environment instead, so values arrive intact and
         // names match without regard to case.
@@ -665,7 +664,7 @@ pub fn getenv(key: []const u8) ?[]const u8 {
 /// prefers `USERPROFILE` to find one profile from every shell. The slice
 /// borrows the process environment.
 pub fn homeDir() ?[]const u8 {
-    const os_tag = if (comptime builtin.is_test) test_home_dir_os else builtin.os.tag;
+    const os_tag = if (comptime builtin.is_test) test_home_dir_os else builtin.target.os.tag;
     if (os_tag == .windows) {
         if (nonEmptyEnv("USERPROFILE")) |profile| return profile;
     }
@@ -673,12 +672,12 @@ pub fn homeDir() ?[]const u8 {
 }
 
 /// Lets a test take another platform's branch of `homeDir` on any host.
-pub var test_home_dir_os: if (builtin.is_test) std.Target.Os.Tag else void = if (builtin.is_test) builtin.os.tag else {};
+pub var test_home_dir_os: if (builtin.is_test) std.Target.Os.Tag else void = if (builtin.is_test) builtin.target.os.tag else {};
 
 /// Returns the temporary directory: `TEMP`, else `TMP`, else
 /// `GetTempPathW`, on Windows, and `TMPDIR`, else `/tmp`, elsewhere.
 pub fn tempDir() []const u8 {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         if (nonEmptyEnv("TEMP")) |temp| return temp;
         if (nonEmptyEnv("TMP")) |temp| return temp;
         return windowsTempPath();
@@ -836,21 +835,21 @@ pub const ProcessId = u32;
 
 /// Returns the id of the calling process.
 pub fn currentProcessId() ProcessId {
-    if (comptime builtin.os.tag == .windows) return std.os.windows.GetCurrentProcessId();
+    if (comptime builtin.target.os.tag == .windows) return std.os.windows.GetCurrentProcessId();
     return @intCast(std.c.getpid());
 }
 
 /// Returns the process id of a spawned child. On Windows the child id is a
 /// process handle, so the id comes from `GetProcessId`.
 pub fn childProcessId(id: std.process.Child.Id) ProcessId {
-    if (comptime builtin.os.tag == .windows) return @import("win32.zig").GetProcessId(id);
+    if (comptime builtin.target.os.tag == .windows) return @import("win32.zig").GetProcessId(id);
     return @intCast(id);
 }
 
 /// Returns whether no running process has id `pid`. A POSIX zombie still
 /// counts as running. Test use only.
 pub fn testProcessGone(pid: ProcessId) bool {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         const win32 = @import("win32.zig");
         const handle = win32.OpenProcess(win32.PROCESS_QUERY_LIMITED_INFORMATION, .FALSE, pid) orelse
             return std.os.windows.GetLastError() == .INVALID_PARAMETER;
@@ -865,7 +864,7 @@ pub fn testProcessGone(pid: ProcessId) bool {
 
 /// Converts a process id for a POSIX system call. POSIX only.
 pub fn posixPid(id: ProcessId) std.posix.pid_t {
-    comptime std.debug.assert(builtin.os.tag != .windows);
+    comptime std.debug.assert(builtin.target.os.tag != .windows);
     return @intCast(id);
 }
 
@@ -898,7 +897,7 @@ pub fn writeFileAtomic(alloc: std.mem.Allocator, path: []const u8, text: []const
 // profile directory ACL, and verification checks only the entry kind and its
 // link count. No other production file converts modes.
 
-const is_windows = builtin.os.tag == .windows;
+const is_windows = builtin.target.os.tag == .windows;
 
 /// Permissions for creating a private directory.
 pub const private_dir_permissions: std.Io.File.Permissions =
@@ -1282,7 +1281,7 @@ fn windowsChildPathWideAlloc(alloc: std.mem.Allocator, dir_w: []const u16, name:
 
 // The path behind the latest `DurableReplaceTargetBusy` on this thread, so
 // error reporting can name it.
-threadlocal var replace_busy_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+threadlocal var replace_busy_path_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
 threadlocal var replace_busy_path_len: usize = 0;
 
 fn recordReplaceBusyPath(path_w: []const u16) void {
@@ -1299,7 +1298,7 @@ fn recordReplaceBusyPath(path_w: []const u16) void {
 /// thread into `buf`, naming the file when it is known.
 pub fn replaceBusyMessage(buf: []u8) []const u8 {
     const path = if (replace_busy_path_len > 0) replace_busy_path_buf[0..replace_busy_path_len] else "a pf file";
-    return std.fmt.bufPrint(buf, "Could not replace {s} because another program has it open. Close it and retry.", .{path}) catch
+    return std.mem.print(buf, "Could not replace {s} because another program has it open. Close it and retry.", .{path}) catch
         "Could not replace a pf file because another program has it open. Close it and retry.";
 }
 
@@ -1620,7 +1619,7 @@ fn windowsRealpathAlloc(alloc: std.mem.Allocator, dir: std.Io.Dir, sub_path: []c
 /// that does not resolve rather than on a missing or invalid component.
 fn windowsPathHasUnresolvedLink(dir: std.Io.Dir, sub_path: []const u8) bool {
     var current: ?[]const u8 = sub_path;
-    while (current) |path| : (current = std.fs.path.dirname(path)) {
+    while (current) |path| : (current = std.Io.Dir.path.dirname(path)) {
         const stat = dir.statFile(getIo(), path, .{ .follow_symlinks = false }) catch continue;
         return stat.kind == .sym_link;
     }
@@ -1789,9 +1788,9 @@ pub fn testHardLink(dir: std.Io.Dir, target: []const u8, alias: []const u8) !voi
         const alloc = std.testing.allocator;
         const root = try dirRealpathAlloc(alloc, dir, ".");
         defer alloc.free(root);
-        const target_path = try std.fs.path.join(alloc, &.{ root, target });
+        const target_path = try std.Io.Dir.path.join(alloc, &.{ root, target });
         defer alloc.free(target_path);
-        const alias_path = try std.fs.path.join(alloc, &.{ root, alias });
+        const alias_path = try std.Io.Dir.path.join(alloc, &.{ root, alias });
         defer alloc.free(alias_path);
         const target_w = try std.unicode.wtf8ToWtf16LeAllocZ(alloc, target_path);
         defer alloc.free(target_w);
@@ -1809,11 +1808,11 @@ pub fn testHardLink(dir: std.Io.Dir, target: []const u8, alias: []const u8) !voi
 pub fn testSymLink(dir: std.Io.Dir, target_path: []const u8, link_path: []const u8) !void {
     const is_directory = if (comptime is_windows) is_directory: {
         const alloc = std.testing.allocator;
-        const parent = std.fs.path.dirname(link_path) orelse ".";
-        const resolved = if (std.fs.path.isAbsolute(target_path))
+        const parent = std.Io.Dir.path.dirname(link_path) orelse ".";
+        const resolved = if (std.Io.Dir.path.isAbsolute(target_path))
             try alloc.dupe(u8, target_path)
         else
-            try std.fs.path.join(alloc, &.{ parent, target_path });
+            try std.Io.Dir.path.join(alloc, &.{ parent, target_path });
         defer alloc.free(resolved);
         const stat = dir.statFile(getIo(), resolved, .{}) catch break :is_directory false;
         break :is_directory stat.kind == .directory;
@@ -2543,7 +2542,7 @@ test "tempDir follows the platform order" {
     setEnvironMap(&environ);
     if (comptime is_windows) {
         const queried = tempDir();
-        try std.testing.expect(std.fs.path.isAbsolute(queried));
+        try std.testing.expect(std.Io.Dir.path.isAbsolute(queried));
         try std.testing.expect(!std.mem.endsWith(u8, queried, "\\"));
         try environ.put("TMP", "C:\\tmp-b");
         try std.testing.expectEqualStrings("C:\\tmp-b", tempDir());
@@ -2560,7 +2559,7 @@ test "tempDir follows the platform order" {
 fn testJunction(alloc: std.mem.Allocator, dir: std.Io.Dir, link: []const u8, target: []const u8) !void {
     const root = try dirRealpathAlloc(alloc, dir, ".");
     defer alloc.free(root);
-    const link_path = try std.fs.path.join(alloc, &.{ root, link });
+    const link_path = try std.Io.Dir.path.join(alloc, &.{ root, link });
     defer alloc.free(link_path);
     const result = try std.process.run(alloc, getIo(), .{
         .argv = &.{ "cmd.exe", "/c", "mklink", "/J", link_path, target },
@@ -2630,8 +2629,7 @@ test "Windows executable resolution searches only absolute PATH entries" {
     try tmp.dir.createDirPath(getIo(), "second/dir.exe");
     const root = try dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const path_value = try std.fmt.allocPrint(
-        alloc,
+    const path_value = try alloc.print(
         ".;{s};relative\\bin;\\rooted;\"{s}\\first\";{s}\\second\\",
         .{ root[0..2], root, root },
     );
@@ -2639,13 +2637,13 @@ test "Windows executable resolution searches only absolute PATH entries" {
 
     const tool = (try resolveExecutableInPathAlloc(alloc, "tool", path_value)).?;
     defer alloc.free(tool);
-    const expected_tool = try std.fmt.allocPrint(alloc, "{s}\\second\\tool.exe", .{root});
+    const expected_tool = try alloc.print("{s}\\second\\tool.exe", .{root});
     defer alloc.free(expected_tool);
     try std.testing.expectEqualStrings(expected_tool, tool);
 
     const npx = (try resolveExecutableInPathAlloc(alloc, "npx", path_value)).?;
     defer alloc.free(npx);
-    const expected_npx = try std.fmt.allocPrint(alloc, "{s}\\first\\npx.cmd", .{root});
+    const expected_npx = try alloc.print("{s}\\first\\npx.cmd", .{root});
     defer alloc.free(expected_npx);
     try std.testing.expectEqualStrings(expected_npx, npx);
 
@@ -2749,7 +2747,7 @@ test "realpath resolves junctions and returns a DOS path on Windows" {
     try testJunction(alloc, tmp.dir, "via", real);
     const through = try dirRealpathAlloc(alloc, tmp.dir, "via\\inner");
     defer alloc.free(through);
-    const expected = try std.fs.path.join(alloc, &.{ real, "inner" });
+    const expected = try std.Io.Dir.path.join(alloc, &.{ real, "inner" });
     defer alloc.free(expected);
     try std.testing.expectEqualStrings(expected, through);
 
@@ -2780,7 +2778,7 @@ test "realpath and reads work below a path longer than 260 characters" {
     try tmp.dir.createDirPath(getIo(), relative);
     const root = try dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const deep = try std.fs.path.join(alloc, &.{ root, relative });
+    const deep = try std.Io.Dir.path.join(alloc, &.{ root, relative });
     defer alloc.free(deep);
     try std.testing.expect(deep.len > 400);
 
@@ -2827,9 +2825,9 @@ test "durable replace retries a busy target within its budget on Windows" {
     const elapsed = milliTimestamp() - started;
     try std.testing.expect(elapsed <= replace_busy_budget_ms + 250);
 
-    var message_buf: [std.fs.max_path_bytes + 128]u8 = undefined;
+    var message_buf: [std.Io.Dir.max_path_bytes + 128]u8 = undefined;
     const message = replaceBusyMessage(&message_buf);
-    try std.testing.expect(std.mem.indexOf(u8, message, path) != null);
+    try std.testing.expect(std.mem.find(u8, message, path) != null);
 
     // Released during the retries, the replace succeeds.
     const Release = struct {
@@ -2888,7 +2886,7 @@ test "concurrent locked durable writers both complete with one valid result" {
 }
 
 test "Windows concurrent spawns never inherit each other's pipes" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Handle inheritance races are Windows-specific.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Handle inheritance races are Windows-specific.
     const Holder = struct {
         // Starts processes that outlive the reads below, so any pipe they
         // inherited would delay that read's end of file.

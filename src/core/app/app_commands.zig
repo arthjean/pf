@@ -234,7 +234,7 @@ fn handleShellCommand(app: anytype, rest: []const u8) !void {
         try app.writeDomainNotice(.{ .topic = "", .tone = .@"error", .body = "usage: /shell reload" }, true);
         return;
     }
-    if (comptime @import("builtin").os.tag == .windows) {
+    if (comptime @import("builtin").target.os.tag == .windows) {
         // Snapshots are never captured on Windows, so there is nothing to
         // reload and remembered approvals stay.
         try app.writeDomainNotice(.{
@@ -2444,7 +2444,7 @@ fn writeCurrentStateSummary(writer: *std.Io.Writer, app: anytype, alloc: std.mem
 fn writeProcessSummary(writer: *std.Io.Writer, alloc: std.mem.Allocator) !void {
     const pid = io_mod.currentProcessId();
     try writer.print("process: pid={d}", .{pid});
-    if (comptime @import("builtin").os.tag == .windows) return writeWindowsProcessSummary(writer);
+    if (comptime @import("builtin").target.os.tag == .windows) return writeWindowsProcessSummary(writer);
     if (countOpenFileDescriptors()) |fd_count| try writer.print(" open_fds={d}", .{fd_count});
     try writer.writeByte('\n');
 

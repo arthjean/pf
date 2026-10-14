@@ -1527,7 +1527,7 @@ test "command replay capture spills without losing callback order" {
 test "a v2 session keeps a replay as one blob named by its hash, spooled or inline (D44)" {
     // The unlinked spool is unavailable on Windows, as for the other
     // ephemeral-spool tests.
-    if (comptime builtin.os.tag == .windows or builtin.os.tag == .wasi) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var capture_arena = std.heap.ArenaAllocator.init(alloc);
     defer capture_arena.deinit();
@@ -1654,7 +1654,7 @@ test "saved and ephemeral replay backings share collision handling" {
     );
 
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return;
+    if (comptime builtin.target.os.tag == .windows) return;
     const temp_path = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(temp_path);
     var ephemeral_store = EphemeralStore.initForTesting(alloc, temp_path);
@@ -1681,7 +1681,7 @@ test "saved and ephemeral replay backings share collision handling" {
 
 test "ephemeral command replay unlinks backing before publication and remains readable" {
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1732,7 +1732,7 @@ test "ephemeral command replay unlinks backing before publication and remains re
 
 test "agent command replay preserves secrets split across callback frames" {
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1775,7 +1775,7 @@ test "agent command replay preserves secrets split across callback frames" {
 
 test "agent command replay pages stay contiguous across utf8 boundaries" {
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1829,7 +1829,7 @@ test "agent command replay pages stay contiguous across utf8 boundaries" {
 
 test "agent command replay keeps split utf8 valid and streams oversized secret-bearing lines" {
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1880,7 +1880,7 @@ test "agent command replay keeps split utf8 valid and streams oversized secret-b
 
 test "agent command replay preserves oversized sensitive assignments split after delimiters" {
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const delimiters = [_][]const u8{ "=", "=\"", "='" };
 
@@ -1927,7 +1927,7 @@ test "agent command replay preserves oversized sensitive assignments split after
 
 test "agent command replay streams non-secret oversized lines without omission" {
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -2107,7 +2107,7 @@ test "command replay reader rejects descriptor and frame corruption" {
 
 test "failed ephemeral replay reader construction leaves its backing reusable" {
     // Ephemeral replay unlinks an open backing file, which Windows does not support.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -2137,7 +2137,7 @@ test "failed ephemeral replay reader construction leaves its backing reusable" {
 
 test "command replay reader storage does not grow" {
     // A Windows file handle is pointer-sized, which widens the file union.
-    const expected: usize = if (comptime builtin.os.tag == .windows) 8264 else 8256;
+    const expected: usize = if (comptime builtin.target.os.tag == .windows) 8264 else 8256;
     try std.testing.expectEqual(expected, @sizeOf(Reader));
 }
 

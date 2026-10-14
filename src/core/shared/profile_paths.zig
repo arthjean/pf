@@ -105,7 +105,7 @@ fn nativeTestPath(comptime path: []const u8) []const u8 {
     const native = comptime native: {
         var bytes: [path.len]u8 = path[0..path.len].*;
         for (bytes["/tmp/fake-home".len..]) |*byte| {
-            if (byte.* == '/') byte.* = std.fs.path.sep;
+            if (byte.* == '/') byte.* = std.Io.Dir.path.sep;
         }
         break :native bytes;
     };

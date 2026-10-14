@@ -244,7 +244,7 @@ fn prepareInternal(
     // External anchors show the resolved target so a symlink redirect cannot look local.
     const approval_path = switch (policy_targets.anchor.scope) {
         .external => policy_targets.canonical_target_path,
-        .workspace => if (builtin.os.tag == .windows and !std.fs.path.isAbsolute(input.path())) slash: {
+        .workspace => if (builtin.target.os.tag == .windows and !std.Io.Dir.path.isAbsolute(input.path())) slash: {
             // Workspace-relative paths read with `/` on every platform.
             const slashed = try call_alloc.dupe(u8, input.path());
             std.mem.replaceScalar(u8, slashed, '\\', '/');
@@ -2293,7 +2293,7 @@ test "prepare emits explicit empty and no-change notices" {
 
 test "prepare terminal-encodes hostile path and preview content" {
     // Windows file names cannot contain the control characters this path uses.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -3213,7 +3213,7 @@ test "apply rejects a target pathname replaced during final preimage validation"
 test "apply rejects a parent moved during final preimage validation" {
     // Windows refuses to move a directory while pf holds handles beneath it,
     // so this race cannot be staged there.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
     try tmp.dir.createDir(std.testing.io, "parent", .default_dir);
@@ -3272,7 +3272,7 @@ test "apply rejects a parent moved during final preimage validation" {
 test "apply commits through a parent moved after final validation" {
     // Windows refuses to move a directory while pf holds handles beneath it,
     // so this race cannot be staged there.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
     try tmp.dir.createDir(std.testing.io, "parent", .default_dir);
@@ -3385,7 +3385,7 @@ test "apply observes cancellation between bounded stage writes" {
 test "apply rejects replacement of transaction-created parent directories" {
     // Windows refuses to move a directory while pf holds handles beneath it,
     // so this race cannot be staged there.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     inline for ([_]CreatedParentReplacement{ .shallow, .deep }) |replacement| {
         var tmp = std.testing.tmpDir(.{ .iterate = true });
         defer tmp.cleanup();

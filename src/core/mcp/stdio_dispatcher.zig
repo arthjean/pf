@@ -446,7 +446,7 @@ pub const StdioDispatcher = struct {
     /// Hands the server's Job Object to the dispatcher, which terminates it
     /// with the server and closes it on destruction. Windows only.
     pub fn installProcessJob(self: *StdioDispatcher, job: process_job.Job) void {
-        comptime std.debug.assert(builtin.os.tag == .windows);
+        comptime std.debug.assert(builtin.target.os.tag == .windows);
         std.debug.assert(self.process_job == null);
         self.process_job = job;
     }
@@ -454,21 +454,21 @@ pub const StdioDispatcher = struct {
     /// Ends the server and, on Windows, every process in its job, so a
     /// launcher such as `npx.cmd` cannot leave `node.exe` holding the pipes.
     fn terminateProcessTree(self: *StdioDispatcher) void {
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             if (self.process_job) |job| job.terminate();
         }
         terminateChild(self.child_id);
     }
 
     fn terminateProcessTreeGracefully(self: *StdioDispatcher) void {
-        if (comptime builtin.os.tag == .windows) return self.terminateProcessTree();
+        if (comptime builtin.target.os.tag == .windows) return self.terminateProcessTree();
         terminateChildGracefully(self.child_id);
     }
 
     fn destroy(self: *StdioDispatcher) void {
         unregisterForProcessExit(self);
         std.debug.assert(self.docker_cleanup == null);
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             if (self.process_job) |*job| job.close();
         }
         std.debug.assert(self.stderr_thread == null and self.stderr == null and self.stderr_wake == null);
@@ -2053,8 +2053,8 @@ fn jsonNumber(value: std.json.Value) !f64 {
     };
 }
 
-const ProcessJob = if (builtin.os.tag == .windows) ?process_job.Job else void;
-const no_process_job: ProcessJob = if (builtin.os.tag == .windows) null else {};
+const ProcessJob = if (builtin.target.os.tag == .windows) ?process_job.Job else void;
+const no_process_job: ProcessJob = if (builtin.target.os.tag == .windows) null else {};
 
 fn terminateChild(child_id: std.process.Child.Id) void {
     switch (builtin.target.os.tag) {
@@ -2224,7 +2224,7 @@ pub fn killAllForProcessExit() bool {
     var killed: usize = 0;
     for (entries) |entry| {
         // A launcher such as `npx.cmd` can exit while its job still runs the server.
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             if (entry.dispatcher.process_job) |job| job.terminate();
         }
         if (!entry.dispatcher.childMayBeRunning()) continue;
@@ -3694,7 +3694,7 @@ test "operation deadline includes waiting for the serialized writer" {
 }
 
 test "Windows MCP server teardown ends every process in the server's job" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -3702,10 +3702,10 @@ test "Windows MCP server teardown ends every process in the server's job" {
     const probe_name = "pf-mcp-tree-probe.exe";
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const probe = try std.fs.path.join(alloc, &.{ root, probe_name });
+    const probe = try std.Io.Dir.path.join(alloc, &.{ root, probe_name });
     defer alloc.free(probe);
     try std.Io.Dir.copyFileAbsolute("C:\\Windows\\System32\\PING.EXE", probe, io_mod.getIo(), .{});
-    const script = try std.fmt.allocPrint(alloc, "{s} -n 30 127.0.0.1 | {s} -n 30 127.0.0.1", .{ probe, probe });
+    const script = try alloc.print("{s} -n 30 127.0.0.1 | {s} -n 30 127.0.0.1", .{ probe, probe });
     defer alloc.free(script);
 
     for ([_]StdioDispatcher.ShutdownMode{ .graceful, .abandon }) |mode| {
@@ -3731,7 +3731,7 @@ test "Windows MCP server teardown ends every process in the server's job" {
 }
 
 test "Windows process exit ends every process in the server's job" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
     defer resetProcessExitKillsForTest();
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
@@ -3740,10 +3740,10 @@ test "Windows process exit ends every process in the server's job" {
     const probe_name = "pf-mcp-exit-probe.exe";
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const probe = try std.fs.path.join(alloc, &.{ root, probe_name });
+    const probe = try std.Io.Dir.path.join(alloc, &.{ root, probe_name });
     defer alloc.free(probe);
     try std.Io.Dir.copyFileAbsolute("C:\\Windows\\System32\\PING.EXE", probe, io_mod.getIo(), .{});
-    const script = try std.fmt.allocPrint(alloc, "{s} -n 30 127.0.0.1 | {s} -n 30 127.0.0.1", .{ probe, probe });
+    const script = try alloc.print("{s} -n 30 127.0.0.1 | {s} -n 30 127.0.0.1", .{ probe, probe });
     defer alloc.free(script);
 
     const dispatcher = launch: {

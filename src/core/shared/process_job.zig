@@ -110,7 +110,7 @@ fn waitForChildren(alloc: std.mem.Allocator, parent_pid: u32, want_any: bool, ti
 }
 
 test "Windows process job terminates every descendant within 2 s" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
     const alloc = std.testing.allocator;
     var job = try Job.create();
     defer job.close();
@@ -128,7 +128,7 @@ test "Windows process job terminates every descendant within 2 s" {
 }
 
 test "Windows process job kills its processes when its last handle closes" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
     const alloc = std.testing.allocator;
     var job = try Job.create();
     var child = try spawnPingTree(job);
@@ -140,7 +140,7 @@ test "Windows process job kills its processes when its last handle closes" {
 }
 
 test "Windows process job nests inside a job that already holds pf" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest; // Job Objects are Windows-only.
     const outer = win32.CreateJobObjectW(null, null) orelse return error.ProcessJobUnavailable;
     defer windows.CloseHandle(outer);
     // The outer job has no limits, so holding the test process changes nothing else.

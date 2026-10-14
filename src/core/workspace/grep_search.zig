@@ -794,7 +794,7 @@ fn lineMatchesPattern(line: []const u8, pattern: []const u8, case_insensitive: b
 }
 
 // Absolute match paths use the native separator.
-const sep = std.fs.path.sep_str;
+const sep = std.Io.Dir.path.sep_str;
 
 fn writeTempFile(alloc: Allocator, tmp: *std.testing.TmpDir, sub_path: []const u8, content: []const u8) ![]u8 {
     if (std.Io.Dir.path.dirname(sub_path)) |parent| {

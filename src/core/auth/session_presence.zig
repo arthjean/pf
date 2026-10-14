@@ -119,7 +119,7 @@ test "credential write admission accepts missing files and rejects read-only tar
     try std.testing.expect(try requireWritableInDir(tmp.dir, "auth.json"));
     defer file.setPermissions(std.testing.io, io_mod.private_file_permissions) catch {};
     // Windows has no POSIX mode bits to make the file read-only.
-    if (comptime @import("builtin").os.tag == .windows) return;
+    if (comptime @import("builtin").target.os.tag == .windows) return;
     for ([_]std.posix.mode_t{ 0o400, 0o200, 0o700 }) |mode| {
         try file.setPermissions(std.testing.io, std.Io.File.Permissions.fromMode(mode));
         try std.testing.expectError(error.CredentialStorageUnavailable, requireWritableInDir(tmp.dir, "auth.json"));

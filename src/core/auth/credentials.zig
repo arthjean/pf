@@ -1390,7 +1390,7 @@ test "credential source presence reads metadata without parsing session secrets"
             sourcePresence(host.unavailable_secret_store, case.source),
         );
         // Windows has no group or other mode bits to widen.
-        if (comptime builtin.os.tag != .windows) {
+        if (comptime builtin.target.os.tag != .windows) {
             try file.setPermissions(
                 io_mod.getIo(),
                 std.Io.File.Permissions.fromMode(0o644),
@@ -1530,7 +1530,7 @@ const PfLoginRefreshProbe = struct {
             1 => blk: {
                 if (request.method != .post_form) return error.UnexpectedOAuthRequest;
                 // The test that sets this path is skipped on Windows.
-                if (comptime builtin.os.tag != .windows) if (self.auth_path_to_make_read_only) |auth_path| {
+                if (comptime builtin.target.os.tag != .windows) if (self.auth_path_to_make_read_only) |auth_path| {
                     var file = try std.Io.Dir.openFileAbsolute(io_mod.getIo(), auth_path, .{ .mode = .read_write });
                     defer file.close(io_mod.getIo());
                     try file.setPermissions(
@@ -1621,7 +1621,7 @@ test "a malformed successful pf login refresh retires the session" {
 
 test "a pf login refresh retires the consumed token when durable replacement fails" {
     // Makes the credential file read-only through Permissions.setReadOnly, which does not compile on Windows in Zig 0.16.0.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var fixture = try ExpiredPfLoginFixture.install(alloc);
     defer fixture.deinit();

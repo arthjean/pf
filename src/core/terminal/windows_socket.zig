@@ -225,7 +225,7 @@ fn startup() error{SocketUnavailable}!void {
 }
 
 test "Winsock AF_UNIX endpoints name their peer and serve std.Io streams" {
-    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    if (builtin.target.os.tag != .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -233,7 +233,7 @@ test "Winsock AF_UNIX endpoints name their peer and serve std.Io streams" {
     try tmp.dir.createDir(std.testing.io, "h\u{e9}", .default_dir);
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "h\u{e9}");
     defer alloc.free(root);
-    const path = try std.fs.path.join(alloc, &.{ root, "e.sock" });
+    const path = try std.Io.Dir.path.join(alloc, &.{ root, "e.sock" });
     defer alloc.free(path);
 
     const listener = try listen(path);

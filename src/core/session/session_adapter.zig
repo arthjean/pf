@@ -71,7 +71,7 @@ const replay_page_lines: usize = 256;
 /// PF_SESSIONS_V2 set to `1` or `true`. Never on Windows, where pf refuses
 /// sessions v2 (`refusesOnWindows`).
 pub fn enabled(flag: bool) bool {
-    if (comptime builtin.os.tag == .windows) return false;
+    if (comptime builtin.target.os.tag == .windows) return false;
     return requested(flag);
 }
 
@@ -3207,14 +3207,14 @@ test "preferences round trip through v1's decoder" {
 
 test "the switch is the flag or PF_SESSIONS_V2" {
     // `enabled` is false on Windows by design, where pf refuses sessions v2.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     try testing.expect(enabled(true));
 }
 
 /// pf: tests that write v2 sessions skip on Windows, where pf refuses
 /// sessions v2 and the store's crash-safety protocol is not ported.
 fn skipV2StoreOnWindows() !void {
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
 }
 
 /// A HOME in a temp folder with an adapter store over it.
@@ -3678,7 +3678,7 @@ fn storedTitle(s: *Session) !?[]u8 {
 
 test "a session whose first turn never ended takes its first prompt as title at its next turn end (D52)" {
     // Sessions v2 is refused on Windows.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -3708,7 +3708,7 @@ test "a session whose first turn never ended takes its first prompt as title at 
 
 test "a resumed session keeps the title it has (D52)" {
     // Sessions v2 is refused on Windows.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4418,7 +4418,7 @@ test "a session that never reached the disk takes its terminal folder, and a sav
 test "recover copies the folders outside the manager, never a link, and says when it left one out" {
     // Creates symlinks and reads POSIX mode bits through toMode, which do
     // not work on Windows, where pf refuses sessions v2.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();
@@ -4658,7 +4658,7 @@ test "compactor records on v2 are recorded by one setting with the next write, a
 test "a web-fetch download on v2 is a read-only blob the model opens by its path (D49)" {
     // Reads the blob's 0400 mode through toMode, which does not exist on
     // Windows, where pf refuses sessions v2.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var t: TestHome = undefined;
     try t.init();
     defer t.deinit();

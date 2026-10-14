@@ -15,7 +15,7 @@ const poll_ms: i64 = 100;
 /// `error.AddressInUse`.
 pub fn listenLoopback(port: u16) !std.Io.net.Server {
     const address: std.Io.net.IpAddress = .{ .ip4 = .loopback(port) };
-    if (comptime builtin.os.tag == .windows) return listenExclusiveWindows(address);
+    if (comptime builtin.target.os.tag == .windows) return listenExclusiveWindows(address);
     return address.listen(io_mod.getIo(), .{ .reuse_address = true });
 }
 
@@ -409,7 +409,7 @@ fn readRequest(
                 error.ConnectionResetByPeer => return null,
                 // Zig reports every Windows receive failure, a reset
                 // included, as Unexpected.
-                error.Unexpected => if (comptime builtin.os.tag == .windows) return null else return error.Unexpected,
+                error.Unexpected => if (comptime builtin.target.os.tag == .windows) return null else return error.Unexpected,
                 else => |read_err| return read_err,
             },
         };
@@ -607,7 +607,7 @@ test "loopback callback listener reports a fixed port another program holds" {
 
 test "loopback callback listener holds a picked Windows port exclusively" {
     // Only Windows binds listeners with shared access by default.
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     const zio = io_mod.getIo();
     var listener = try listenLoopback(0);
     defer listener.deinit(zio);

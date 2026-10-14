@@ -252,7 +252,7 @@ test "ACP ultrafast WASM saves preserve baselines and failed preference writes r
     if (comptime host_target.is_wasm) return error.SkipZigTest;
     // COFF resolves the `extern "pf"` session commit import through a pf.dll
     // import library, which a Windows test binary does not have.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const Host = struct {
         var status: i32 = 0;
         var stored_ultrafast: bool = false;
@@ -3027,7 +3027,7 @@ test "ACP mode choice is saved under USERPROFILE when Windows has no HOME" {
     try environ.put("USERPROFILE", profile);
     io_mod.setEnvironMap(&environ);
     io_mod.test_home_dir_os = .windows;
-    defer io_mod.test_home_dir_os = builtin.os.tag;
+    defer io_mod.test_home_dir_os = builtin.target.os.tag;
     try std.testing.expectEqualStrings(profile, io_mod.homeDir().?);
 
     var state: server.ServerState = undefined;
@@ -3205,7 +3205,7 @@ test "ACP ultrafast new load and resume preserve configured baselines on both ba
     defer capture.close(io_mod.getIo());
     for ([_]bool{ false, true }) |v2_backend| {
         // pf: Windows refuses sessions v2, so only the v1 backend runs there.
-        if (v2_backend and builtin.os.tag == .windows) continue;
+        if (v2_backend and builtin.target.os.tag == .windows) continue;
         for ([_]bool{ false, true }) |baseline| {
             for ([_]?bool{ null, false, true }) |process| {
                 var arena_state = std.heap.ArenaAllocator.init(alloc);

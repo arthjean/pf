@@ -37,7 +37,7 @@ pub fn interactiveModeEnableSequence(tmux: ?[]const u8) []const u8 {
 /// Reads the terminal size from `file`: the window size of a POSIX terminal,
 /// or the visible window of a Windows console screen buffer.
 pub fn queryLayout(file: std.Io.File, footer_rows: u16) !types.Layout {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         const win32 = @import("../../core/shared/win32.zig");
         var info: win32.CONSOLE_SCREEN_BUFFER_INFO = undefined;
         if (!win32.GetConsoleScreenBufferInfo(file.handle, &info).toBool()) {

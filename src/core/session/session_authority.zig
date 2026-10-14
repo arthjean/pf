@@ -242,7 +242,7 @@ pub fn openSessionFile(
 
 test "session files open without waiting on a FIFO" {
     // Creates a POSIX FIFO; Windows has no mkfifo.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

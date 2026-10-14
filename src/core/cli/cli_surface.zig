@@ -1061,14 +1061,14 @@ fn runIfRequestedWithDeps(alloc: Allocator, args: []const [:0]const u8, cfg: Con
     switch (parsed_launch) {
         .interactive => |launch| {
             // pf: refuse before the app draws a frame or opens a session.
-            if (session_adapter.refusesOnWindows(builtin.os.tag, launch.modifiers.sessions_v2)) {
+            if (session_adapter.refusesOnWindows(builtin.target.os.tag, launch.modifiers.sessions_v2)) {
                 var refused = launch;
                 refused.deinit(alloc);
                 try writeStderr(deps, session_adapter.windows_refusal_message ++ "\n");
                 return .handled_failure;
             }
             // pf: refuse MCP-v2 before any MCP server starts.
-            if (mcp_host.refusesOnWindows(builtin.os.tag)) {
+            if (mcp_host.refusesOnWindows(builtin.target.os.tag)) {
                 var refused = launch;
                 refused.deinit(alloc);
                 try writeStderr(deps, mcp_host.windows_refusal_message ++ "\n");
@@ -1128,7 +1128,7 @@ fn runNonInteractiveWithDeps(
         .ask, .acp, .mcp, .pr, .issue => true,
         else => false,
     };
-    if (loads_mcp and mcp_host.refusesOnWindows(builtin.os.tag)) {
+    if (loads_mcp and mcp_host.refusesOnWindows(builtin.target.os.tag)) {
         try writeStderr(deps, mcp_host.windows_refusal_message ++ "\n");
         return .handled_failure;
     }
@@ -1147,7 +1147,7 @@ fn runNonInteractiveWithDeps(
         .doctor, .session, .sessions => true,
         else => false,
     };
-    if (opens_v2_store and session_adapter.refusesOnWindows(builtin.os.tag, global_args.modifiers.sessions_v2)) {
+    if (opens_v2_store and session_adapter.refusesOnWindows(builtin.target.os.tag, global_args.modifiers.sessions_v2)) {
         try writeStderr(deps, session_adapter.windows_refusal_message ++ "\n");
         return .handled_failure;
     }
@@ -1165,7 +1165,7 @@ fn runNonInteractiveWithDeps(
         },
         .acp => |rest| {
             // pf: ACP reads only PF_SESSIONS_V2, never the flag.
-            if (session_adapter.refusesOnWindows(builtin.os.tag, false)) {
+            if (session_adapter.refusesOnWindows(builtin.target.os.tag, false)) {
                 try writeStderr(deps, session_adapter.windows_refusal_message ++ "\n");
                 return .handled_failure;
             }
@@ -5157,7 +5157,7 @@ test "mcp path reads the profile home from the home resolver" {
     const expected = try profile_paths.mcpConfigPath(alloc, io_mod.homeDir().?);
     defer alloc.free(expected);
     try std.testing.expect(std.mem.startsWith(u8, capture.stdout.written(), expected));
-    const expected_home = if (builtin.os.tag == .windows) "C:\\Users\\a" else "/git-bash/home";
+    const expected_home = if (builtin.target.os.tag == .windows) "C:\\Users\\a" else "/git-bash/home";
     try std.testing.expect(std.mem.startsWith(u8, capture.stdout.written(), expected_home));
 }
 

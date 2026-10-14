@@ -1653,7 +1653,7 @@ fn executeProcessWithScriptUnisolated(
     script_write.close(io_mod.getIo());
     script_write_open = false;
 
-    const process_group_id: ?ProcessId = if (builtin.os.tag == .windows) null else io_mod.childProcessId(child.id.?);
+    const process_group_id: ?ProcessId = if (builtin.target.os.tag == .windows) null else io_mod.childProcessId(child.id.?);
     child_needs_cleanup = false;
     const collected = try collectSpawnedProcess(
         scratch,
@@ -2781,21 +2781,21 @@ fn parseReplaceError(name: []const u8) ?std.process.ReplaceError {
 }
 
 /// The Job Object that contains a command's process tree on Windows.
-const CommandJob = if (builtin.os.tag == .windows) process_job.Job else void;
+const CommandJob = if (builtin.target.os.tag == .windows) process_job.Job else void;
 
 fn createCommandJob() !CommandJob {
-    if (comptime builtin.os.tag == .windows) return process_job.Job.create();
+    if (comptime builtin.target.os.tag == .windows) return process_job.Job.create();
 }
 
 /// Closing the job kills whatever the command left running.
 fn closeCommandJob(job: *CommandJob) void {
-    if (comptime builtin.os.tag == .windows) job.close();
+    if (comptime builtin.target.os.tag == .windows) job.close();
 }
 
 /// Spawns a command. On Windows the child starts suspended and joins `job`
 /// before it runs, so every descendant belongs to the job.
 fn spawnCommand(options: std.process.SpawnOptions, job: CommandJob) !std.process.Child {
-    if (comptime builtin.os.tag == .windows) return process_job.spawn(io_mod.getIo(), options, job);
+    if (comptime builtin.target.os.tag == .windows) return process_job.spawn(io_mod.getIo(), options, job);
     return std.process.spawn(io_mod.getIo(), options);
 }
 
@@ -2830,7 +2830,7 @@ const ProcessObserver = struct {
 
     /// Kills every process left in the command's job. Windows only.
     fn terminateJob(self: *ProcessObserver) void {
-        if (comptime builtin.os.tag != .windows) return;
+        if (comptime builtin.target.os.tag != .windows) return;
         if (self.job) |job| job.terminate();
     }
 
@@ -2947,7 +2947,7 @@ const ProcessObserver = struct {
             cleanupChild(self.waiter.child);
             return;
         }
-        if (builtin.os.tag == .windows) {
+        if (builtin.target.os.tag == .windows) {
             if (!self.waiter.isReady()) {
                 self.terminateJob();
                 if (self.job == null) _ = @import("../shared/win32.zig").TerminateProcess(self.process_id, 1);
@@ -3548,7 +3548,7 @@ fn killIfPresent(target: std.c.pid_t, signal: std.posix.SIG) !void {
 fn terminateRemainingProcessGroup(pid: ProcessId) void {
     // Windows has no process groups, and remainingProcessGroupAlive never
     // reports one there.
-    if (comptime builtin.os.tag == .windows) return;
+    if (comptime builtin.target.os.tag == .windows) return;
     signalProcessGroup(pid, std.posix.SIG.KILL) catch |err| {
         debug_trace.logf(
             "core",
@@ -5068,7 +5068,7 @@ test "timeout source is distinct from cancellation" {
 
 test "foreground force cleanup preserves the supervisor" {
     // Checks the POSIX foreground supervisor signal mask, which Windows does not use.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const mask = foregroundSupervisorSignalMask();
     try std.testing.expect(std.posix.sigismember(&mask, std.posix.SIG.TERM));
     try std.testing.expect(std.posix.sigismember(&mask, foreground_session_force_signal));
@@ -5172,7 +5172,7 @@ test "nonterminal child terms remain indeterminate" {
     );
     try std.testing.expectEqual(
         command_contract.CommandStatus.indeterminate,
-        commandStatusFromTerm(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }),
+        commandStatusFromTerm(.{ .stopped = if (builtin.target.os.tag == .windows) .TERM else .STOP }),
     );
 }
 

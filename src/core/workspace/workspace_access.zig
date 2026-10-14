@@ -551,7 +551,7 @@ fn resolveSavedDirectory(
             // The filesystem root contains every path: `/`, or the drive root on Windows.
             const identity = pathing.resolveCreateTargetFromNearestExisting(
                 arena,
-                std.fs.path.parsePath(normalized).root,
+                std.Io.Dir.path.parsePath(normalized).root,
                 normalized,
             ) catch |resolve_err| switch (resolve_err) {
                 error.OutOfMemory => return error.OutOfMemory,

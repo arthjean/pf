@@ -127,7 +127,7 @@ const HeadlessInterruptInstallError = error{HeadlessInterruptBusy};
 const headless_interrupt_exit_code: u8 = 130;
 const headless_termination_exit_code: u8 = 143;
 
-const headless_interrupt = if (std_builtin.os.tag == .windows) struct {
+const headless_interrupt = if (std_builtin.target.os.tag == .windows) struct {
     // Console control events stand in for SIGINT and SIGTERM: Ctrl+C cancels
     // the turn and exits 130, Ctrl+Break exits 143. A second Ctrl+C within
     // `double_interrupt_window_ms` of the first exits 130 at once.
@@ -1763,7 +1763,7 @@ fn missingCredentialResult(
 fn runPromptInternal(alloc: Allocator, prompt: []const u8, permission_override: ?PermissionMode, initial_cfg: Config, options: RunOptions) !PromptRunResult {
     // pf: refuse before `enabled()` hides the request, any model request, or
     // any session write.
-    if (session_adapter.refusesOnWindows(std_builtin.os.tag, initial_cfg.sessions_v2)) {
+    if (session_adapter.refusesOnWindows(std_builtin.target.os.tag, initial_cfg.sessions_v2)) {
         try options.deps.write_stderr(options.deps.stderr_ctx, session_adapter.windows_refusal_message ++ "\n");
         return .{
             .exit_code = 1,
@@ -4920,7 +4920,7 @@ fn testConfig() Config {
 }
 
 // Saved sessions refuse a workspace root that is not absolute on this platform.
-const test_ask_workspace = if (std_builtin.os.tag == .windows) "C:\\pf-test" else "/tmp/pf-test";
+const test_ask_workspace = if (std_builtin.target.os.tag == .windows) "C:\\pf-test" else "/tmp/pf-test";
 
 fn testMissingKeyStartup(alloc: Allocator, _: oauth_transport.Provider, _: host.SecretStore, default_model: []const u8, default_agent_step_limit: usize, _: ?[]const u8) !app_lifecycle.StartupState {
     var state = app_lifecycle.StartupState{ .agent_step_limit = default_agent_step_limit };
@@ -6253,7 +6253,7 @@ test "runWithDeps reports unsupported images in JSON before startup" {
     try std.testing.expect(std.mem.find(u8, stdout_capture.bytes.items, "\"exit_code\":1") != null);
     try std.testing.expect(std.mem.find(u8, stdout_capture.bytes.items, "UnsupportedImageType") != null);
     // JSON escapes the backslashes of a Windows path.
-    const quoted_path = try std.fmt.allocPrint(alloc, "{f}", .{std.json.fmt(invalid_path, .{})});
+    const quoted_path = try alloc.print("{f}", .{std.json.fmt(invalid_path, .{})});
     defer alloc.free(quoted_path);
     try std.testing.expect(std.mem.find(u8, stdout_capture.bytes.items, quoted_path[1 .. quoted_path.len - 1]) != null);
 }
@@ -6533,7 +6533,7 @@ test "pf ask default user commands require configured authority or review" {
         .name = "shell",
         .arguments_json = "{\"action\":\"run\",\"command\":\"pwd\"}",
     };
-    if (comptime std_builtin.os.tag == .windows) {
+    if (comptime std_builtin.target.os.tag == .windows) {
         // Windows has no login shell profile: the legacy environment admits
         // the direct plan, as it does on Linux and macOS.
         const direct = try requestToolPermissionOutcome(&ctx, arena, direct_call, .ask, &.{}, &.{});
@@ -6628,7 +6628,7 @@ test "headless ask SIGINT sets process-lifetime cancellation storage" {
 }
 
 fn testRaiseHeadlessInterrupt() void {
-    if (comptime std_builtin.os.tag == .windows) {
+    if (comptime std_builtin.target.os.tag == .windows) {
         // CRT raise(SIGINT) bypasses the console control handler pf installs on Windows.
         _ = headless_interrupt.handle(@import("../shared/win32.zig").CTRL_C_EVENT);
     } else {
@@ -6830,7 +6830,7 @@ test "headless ask rejects concurrent and nested interrupt scopes without overwr
 
 test "headless ask restores the exact previous SIGINT handler" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime std_builtin.target.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6855,7 +6855,7 @@ test "headless ask restores the exact previous SIGINT handler" {
 
 test "headless ask redelivers consumed SIGINT after restoring the previous handler" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime std_builtin.target.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6881,7 +6881,7 @@ test "headless ask redelivers consumed SIGINT after restoring the previous handl
 
 test "headless ask returns nonzero when the restored SIGINT handler returns" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime std_builtin.target.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6920,7 +6920,7 @@ test "headless ask returns nonzero when the restored SIGINT handler returns" {
 
 test "headless ask startup cancellation prevents later hooks" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime std_builtin.target.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -6983,7 +6983,7 @@ test "headless ask startup cancellation prevents later hooks" {
 test "headless ask resets signal-visible cancellation state for each scope" {
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
-    const interrupt = if (comptime std_builtin.os.tag == .windows) @import("../shared/win32.zig").CTRL_C_EVENT else std.posix.SIG.INT;
+    const interrupt = if (comptime std_builtin.target.os.tag == .windows) @import("../shared/win32.zig").CTRL_C_EVENT else std.posix.SIG.INT;
     var scope = try headless_interrupt.Scope.install(true);
     _ = headless_interrupt.handle(interrupt);
     try std.testing.expect(headless_interrupt.cancel_requested.load(.seq_cst));
@@ -6991,7 +6991,7 @@ test "headless ask resets signal-visible cancellation state for each scope" {
 
     // On Windows a second Ctrl+C within the double-interrupt window exits the
     // process, and the removed console handler never receives a late event.
-    if (comptime std_builtin.os.tag != .windows) {
+    if (comptime std_builtin.target.os.tag != .windows) {
         _ = headless_interrupt.handle(interrupt);
         try std.testing.expect(headless_interrupt.cancel_requested.load(.seq_cst));
     }
@@ -7003,7 +7003,7 @@ test "headless ask resets signal-visible cancellation state for each scope" {
 
 test "headless ask preserves signal ordering during install and teardown" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime std_builtin.target.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -7033,7 +7033,7 @@ test "headless ask preserves signal ordering during install and teardown" {
 
 test "headless ask cross-thread SIGINT teardown and reuse target only the active scope" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime std_builtin.target.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -7075,7 +7075,7 @@ test "headless ask cross-thread SIGINT teardown and reuse target only the active
 
 test "disabled headless ask scope leaves the interactive SIGINT handler untouched" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime std_builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime std_builtin.target.os.tag == .windows) return error.SkipZigTest;
     if (comptime !supports_headless_interrupt) return error.SkipZigTest;
 
     const previous_action: std.posix.Sigaction = .{
@@ -7142,8 +7142,8 @@ test "pf ask auto mode applies automatic clear and caution without a prompt" {
     const direct = try requestToolPermissionOutcomeWithRequest(&ctx, arena, direct_call, direct_review.context(), .auto, &.{}, null, null, &.{}, null);
     // Windows has no login shell profile: the legacy environment admits the
     // direct plan without review, as it does on Linux and macOS.
-    const direct_reviews: usize = if (std_builtin.os.tag == .windows) 0 else 1;
-    if (comptime std_builtin.os.tag == .windows) {
+    const direct_reviews: usize = if (std_builtin.target.os.tag == .windows) 0 else 1;
+    if (comptime std_builtin.target.os.tag == .windows) {
         try std.testing.expect(direct.execution_authority.?.run_command == .direct_only);
     } else {
         try std.testing.expectEqual(

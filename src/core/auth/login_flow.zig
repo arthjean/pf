@@ -1246,7 +1246,7 @@ fn selectTeam(alloc: Allocator, teams: []const Team, current: ?[]const u8) !?usi
 
     const default_index = defaultTeamIndex(teams, current);
     // The arrow-key picker drives termios; Windows uses the numbered prompt.
-    if (comptime builtin.os.tag == .windows) return try selectTeamByLine(alloc, teams, default_index);
+    if (comptime builtin.target.os.tag == .windows) return try selectTeamByLine(alloc, teams, default_index);
     const index = if (canUseInteractiveTeamPicker())
         selectTeamInteractive(alloc, teams, default_index) catch |err| switch (err) {
             error.NotATerminal => try selectTeamByLine(alloc, teams, default_index),

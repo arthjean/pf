@@ -47,7 +47,7 @@ const GracefulExitSigintGuard = if (host_target.is_wasm) struct {
     }
 
     fn deinit(_: *@This()) void {}
-} else if (builtin.os.tag == .windows) struct {
+} else if (builtin.target.os.tag == .windows) struct {
     // A null handler makes the process ignore CTRL_C_EVENT until it is removed.
     ignoring: bool = false,
 
@@ -212,7 +212,7 @@ const windows_interrupt_exit = struct {
     }
 
     fn install() void {
-        if (comptime builtin.os.tag != .windows) return;
+        if (comptime builtin.target.os.tag != .windows) return;
         const win32 = @import("../shared/win32.zig");
         _ = win32.SetConsoleCtrlHandler(handle, .TRUE);
     }
@@ -221,7 +221,7 @@ const windows_interrupt_exit = struct {
 pub fn runBeforeInteractive(alloc: Allocator, args: []const [:0]const u8, cfg: Config) !BeforeInteractiveResult {
     windows_interrupt_exit.install();
     upgrade_helpers.sweepReplacedBinary();
-    if (requireWindowsHome(builtin.os.tag, .{})) |result| return result;
+    if (requireWindowsHome(builtin.target.os.tag, .{})) |result| return result;
     const run_result = cli_surface.runIfRequested(alloc, args, cliSurfaceConfig(cfg)) catch |err| switch (err) {
         error.UnknownCliCommand => return .{ .exit = 1 },
         else => {
@@ -522,7 +522,7 @@ fn replaceProcessDefault(
     zio: std.Io,
     options: std.process.ReplaceOptions,
 ) std.process.ReplaceError {
-    if (comptime builtin.os.tag == .windows) return relaunchAsChild(zio, options);
+    if (comptime builtin.target.os.tag == .windows) return relaunchAsChild(zio, options);
     return std.process.replace(zio, options);
 }
 
@@ -671,7 +671,7 @@ fn writeStderr(deps: RunDeps, text: []const u8) void {
 
 fn tryWriteErrorMessage(deps: RunDeps, err: anyerror) void {
     if (err == error.DurableReplaceTargetBusy) {
-        var buf: [std.fs.max_path_bytes + 128]u8 = undefined;
+        var buf: [std.Io.Dir.max_path_bytes + 128]u8 = undefined;
         writeStderr(deps, "pf: ");
         writeStderr(deps, io_mod.replaceBusyMessage(&buf));
         writeStderr(deps, "\n");
@@ -1162,7 +1162,7 @@ test "app entry writes exact resume handoff after interactive teardown" {
 
 test "app entry bounds graceful-exit SIGINT suppression to handoff lifetime" {
     // Installs a POSIX SIGINT handler with sigaction; Windows delivers Ctrl+C through a console control handler.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var original_action: std.posix.Sigaction = undefined;
     const test_action: std.posix.Sigaction = .{
@@ -1574,7 +1574,7 @@ test "app entry maps unavailable session state to one expected startup failure" 
 test "app entry names a v2 storage fault at startup, and v1 keeps the bare error" {
     // On Windows `session_adapter.enabled` is false, so the app never takes
     // the v2 path; the CLI refuses sessions v2 before the app starts.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const cases = [_]struct {
         init_error: anyerror,

@@ -866,7 +866,7 @@ test "registered candidates expose only authoritative canonical targets" {
     defer tmp.cleanup();
     try tmp.dir.createDirPath(std.testing.io, "workspace/build/pkg");
     // Windows file names cannot contain the `::` permission-target delimiter.
-    const delimiter_names = @import("builtin").os.tag != .windows;
+    const delimiter_names = @import("builtin").target.os.tag != .windows;
     if (delimiter_names) try tmp.dir.createDirPath(std.testing.io, "workspace/segment::scope");
     {
         var file = try tmp.dir.createFile(std.testing.io, "workspace/build/pkg/existing.txt", .{});
@@ -1036,7 +1036,7 @@ test "ordinary applicable target freshness detects retarget and resolution failu
         &command.candidate,
     ));
     // Windows removes a directory symlink as a directory.
-    if (@import("builtin").os.tag == .windows)
+    if (@import("builtin").target.os.tag == .windows)
         try tmp.dir.deleteDir(std.testing.io, "workspace/link")
     else
         try tmp.dir.deleteFile(std.testing.io, "workspace/link");

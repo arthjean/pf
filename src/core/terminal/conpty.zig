@@ -442,7 +442,7 @@ test "command line arguments quote only when Windows needs it" {
 }
 
 test "hosted console runs its shell suspended in a job and kills the whole job" {
-    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    if (builtin.target.os.tag != .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -486,11 +486,11 @@ test "hosted console runs its shell suspended in a job and kills the whole job" 
     reader_live = false;
     console.deinit();
     console_live = false;
-    try std.testing.expect(std.mem.find(u8, captured.items, std.fs.path.basename(cwd)) != null);
+    try std.testing.expect(std.mem.find(u8, captured.items, std.Io.Dir.path.basename(cwd)) != null);
 }
 
 test "pseudo console captures a child's output" {
-    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    if (builtin.target.os.tag != .windows) return error.SkipZigTest;
     const console = try PseudoConsole.spawn(std.testing.allocator, std.testing.io, "cmd.exe /c echo pf-conpty", .{ .cols = 80, .rows = 25 });
     defer console.deinit();
     try std.testing.expectEqual(@as(?u32, 0), console.waitExit(10_000));

@@ -1284,7 +1284,7 @@ test "OAuth migration preserves and updates the file when Keychain publication f
 
 test "OAuth refresh preflight honors file authority after Keychain migration fails" {
     // Makes the file read-only with POSIX mode 0400, which has no Windows equivalent here.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1456,7 +1456,7 @@ test "OAuth mutation loads report auth file open failures" {
 
     // A no-follow open on Windows returns the link itself, which the private
     // file check then rejects; both platforms refuse to load the session.
-    const expected = if (comptime @import("builtin").os.tag == .windows)
+    const expected = if (comptime @import("builtin").target.os.tag == .windows)
         error.InsecureAuthFile
     else
         error.CredentialStorageUnavailable;

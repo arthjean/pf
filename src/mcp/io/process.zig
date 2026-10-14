@@ -155,7 +155,7 @@ pub const Process = struct {
         everyone.mutex.lockUncancelable(p.io);
         everyone.list.remove(&p.node);
         everyone.mutex.unlock(p.io);
-        if (comptime builtin.os.tag != .windows) {
+        if (comptime builtin.target.os.tag != .windows) {
             p.pid_lock.lockUncancelable(p.io);
             if (p.pid) |pid| {
                 std.posix.kill(pid, .KILL) catch {};
@@ -314,7 +314,7 @@ pub const Process = struct {
     }
 
     fn spawn(p: *Process, generation: core.Generation) SpawnError!void {
-        if (comptime builtin.os.tag == .windows) return error.Unsupported;
+        if (comptime builtin.target.os.tag == .windows) return error.Unsupported;
         std.debug.assert(p.stdin == null);
         const child = try std.process.spawn(p.io, .{
             .argv = p.options.argv,
@@ -341,7 +341,7 @@ pub const Process = struct {
 
     /// Undoes a spawn whose tasks couldn't all start.
     fn stopSpawned(p: *Process, stdout: std.Io.File, stderr: std.Io.File) void {
-        if (comptime builtin.os.tag == .windows) unreachable;
+        if (comptime builtin.target.os.tag == .windows) unreachable;
         p.signal(.kill);
         p.pid_lock.lockUncancelable(p.io);
         if (p.pid) |pid| _ = std.c.waitpid(pid, null, 0);
@@ -354,7 +354,7 @@ pub const Process = struct {
     }
 
     fn signal(p: *Process, which: core.Signal) void {
-        if (comptime builtin.os.tag == .windows) return;
+        if (comptime builtin.target.os.tag == .windows) return;
         p.pid_lock.lockUncancelable(p.io);
         defer p.pid_lock.unlock(p.io);
         const pid = p.pid orelse return;
@@ -483,7 +483,7 @@ fn expectState(p: *Process, state: core.State) !void {
 
 test "messages arrive, and a stop that closes stdin ends the server" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const argv = shell("printf '{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\\n'; exec cat >/dev/null");
     var p: Process = undefined;
     initTest(&p, &argv);
@@ -514,7 +514,7 @@ test "a server starts in the directory it's given" {
 
 test "a server that ignores closed stdin gets SIGTERM, then SIGKILL if it ignores that too" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     inline for (.{ .{ "trap 'exit 0' TERM; while :; do sleep 0.02; done", false }, .{ "trap '' TERM; while :; do sleep 0.02; done", true } }) |case| {
         const argv = shell(case[0]);
         var p: Process = undefined;
@@ -530,7 +530,7 @@ test "a server that ignores closed stdin gets SIGTERM, then SIGKILL if it ignore
 
 test "signalAllForExit sends SIGTERM to every server at once, even one that starts after it" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     defer everyone.exiting.store(false, .seq_cst);
     // Only SIGTERM ends it: it never reads stdin.
     const argv = shell("trap 'exit 0' TERM; while :; do sleep 0.02; done");
@@ -554,7 +554,7 @@ test "signalAllForExit sends SIGTERM to every server at once, even one that star
 
 test "a crashing server backs off, restarts on demand, then fails at the limit" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const argv = shell("exit 3");
     var p: Process = undefined;
     initTest(&p, &argv);
@@ -571,7 +571,7 @@ test "a crashing server backs off, restarts on demand, then fails at the limit" 
 
 test "a command that can't start counts as a failure" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const argv = [_][]const u8{"/nonexistent/mcpv2-test-server"};
     var p: Process = undefined;
     initTest(&p, &argv);
@@ -583,7 +583,7 @@ test "a command that can't start counts as a failure" {
 
 test "a spawn that works clears the last spawn error" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
     const path = try testing.allocator.print(".zig-cache/tmp/{s}/server", .{tmp.sub_path});
@@ -604,7 +604,7 @@ test "a spawn that works clears the last spawn error" {
 
 test "lines that aren't MCP messages are dropped, and CRLF and empty lines are handled" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const argv = shell("printf 'server starting\\r\\n\\r\\n{\"jsonrpc\":\"2.0\",\"method\":\"m\"}\\r\\n'; exec cat >/dev/null");
     var p: Process = undefined;
     initTest(&p, &argv);
@@ -617,7 +617,7 @@ test "lines that aren't MCP messages are dropped, and CRLF and empty lines are h
 
 test "an oversized line kills the server" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const argv = shell("printf '%0100d\\n' 0; exec cat >/dev/null");
     var p: Process = undefined;
     initTest(&p, &argv);
@@ -630,7 +630,7 @@ test "an oversized line kills the server" {
 
 test "stderr lines reach the host and never change the state" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const argv = shell("echo warming up >&2; exec cat >/dev/null");
     var p: Process = undefined;
     initTest(&p, &argv);
@@ -642,7 +642,7 @@ test "stderr lines reach the host and never change the state" {
 
 test "a stop signals the server's whole process group, so its children stop too" {
     // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     // The shell ignores closed stdin, so the stop escalates to SIGTERM. Its
     // child sleep must die with it.
     const argv = shell("sleep 30 & echo $! >&2; wait");

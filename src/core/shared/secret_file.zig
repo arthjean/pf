@@ -10,7 +10,7 @@ const io_mod = @import("io.zig");
 const debug_trace = @import("debug_trace.zig");
 
 const Allocator = std.mem.Allocator;
-const is_windows = builtin.os.tag == .windows;
+const is_windows = builtin.target.os.tag == .windows;
 
 /// Starts every encrypted file. Plaintext credentials are JSON objects or API
 /// keys, so they never start with it.
@@ -255,9 +255,9 @@ fn quarantine(alloc: Allocator, location: Location) void {
     var attempt: usize = 0;
     while (attempt < max_backup_attempts) : (attempt += 1) {
         const backup = (if (attempt == 0)
-            std.fmt.allocPrint(alloc, "{s}{s}", .{ location.name, unreadable_suffix })
+            alloc.print("{s}{s}", .{ location.name, unreadable_suffix })
         else
-            std.fmt.allocPrint(alloc, "{s}{s}.{d}", .{ location.name, unreadable_suffix, attempt })) catch return;
+            alloc.print("{s}{s}.{d}", .{ location.name, unreadable_suffix, attempt })) catch return;
         defer alloc.free(backup);
         _ = location.dir.statFile(io_mod.getIo(), backup, .{ .follow_symlinks = false }) catch |err| switch (err) {
             error.FileNotFound => {
@@ -312,7 +312,7 @@ test "credential file round-trips and is unreadable as plaintext on Windows" {
     defer alloc.free(raw);
     if (is_windows) {
         try std.testing.expect(std.mem.startsWith(u8, raw, header));
-        try std.testing.expect(std.mem.indexOf(u8, raw, "secret-token-value") == null);
+        try std.testing.expect(std.mem.find(u8, raw, "secret-token-value") == null);
     } else {
         try std.testing.expectEqualStrings(token, raw);
     }
@@ -340,7 +340,7 @@ test "credential file read encrypts a legacy plaintext file in place" {
     defer alloc.free(raw);
     if (is_windows) {
         try std.testing.expect(std.mem.startsWith(u8, raw, header));
-        try std.testing.expect(std.mem.indexOf(u8, raw, token) == null);
+        try std.testing.expect(std.mem.find(u8, raw, token) == null);
     } else {
         try std.testing.expectEqualStrings(token, raw);
     }

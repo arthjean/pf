@@ -1908,7 +1908,7 @@ const CandidatePathReplacementHook = struct {
 
 test "skill invocation reads validated candidate resources after path replacement" {
     // Windows refuses to rename a directory pf holds open, so the replacement cannot be staged.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     inline for (.{
         .{ "SKILL.md", "ORIGINAL SKILL BODY", "REPLACEMENT SKILL BODY" },
@@ -2335,7 +2335,7 @@ test "skill resources continue on line-safe UTF-8 boundaries and reject unsafe i
 
 test "skill invocation encodes loaded paths and preserves the skill body" {
     // Windows file names cannot contain the newline and angle brackets this fixture uses.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

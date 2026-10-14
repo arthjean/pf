@@ -1234,7 +1234,7 @@ pub const SessionChildCapability = struct {
         if (self.impl.mode != .writable) return error.SessionChildReadOnly;
         try self.impl.resolveIndeterminate(kind);
         const route_dir = (try self.impl.route(kind, true)).?;
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             // An exclusive create on Windows follows a dangling symlink and
             // creates its target, so reject any existing entry first.
             if (route_dir.dir.statFile(io_mod.getIo(), name, .{ .follow_symlinks = false })) |existing| {
@@ -1907,7 +1907,7 @@ test "read-only capability clone owns independent retained routes" {
 
 test "retained route handle contains pathname swaps" {
     // Windows refuses to rename a directory that pf holds open, so the swap cannot happen.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

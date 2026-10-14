@@ -2507,7 +2507,7 @@ fn buildTurnContextFragment(arena: Allocator, workspace_root: []const u8) ![]con
     try model_context_encoding.writeScalar(&out.writer, cwd);
     try out.writer.writeByte('\n');
     try out.writer.print("operating_system: {s}\n", .{os_text});
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         try writeWindowsShellContext(arena, &out.writer);
     } else {
         try out.writer.writeAll("shell_path: ");
@@ -3136,7 +3136,7 @@ test "git info reads branch from HEAD" {
 
 test "turn context reports the shell tool's login shell" {
     // shell_resolver.environment() returns .legacy on Windows, which has no login shell.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();

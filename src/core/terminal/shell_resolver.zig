@@ -68,7 +68,7 @@ fn supportedLoginShell(configured_login_shell: ?[]const u8) ResolveError![]const
     if (shellKind(path) != null) return path;
     // The Windows login shell is the `shell_selection` pick, which has no
     // fallback of its own.
-    if (comptime builtin.os.tag == .windows) return error.UnsupportedShell;
+    if (comptime builtin.target.os.tag == .windows) return error.UnsupportedShell;
     return fallbackLoginShell();
 }
 
@@ -129,7 +129,7 @@ pub fn resolve(
     }
 
     const kind = shellKind(selection.path) orelse return error.UnsupportedShell;
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         if (!windowsDialectAdmits(kind)) return error.UnsupportedShell;
     }
 
@@ -198,7 +198,7 @@ pub fn environment(
 ) (ResolveError || Allocator.Error)!Environment {
     // Windows has no login shell: captured commands run in the shell that
     // `shell_selection` picks, which has no clean or user profile.
-    if (comptime builtin.os.tag == .windows) return .legacy;
+    if (comptime builtin.target.os.tag == .windows) return .legacy;
     const selected = profile orelse .user;
     const path = try supportedLoginShell(configured_login_shell);
     _ = try resolve(null, switch (selected) {
@@ -220,7 +220,7 @@ pub fn environmentForShellSpec(
     // The Windows login shell has no clean or user profile, as in
     // `environment`. An explicit shell still names its path and whether it
     // skips its profile, because both change what runs.
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         if (shell == .user_login) return .legacy;
     }
     return switch (shell) {
@@ -238,7 +238,7 @@ pub fn profileShell(
     profile: Profile,
 ) (ResolveError || Allocator.Error)!contracts.ShellSpec {
     // Every Windows profile runs the `shell_selection` pick as it starts.
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         _ = try supportedLoginShell(configured_login_shell);
         return .user_login;
     }
@@ -707,7 +707,7 @@ test "resolver makes clean startup explicit" {
 
 test "shell environments bind executable path and startup mode" {
     const alloc = std.testing.allocator;
-    const bash_path = if (comptime builtin.os.tag == .windows)
+    const bash_path = if (comptime builtin.target.os.tag == .windows)
         "C:\\Program Files\\Git\\bin\\bash.exe"
     else
         "/bin/bash";
@@ -754,7 +754,7 @@ test "resolver rejects missing relative and unsupported shells" {
 
 test "login shell resolution falls back without accepting explicit unsupported shells" {
     // The Windows login shell is the `shell_selection` pick, with no fallback.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const fallback = try resolve("/opt/homebrew/bin/fish", .user_login);
     try std.testing.expectEqualStrings(fallbackLoginShell(), fallback.path);
     if (builtin.target.os.tag == .macos) {
@@ -826,7 +826,7 @@ test "captured invocation provider projection shell-quotes every argv word" {
 
 test "profile normalization defaults captured and persistent execution to user" {
     // Windows has no login shell profiles: environment() returns .legacy by design.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -843,7 +843,7 @@ test "profile normalization defaults captured and persistent execution to user" 
 
 test "unsupported login shell profiles fall back for captured and persistent execution" {
     // Windows has no login shell profiles: environment() returns .legacy by design.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -935,7 +935,7 @@ test "bootstrap construction cleans every allocation failure" {
 }
 
 test "Windows resolves Git Bash and PowerShell in the selected dialect only" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     defer shell_selection.test_dialect = null;
     shell_selection.test_dialect = .powershell;
     var pwsh = try resolve(null, .{ .executable = .{ .path = "C:\\Program Files\\PowerShell\\7\\pwsh.exe" } });

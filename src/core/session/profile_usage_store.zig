@@ -1563,7 +1563,7 @@ test "profile usage store leaves an incomplete tail intact when repair exceeds r
 
 test "profile usage store repairs an existing profile directory to private mode" {
     // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1599,7 +1599,7 @@ test "profile usage store repairs an existing profile directory to private mode"
 
 test "profile usage reads reject an unsafe profile directory without repairing it" {
     // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

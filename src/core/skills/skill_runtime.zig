@@ -671,7 +671,7 @@ fn externalSymlinkAuthorities(alloc: Allocator) ![][]const u8 {
         authorities.deinit(alloc);
     }
 
-    var it = std.mem.tokenizeScalar(u8, raw, std.fs.path.delimiter);
+    var it = std.mem.tokenizeScalar(u8, raw, std.Io.Dir.path.delimiter);
     while (it.next()) |entry| {
         const trimmed = std.mem.trim(u8, entry, " \t");
         if (trimmed.len == 0) continue;
@@ -4330,7 +4330,7 @@ test "skill diagnostic summary identifies candidate and root consequences" {
 
 test "skill diagnostic summary escapes the active trace path" {
     // Windows file names cannot contain control characters such as a newline.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -4522,7 +4522,7 @@ test "skill catalog locations reject a changed identity mapping" {
     defer alloc.free(location);
     const resolved = try before.locations.resolve(alloc, location);
     defer alloc.free(resolved);
-    try std.testing.expectEqualStrings("/first" ++ std.fs.path.sep_str ++ "review", resolved);
+    try std.testing.expectEqualStrings("/first" ++ std.Io.Dir.path.sep_str ++ "review", resolved);
     try std.testing.expectError(error.StaleSkillLocation, after.locations.resolve(alloc, location));
 }
 
@@ -4550,7 +4550,7 @@ fn checkSkillPromptAllocationFailures(alloc: Allocator) !void {
     defer alloc.free(location);
     const path = try result.locations.resolve(alloc, location);
     defer alloc.free(path);
-    try std.testing.expectEqualStrings("/root-b" ++ std.fs.path.sep_str ++ "second", path);
+    try std.testing.expectEqualStrings("/root-b" ++ std.Io.Dir.path.sep_str ++ "second", path);
 }
 
 test "skill catalog releases partial projection allocations" {
@@ -5022,7 +5022,7 @@ test "linked metadata reauthorizes a target changed after preflight" {
 test "linked metadata and resources stay on the opened candidate after rebinding" {
     // Windows refuses to rename a directory that pf holds open, so the rebinding
     // cannot be staged there.
-    if (comptime @import("builtin").os.tag == .windows) return error.SkipZigTest;
+    if (comptime @import("builtin").target.os.tag == .windows) return error.SkipZigTest;
     const ReplaceCandidate = struct {
         dir: std.Io.Dir,
         failed: bool = false,
@@ -5151,7 +5151,7 @@ test "linked metadata outside authority is rejected before descriptor open" {
 
 test "linked metadata FIFO is rejected before descriptor open" {
     // Creates a POSIX FIFO; Windows has no mkfifo.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const MarkOpen = struct {
         called: bool = false,
 
@@ -5680,7 +5680,7 @@ test "loadVisibleSkills orders valid candidates diagnoses invalid metadata and r
 
 test "loadVisibleSkills diagnoses a hostile no-frontmatter directory name" {
     // Windows file names cannot contain control characters such as a newline.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -5850,7 +5850,7 @@ test "externalSymlinkAuthorities parses PATH-separated absolute paths" {
 
     const env = try TestEnviron.install(alloc);
     defer env.deinit();
-    const first, const second, const raw = if (comptime builtin.os.tag == .windows)
+    const first, const second, const raw = if (comptime builtin.target.os.tag == .windows)
         .{ "C:\\nix\\store", "D:\\skills", "C:\\nix\\store;D:\\skills; relative ;C:\\bad\\..\\path" }
     else
         .{ "/nix/store", "/opt/skills", "/nix/store:/opt/skills: relative :/bad/../path" };

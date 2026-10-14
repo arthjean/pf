@@ -25,7 +25,7 @@ const conpty = @import("conpty.zig");
 const windows_socket = @import("windows_socket.zig");
 
 const Allocator = std.mem.Allocator;
-const is_windows = builtin.os.tag == .windows;
+const is_windows = builtin.target.os.tag == .windows;
 
 const launcher_mode = "--pf-internal-terminal-launcher";
 const control_mode = "--pf-internal-terminal-control";
@@ -553,7 +553,7 @@ const windows_launcher_dir_name = "terminal-run";
 /// launcher's control socket would not fit an AF_UNIX path. Caller owns the
 /// returned path.
 fn windowsLauncherDir(alloc: Allocator, pf_dir_path: []const u8) ![]u8 {
-    const dir = try std.fs.path.join(alloc, &.{ pf_dir_path, windows_launcher_dir_name });
+    const dir = try std.Io.Dir.path.join(alloc, &.{ pf_dir_path, windows_launcher_dir_name });
     if (dir.len + 1 + windows_launcher_socket_name_len >= windows_unix_path_limit) {
         alloc.free(dir);
         return error.NameTooLong;
@@ -598,7 +598,7 @@ fn posixSignalNumber(signal: contracts.Signal) u32 {
 }
 
 test "Windows launcher directory stays in the profile or fails" {
-    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag != .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const short = try windowsLauncherDir(alloc, "C:\\Users\\terminal-short\\.pf");
     defer alloc.free(short);
@@ -953,7 +953,7 @@ fn launcherStatusToTerm(raw_status: u32) std.process.Child.Term {
 
 test "launcher wait status classifies terminal results before stops" {
     // Decodes POSIX wait statuses, which Windows processes do not produce.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     try std.testing.expectEqual(
         std.process.Child.Term{ .exited = 23 },
         launcherStatusToTerm(23 << 8),
@@ -2225,7 +2225,7 @@ const Session = struct {
     }
 
     fn launchNativeWindows(self: *Session, request: contracts.StartRequest) !void {
-        const pf_dir_path = std.fs.path.dirname(self.durable.profile.display_sessions_path) orelse
+        const pf_dir_path = std.Io.Dir.path.dirname(self.durable.profile.display_sessions_path) orelse
             return error.FileNotFound;
         const launcher_dir = try windowsLauncherDir(self.alloc, pf_dir_path);
         defer self.alloc.free(launcher_dir);
@@ -2251,9 +2251,9 @@ const Session = struct {
         var names_len: usize = 0;
         defer for (names[0..names_len]) |name| self.alloc.free(name);
         for ([_][]const u8{ "sock", "boot", "cmd" }) |extension| {
-            const name = try std.fmt.allocPrint(self.alloc, "{s}.{s}", .{ &path_suffix, extension });
+            const name = try self.alloc.print("{s}.{s}", .{ &path_suffix, extension });
             defer self.alloc.free(name);
-            names[names_len] = try std.fs.path.join(self.alloc, &.{ launcher_dir, name });
+            names[names_len] = try std.Io.Dir.path.join(self.alloc, &.{ launcher_dir, name });
             names_len += 1;
         }
         const control_path = names[0];
@@ -4702,7 +4702,7 @@ test "terminal outcomes preserve exact exit and signal status" {
         outcomeFromTerm(.{ .signal = .TERM }).?,
     );
     try std.testing.expect(outcomeFromTerm(.{ .unknown = 1 }) == null);
-    try std.testing.expect(outcomeFromTerm(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }) == null);
+    try std.testing.expect(outcomeFromTerm(.{ .stopped = if (builtin.target.os.tag == .windows) .TERM else .STOP }) == null);
     try std.testing.expectEqual(
         std.posix.SIG.SEGV,
         signalFromInt(@backingInt(std.posix.SIG.SEGV)).?,
@@ -4813,7 +4813,7 @@ test "Windows hosted session resizes its pseudo console for the shell" {
             const pid = try std.fmt.parseInt(io_mod.ProcessId, pid_text, 10);
             const created = try process_tree.windowsProcessCreationTime(pid);
             var token_buf: [64]u8 = undefined;
-            const text = try std.fmt.bufPrint(&token_buf, "windows:{d}:{d}", .{ pid, created });
+            const text = try std.mem.print(&token_buf, "windows:{d}:{d}", .{ pid, created });
             return process_identity.ProcessInstanceToken.parse(text);
         }
     };

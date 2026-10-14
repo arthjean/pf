@@ -55,7 +55,7 @@ pub const Client = struct {
 
     pub fn initFromEnv(self: *Client, alloc: std.mem.Allocator) void {
         // herdr does not exist on Windows.
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             debug_trace.logf("herdr", "disabled reason=unsupported_platform os=windows", .{});
             return;
         }
@@ -136,7 +136,7 @@ pub const Client = struct {
     }
 
     fn sendAll(self: *Client, requests: []const Request) void {
-        if (comptime host_target.is_wasm or builtin.os.tag == .windows) return;
+        if (comptime host_target.is_wasm or builtin.target.os.tag == .windows) return;
         if (!self.enabled) return;
         const io = io_mod.getIo();
         self.mutex.lockUncancelable(io);

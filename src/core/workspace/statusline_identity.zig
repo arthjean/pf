@@ -359,7 +359,7 @@ test "workspace statusline identity finds a repository above the working directo
 
 test "workspace statusline identity handles non-git and hostile paths" {
     // Windows forbids control characters such as ESC in file names.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

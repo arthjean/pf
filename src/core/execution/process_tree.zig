@@ -985,7 +985,7 @@ test "natural completion detaches only processes that left the command session" 
 
 test "natural completion stops attached processes and keeps detached daemons" {
     // Signals a POSIX process tree; Windows reaps process trees through Job Objects.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const FakeEffects = struct {
         var sent: [16]ProcessId = undefined;
         var sent_count: usize = 0;
@@ -1057,7 +1057,7 @@ test "natural completion stops attached processes and keeps detached daemons" {
 
 test "natural completion keeps an unreadable process attached and reports it" {
     // Signals a POSIX process tree; Windows reaps process trees through Job Objects.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const FakeEffects = struct {
         var sent_count: usize = 0;
 
@@ -1256,7 +1256,7 @@ const WindowsProcessEntry = struct {
 /// Lists every running Windows process with its parent through a Toolhelp
 /// snapshot. Caller owns the returned slice.
 fn windowsProcessSnapshotAlloc(alloc: Allocator) ![]WindowsProcessEntry {
-    comptime std.debug.assert(builtin.os.tag == .windows);
+    comptime std.debug.assert(builtin.target.os.tag == .windows);
     const win32 = @import("../shared/win32.zig");
     const windows = std.os.windows;
     const snapshot = win32.CreateToolhelp32Snapshot(win32.TH32CS_SNAPPROCESS, 0);
@@ -1322,7 +1322,7 @@ fn windowsHandleCreationTime(handle: std.os.windows.HANDLE) WindowsProcessError!
 /// descendants that already existed, and terminating the job ends them all.
 /// Returns how many processes joined the job.
 pub fn terminateWindowsTree(alloc: Allocator, pid: ProcessId, created: u64) (Allocator.Error || WindowsProcessError)!usize {
-    comptime std.debug.assert(builtin.os.tag == .windows);
+    comptime std.debug.assert(builtin.target.os.tag == .windows);
     const win32 = @import("../shared/win32.zig");
     const windows = std.os.windows;
     const process_job = @import("../shared/process_job.zig");

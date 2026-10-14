@@ -273,7 +273,7 @@ test "stored key file refusal stays distinguishable from absence" {
 
     try storeInDir(std.testing.allocator, &pf_dir, "vt2-secret-value");
     // Windows has no group or other mode bits to widen.
-    if (comptime builtin.os.tag != .windows) for ([_]std.posix.mode_t{ 0o640, 0o604, 0o644 }) |mode| {
+    if (comptime builtin.target.os.tag != .windows) for ([_]std.posix.mode_t{ 0o640, 0o604, 0o644 }) |mode| {
         var file = try tmp.dir.openFile(std.testing.io, profile_paths.api_key_file_name, .{ .mode = .read_write });
         try file.setPermissions(std.testing.io, std.Io.File.Permissions.fromMode(mode));
         file.close(std.testing.io);

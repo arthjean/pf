@@ -532,7 +532,7 @@ pub const another_platform_message = "This session belongs to another platform. 
 /// platform: `/...` on POSIX, and a drive or UNC root on Windows, where a
 /// POSIX root such as `/home/a/x` names no drive.
 fn isNativeWorkspaceRoot(workspace_root: []const u8) bool {
-    if (comptime builtin.os.tag != .windows) return workspace_root.len > 0 and workspace_root[0] == '/';
+    if (comptime builtin.target.os.tag != .windows) return workspace_root.len > 0 and workspace_root[0] == '/';
     const is_sep = struct {
         fn f(byte: u8) bool {
             return byte == '\\' or byte == '/';
@@ -3402,7 +3402,7 @@ pub const Store = struct {
             try session_log.copy_conversation_recovery_prefix(alloc, &source.dir, &target.log.dir, boundary);
             if (metadata.?.value.title) |title| _ = try target.renameConversation(alloc, title);
         }
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             // Windows refuses to rename a directory that holds open handles.
             // The staging lock still excludes other recoveries, and the next
             // recovery removes a stage left behind by a failed promotion.
@@ -4285,7 +4285,7 @@ fn resolveImageSnapshotLocators(
 
 test "session snapshot locators resolve through their owning store" {
     const alloc = std.testing.allocator;
-    const sep = std.fs.path.sep_str;
+    const sep = std.Io.Dir.path.sep_str;
     var history = try alloc.alloc(session.HistoryTurn, 1);
     errdefer alloc.free(history);
     history[0] = try session.makeAssistantTurn(alloc, "images", "done");
@@ -4691,11 +4691,11 @@ test "native subagent control opens do not decode conversation payloads" {
     {
         var writer = try ctx.store.startWritableSession(alloc, initial);
         defer writer.deinit(alloc);
-        if (comptime builtin.os.tag != .windows) {
+        if (comptime builtin.target.os.tag != .windows) {
             try io_mod.durableReplaceVerified(alloc, &writer.log.dir, "events.jsonl", "invalid conversation\n");
         }
     }
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         // Replace the log after the writer closes it: Windows refuses to
         // replace a file that is still open.
         const session_path = try sessionDirPath(alloc, ctx.store.sessions_dir, initial.id);
@@ -5570,7 +5570,7 @@ test "resume refuses a session saved on another platform without writing" {
     }
 
     // Rewrite the saved roots as the other platform would have written them.
-    const foreign_root = if (builtin.os.tag == .windows) "/home/a/x" else "C:\\dev\\x";
+    const foreign_root = if (builtin.target.os.tag == .windows) "/home/a/x" else "C:\\dev\\x";
     const metadata_path = "home/.pf/sessions/foreign-platform/session.json";
     const original = try tmp.dir.readFileAlloc(std.testing.io, metadata_path, alloc, .limited(64 * 1024));
     defer alloc.free(original);
@@ -6514,7 +6514,7 @@ test "bounded doctor inspection stops at valid session limit" {
 
 test "doctor reports unsafe managed child artifacts" {
     // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -8025,7 +8025,7 @@ test "a schema-v3 session with a lost manifest lists and resumes from its commit
 
 test "a FIFO in a session never blocks listing or latest resume" {
     // Creates a POSIX FIFO; Windows has no mkfifo.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const Case = struct {
         legacy: bool = false,
@@ -9135,7 +9135,7 @@ test "history page maps missing unsafe unavailable unsupported and corrupt sessi
     try std.testing.expectError(error.SessionPathUnsafe, ctx.store.loadHistoryPage(alloc, "history-unsafe", null, 1));
 
     // Windows has no POSIX mode bits to make the sessions directory unreadable.
-    if (comptime builtin.os.tag == .windows) return;
+    if (comptime builtin.target.os.tag == .windows) return;
     try chmodPath(alloc, ctx.store.sessions_dir, 0o000);
     var restore_sessions_permissions = true;
     defer if (restore_sessions_permissions) {
@@ -9546,7 +9546,7 @@ test "remembered session selection is private per workspace and read-only lookup
     const stat = try directory.dir.statFile(io_mod.getIo(), &name, .{});
     try io_mod.expectPrivateFile(stat);
     // Windows has no POSIX mode bits to make the file read-only.
-    if (comptime builtin.os.tag != .windows) {
+    if (comptime builtin.target.os.tag != .windows) {
         var file = try directory.dir.openFile(io_mod.getIo(), &name, .{ .mode = .read_write });
         defer file.close(io_mod.getIo());
         try file.setPermissions(io_mod.getIo(), .fromMode(0o400));
@@ -9566,7 +9566,7 @@ test "remembered session selection is private per workspace and read-only lookup
 
 test "remembered session reader retains an opened version across atomic replacement" {
     // Windows cannot replace a file that another handle holds open.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

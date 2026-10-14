@@ -10,7 +10,7 @@ const builtin = @import("builtin");
 const io_mod = @import("../shared/io.zig");
 
 const Allocator = std.mem.Allocator;
-const is_windows = builtin.os.tag == .windows;
+const is_windows = builtin.target.os.tag == .windows;
 
 pub const Dialect = enum {
     /// POSIX sh, including bash from Git for Windows. pf parses it.
@@ -61,7 +61,7 @@ pub const Shell = struct {
         return switch (self.dialect) {
             .posix_sh => alloc.dupe(u8, if (is_windows) "bash (Git Bash)" else "sh"),
             .powershell => if (self.version) |version|
-                std.fmt.allocPrint(alloc, "PowerShell {s}", .{version})
+                alloc.print("PowerShell {s}", .{version})
             else
                 alloc.dupe(u8, "PowerShell"),
         };
@@ -134,18 +134,18 @@ fn findGitBash(alloc: Allocator, inputs: Inputs) (SelectionError || Allocator.Er
     if (inputs.git_bash_path) |raw| {
         const path = std.mem.trim(u8, raw, " \"");
         if (path.len > 0) {
-            if (!std.fs.path.isAbsolute(path) or !isFile(path)) return error.GitBashPathNotFound;
+            if (!std.Io.Dir.path.isAbsolute(path) or !isFile(path)) return error.GitBashPathNotFound;
             return .{ .dialect = .posix_sh, .path = try alloc.dupe(u8, path), .reason = .git_bash_path_env };
         }
     }
     if (try io_mod.resolveExecutableInPathAlloc(alloc, "git.exe", inputs.path)) |git| {
         if (gitInstallRoot(git)) |root| {
-            const bash = try std.fs.path.join(alloc, &.{ root, "bin", "bash.exe" });
+            const bash = try std.Io.Dir.path.join(alloc, &.{ root, "bin", "bash.exe" });
             if (isFile(bash)) return .{ .dialect = .posix_sh, .path = bash, .reason = .git_install };
         }
     }
     if (inputs.program_files) |program_files| {
-        const bash = try std.fs.path.join(alloc, &.{ program_files, "Git", "bin", "bash.exe" });
+        const bash = try std.Io.Dir.path.join(alloc, &.{ program_files, "Git", "bin", "bash.exe" });
         if (isFile(bash)) return .{ .dialect = .posix_sh, .path = bash, .reason = .program_files };
     }
     return null;
@@ -154,14 +154,14 @@ fn findGitBash(alloc: Allocator, inputs: Inputs) (SelectionError || Allocator.Er
 /// The Git for Windows install root above `git.exe`, which lives in `cmd`,
 /// `bin`, or `<mingw>\bin` under the root.
 fn gitInstallRoot(git_path: []const u8) ?[]const u8 {
-    const dir = std.fs.path.dirname(git_path) orelse return null;
-    const parent = std.fs.path.dirname(dir) orelse return null;
-    const dir_name = std.fs.path.basename(dir);
+    const dir = std.Io.Dir.path.dirname(git_path) orelse return null;
+    const parent = std.Io.Dir.path.dirname(dir) orelse return null;
+    const dir_name = std.Io.Dir.path.basename(dir);
     if (std.ascii.eqlIgnoreCase(dir_name, "cmd")) return parent;
     if (!std.ascii.eqlIgnoreCase(dir_name, "bin")) return null;
-    const parent_name = std.fs.path.basename(parent);
+    const parent_name = std.Io.Dir.path.basename(parent);
     for ([_][]const u8{ "mingw64", "mingw32", "clang64", "clangarm64", "ucrt64" }) |mingw| {
-        if (std.ascii.eqlIgnoreCase(parent_name, mingw)) return std.fs.path.dirname(parent);
+        if (std.ascii.eqlIgnoreCase(parent_name, mingw)) return std.Io.Dir.path.dirname(parent);
     }
     return parent;
 }
@@ -170,10 +170,10 @@ fn gitInstallRoot(git_path: []const u8) ?[]const u8 {
 /// the coreutils that bash itself runs. `bash_path` is `<root>\bin\bash.exe`
 /// or `<root>\usr\bin\bash.exe`.
 pub fn msysUsrBinAlloc(alloc: Allocator, bash_path: []const u8) Allocator.Error!?[]u8 {
-    const dir = std.fs.path.dirname(bash_path) orelse return null;
-    const root = std.fs.path.dirname(dir) orelse return null;
-    if (std.ascii.eqlIgnoreCase(std.fs.path.basename(root), "usr")) return try alloc.dupe(u8, dir);
-    const usr_bin = try std.fs.path.join(alloc, &.{ root, "usr", "bin" });
+    const dir = std.Io.Dir.path.dirname(bash_path) orelse return null;
+    const root = std.Io.Dir.path.dirname(dir) orelse return null;
+    if (std.ascii.eqlIgnoreCase(std.Io.Dir.path.basename(root), "usr")) return try alloc.dupe(u8, dir);
+    const usr_bin = try std.Io.Dir.path.join(alloc, &.{ root, "usr", "bin" });
     return usr_bin;
 }
 
@@ -195,7 +195,7 @@ fn powershellVersion(alloc: Allocator, path: []const u8) Allocator.Error!?[]cons
     if (!win32.VerQueryValueW(data.ptr, std.unicode.wtf8ToWtf16LeStringLiteral("\\"), &info, &info_len).toBool()) return null;
     if (info == null or info_len < @sizeOf(win32.VS_FIXEDFILEINFO)) return null;
     const fixed: *const win32.VS_FIXEDFILEINFO = @ptrCast(@alignCast(info.?));
-    return try std.fmt.allocPrint(alloc, "{d}.{d}.{d}", .{
+    return try alloc.print("{d}.{d}.{d}", .{
         fixed.dwProductVersionMS >> 16,
         fixed.dwProductVersionMS & 0xffff,
         fixed.dwProductVersionLS >> 16,
@@ -254,7 +254,7 @@ pub fn dialect() Dialect {
 /// reports the command's own lines from line 2. Caller owns the returned
 /// base64 text.
 pub fn powershellEncodedCommandAlloc(alloc: Allocator, command: []const u8) (Allocator.Error || error{InvalidWtf8})![]u8 {
-    const script = try std.fmt.allocPrint(alloc,
+    const script = try alloc.print(
         \\$ProgressPreference = 'SilentlyContinue'; if ($PSStyle) {{ $PSStyle.OutputRendering = 'PlainText' }}; [Console]::OutputEncoding = $OutputEncoding = [System.Text.UTF8Encoding]::new($false); $global:LASTEXITCODE = 0
         \\{s}
         \\if (-not $?) {{ if ($global:LASTEXITCODE) {{ exit $global:LASTEXITCODE }} else {{ exit 1 }} }}
@@ -291,17 +291,17 @@ test "Windows shell selection prefers Git Bash, then PowerShell, never cmd" {
         "winps/powershell.exe",
         "winps/cmd.exe",
     }) |name| {
-        if (std.fs.path.dirname(name)) |dir| try tmp.dir.createDirPath(io_mod.getIo(), dir);
+        if (std.Io.Dir.path.dirname(name)) |dir| try tmp.dir.createDirPath(io_mod.getIo(), dir);
         try tmp.dir.writeFile(io_mod.getIo(), .{ .sub_path = name, .data = "" });
     }
     const root = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
     const p = struct {
         fn join(a: Allocator, base: []const u8, sub: []const u8) []const u8 {
-            return std.fmt.allocPrint(a, "{s}\\{s}", .{ base, sub }) catch unreachable;
+            return a.print("{s}\\{s}", .{ base, sub }) catch unreachable;
         }
     }.join;
-    const full_path = try std.fmt.allocPrint(arena, "{s};{s};{s}", .{ p(arena, root, "Git\\cmd"), p(arena, root, "pwsh"), p(arena, root, "winps") });
-    const ps_path = try std.fmt.allocPrint(arena, "{s};{s}", .{ p(arena, root, "pwsh"), p(arena, root, "winps") });
+    const full_path = try arena.print("{s};{s};{s}", .{ p(arena, root, "Git\\cmd"), p(arena, root, "pwsh"), p(arena, root, "winps") });
+    const ps_path = try arena.print("{s};{s}", .{ p(arena, root, "pwsh"), p(arena, root, "winps") });
     const winps_path = p(arena, root, "winps");
 
     const from_git = try selectWindows(arena, .{ .path = full_path });

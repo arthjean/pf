@@ -1494,7 +1494,7 @@ fn appendUniqueWorkspaceIdentity(
 /// style, and trailing separators, so `c:/dev/pf/` and `C:\DEV\PF` both name
 /// `C:\dev\pf`. Elsewhere a key matches exactly.
 pub fn workspaceKeyMatches(key: []const u8, workspace_root: []const u8) bool {
-    if (comptime builtin.os.tag != .windows) return std.mem.eql(u8, key, workspace_root);
+    if (comptime builtin.target.os.tag != .windows) return std.mem.eql(u8, key, workspace_root);
     if (leadingSeparatorCount(key) != leadingSeparatorCount(workspace_root)) return false;
     var key_parts = std.mem.tokenizeAny(u8, key, "\\/");
     var root_parts = std.mem.tokenizeAny(u8, workspace_root, "\\/");
@@ -1516,7 +1516,7 @@ fn leadingSeparatorCount(path: []const u8) usize {
 /// user's key is read as written and never rewritten.
 pub fn workspaceKey(workspaces: std.json.ObjectMap, workspace_root: []const u8) ?[]const u8 {
     if (workspaces.getKey(workspace_root)) |key| return key;
-    if (comptime builtin.os.tag != .windows) return null;
+    if (comptime builtin.target.os.tag != .windows) return null;
     for (workspaces.keys()) |key| {
         if (workspaceKeyMatches(key, workspace_root)) return key;
     }
@@ -3291,7 +3291,7 @@ test "symlinked durable home is rejected before reading settings" {
 
 test "read only settings rejects group or world writable policy files" {
     // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -3386,11 +3386,11 @@ test "post-rename failure returns SettingsCommitIndeterminate" {
 }
 
 test "workspace keys match the canonical root across Windows spellings only" {
-    const root = if (builtin.os.tag == .windows) "C:\\dev\\pf" else "/dev/pf";
+    const root = if (builtin.target.os.tag == .windows) "C:\\dev\\pf" else "/dev/pf";
     try std.testing.expect(workspaceKeyMatches(root, root));
     const windows_spellings = [_][]const u8{ "c:/dev/pf/", "C:\\DEV\\PF", "C:\\dev\\pf\\" };
     for (windows_spellings) |key| {
-        try std.testing.expectEqual(builtin.os.tag == .windows, workspaceKeyMatches(key, "C:\\dev\\pf"));
+        try std.testing.expectEqual(builtin.target.os.tag == .windows, workspaceKeyMatches(key, "C:\\dev\\pf"));
     }
     for ([_][]const u8{ "C:\\dev\\pf2", "C:\\dev", "D:\\dev\\pf", "\\\\dev\\pf" }) |key| {
         try std.testing.expect(!workspaceKeyMatches(key, "C:\\dev\\pf"));
@@ -3404,7 +3404,7 @@ test "workspace keys match the canonical root across Windows spellings only" {
     );
     defer parsed.deinit();
     const key = workspaceKey(parsed.value.object, "C:\\dev\\pf");
-    if (builtin.os.tag == .windows) {
+    if (builtin.target.os.tag == .windows) {
         try std.testing.expectEqualStrings("c:/dev/pf/", key.?);
     } else {
         try std.testing.expect(key == null);

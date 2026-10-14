@@ -1770,8 +1770,7 @@ pub fn Runtime(comptime App: type) type {
             defer app.alloc.free(url);
             if (!try app.urlOpener().open(app.alloc, url)) {
                 debug_trace.logf("auth", "login browser launcher failed", .{});
-                const body = try std.fmt.allocPrint(
-                    app.alloc,
+                const body = try app.alloc.print(
                     "pf could not open a browser. Open this URL manually; pf keeps waiting: {s}",
                     .{url},
                 );

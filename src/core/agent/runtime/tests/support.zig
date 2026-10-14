@@ -173,7 +173,7 @@ const test_tool_registry = tool_dispatch.Registry{ .tools = test_tools[0..] };
 /// Removes a directory symlink, ignoring failure. Windows removes one as a
 /// directory.
 fn deleteDirectorySymlink(dir: std.Io.Dir, path: []const u8) void {
-    if (builtin.os.tag == .windows)
+    if (builtin.target.os.tag == .windows)
         dir.deleteDir(io_mod.getIo(), path) catch {}
     else
         dir.deleteFile(io_mod.getIo(), path) catch {};

@@ -2115,7 +2115,7 @@ const BoundedRequestWatch = struct {
 /// an AFD handle whose graceful shutdown neither completes a pending receive
 /// nor returns while unsent request bytes wait, so it disconnects abortively.
 fn interruptConnectedStream(stream: std.Io.net.Stream) void {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         const windows = std.os.windows;
         const info: windows.AFD.PARTIAL_DISCONNECT_INFO = .{
             .DisconnectMode = .{ .ABORTIVE = true },

@@ -41,7 +41,7 @@ pub const LineOptions = struct {
 };
 
 const windows = std.os.windows;
-const win32 = if (builtin.os.tag == .windows) @import("win32.zig") else struct {};
+const win32 = if (builtin.target.os.tag == .windows) @import("win32.zig") else struct {};
 
 fn stdinHandle() std.posix.fd_t {
     return std.Io.File.stdin().handle;
@@ -54,7 +54,7 @@ fn consoleMode(handle: std.posix.fd_t) ?u32 {
 }
 
 pub fn stdinIsTerminal() bool {
-    return switch (builtin.os.tag) {
+    return switch (builtin.target.os.tag) {
         .windows => consoleMode(stdinHandle()) != null,
         else => std.c.isatty(std.posix.STDIN_FILENO) != 0,
     };
@@ -70,13 +70,13 @@ pub fn exitInterrupted() noreturn {
 const RawInput = struct {
     saved: Saved,
 
-    const Saved = switch (builtin.os.tag) {
+    const Saved = switch (builtin.target.os.tag) {
         .windows => struct { input_mode: u32, output_code_page: u32 },
         else => std.posix.termios,
     };
 
     fn enable() ReadError!RawInput {
-        switch (builtin.os.tag) {
+        switch (builtin.target.os.tag) {
             .windows => {
                 const handle = stdinHandle();
                 const mode = consoleMode(handle) orelse return error.ReadFailed;
@@ -102,8 +102,8 @@ const RawInput = struct {
                 raw.lflag.ICANON = false;
                 raw.lflag.IEXTEN = false;
                 raw.lflag.ISIG = false;
-                const vmin_idx: usize = if (builtin.os.tag == .linux) 6 else 16;
-                const vtime_idx: usize = if (builtin.os.tag == .linux) 5 else 17;
+                const vmin_idx: usize = if (builtin.target.os.tag == .linux) 6 else 16;
+                const vtime_idx: usize = if (builtin.target.os.tag == .linux) 5 else 17;
                 if (vmin_idx < raw.cc.len and vtime_idx < raw.cc.len) {
                     raw.cc[vmin_idx] = 1;
                     raw.cc[vtime_idx] = 0;
@@ -115,7 +115,7 @@ const RawInput = struct {
     }
 
     fn restore(self: *const RawInput) void {
-        switch (builtin.os.tag) {
+        switch (builtin.target.os.tag) {
             .windows => {
                 _ = win32.SetConsoleMode(stdinHandle(), self.saved.input_mode);
                 _ = win32.SetConsoleOutputCP(self.saved.output_code_page);
@@ -146,7 +146,7 @@ const KeyReader = struct {
             defer self.pending_start += 1;
             return .{ .byte = self.pending[self.pending_start] };
         }
-        switch (builtin.os.tag) {
+        switch (builtin.target.os.tag) {
             .windows => {
                 while (self.pending_start == self.pending_end) {
                     if (!try waitForConsoleText(timeout_ms)) return .timeout;
@@ -350,7 +350,7 @@ fn readStreamLine(alloc: Allocator, max_bytes: usize) ReadError![]u8 {
 /// control handler pf installs at startup.
 pub fn waitForEnter(timeout_ms: u64) bool {
     const timeout: u32 = @intCast(@min(timeout_ms, std.math.maxInt(i32)));
-    switch (builtin.os.tag) {
+    switch (builtin.target.os.tag) {
         .windows => {
             const handle = stdinHandle();
             if (consoleMode(handle) != null) return waitForConsoleEnter(handle, timeout);
@@ -422,7 +422,7 @@ pub const LinePoller = struct {
 
     pub fn init(options: LineOptions) LinePoller {
         var self: LinePoller = .{ .options = options };
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             if (consoleMode(stdinHandle()) != null) self.raw = RawInput.enable() catch null;
         }
         return self;
@@ -460,7 +460,7 @@ pub const LinePoller = struct {
     }
 
     fn pollStream(self: *LinePoller) ReadError!?[]const u8 {
-        const readable = switch (builtin.os.tag) {
+        const readable = switch (builtin.target.os.tag) {
             .windows => streamReadable(stdinHandle()),
             else => blk: {
                 var fds = [_]std.posix.pollfd{.{ .fd = std.posix.STDIN_FILENO, .events = std.posix.POLL.IN, .revents = 0 }};

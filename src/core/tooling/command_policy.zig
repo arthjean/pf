@@ -18,7 +18,7 @@ pub const DestructiveEffect = enum {
 pub fn destructive_effect_for(command: []const u8) ?DestructiveEffect {
     const analysis = command_classification.analysis_command_tail(command);
     if (destructive_effect_in_analysis(analysis)) |effect| return effect;
-    if (builtin.os.tag == .windows) return windows_risk_effect(command);
+    if (builtin.target.os.tag == .windows) return windows_risk_effect(command);
     return null;
 }
 

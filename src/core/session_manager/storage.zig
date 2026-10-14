@@ -28,7 +28,7 @@ pub const blob_mode: std.posix.mode_t = 0o400;
 /// Windows has no mode bits, and pf refuses sessions v2 there, so the store
 /// only has to compile for Windows; `fromMode` does not exist on that target.
 fn modePermissions(mode: std.posix.mode_t) Io.File.Permissions {
-    if (comptime builtin.os.tag == .windows) return .default_file;
+    if (comptime builtin.target.os.tag == .windows) return .default_file;
     return .fromMode(mode);
 }
 
@@ -359,7 +359,7 @@ pub const Storage = struct {
                 .directory => .directory,
                 else => .other,
             },
-            .mode = if (comptime builtin.os.tag == .windows) 0 else st.permissions.toMode() & 0o777,
+            .mode = if (comptime builtin.target.os.tag == .windows) 0 else st.permissions.toMode() & 0o777,
             .mtime_ms = st.mtime.toMilliseconds(),
         };
     }

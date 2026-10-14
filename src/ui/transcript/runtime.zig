@@ -4367,7 +4367,7 @@ test "render diagnostic commit skips unchanged same-row paints" {
 /// Placeholder output until `TranscriptRuntime.init` binds standard output.
 /// Windows resolves the console handle only at run time, so the default holds
 /// an invalid handle that fails writes instead of reaching a stale one.
-const unbound_stdout: std.Io.File = if (@import("builtin").os.tag == .windows)
+const unbound_stdout: std.Io.File = if (@import("builtin").target.os.tag == .windows)
     .{ .handle = std.os.windows.INVALID_HANDLE_VALUE, .flags = .{ .nonblocking = false } }
 else
     std.Io.File.stdout();

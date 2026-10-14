@@ -336,7 +336,7 @@ test "v1's logins are taken over once, and a sign-out isn't undone" {
 
 test "the credential file is private, and an unreadable one is replaced on the next save" {
     // pf: POSIX file modes; Windows has no `toMode`, and refuses MCP-v2.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
     const home = try testHome(&tmp);

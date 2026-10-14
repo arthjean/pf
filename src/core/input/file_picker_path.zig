@@ -6,7 +6,7 @@ const text_utils = @import("../shared/text_utils.zig");
 /// How `\` reads inside an @ path. Windows paths use it as a separator, so it
 /// is literal there; elsewhere it escapes the next byte.
 const Style = enum { escaping, literal };
-const native_style: Style = if (builtin.os.tag == .windows) .literal else .escaping;
+const native_style: Style = if (builtin.target.os.tag == .windows) .literal else .escaping;
 
 fn needs_quotes(path: []const u8, style: Style) bool {
     if (std.mem.endsWith(u8, path, ".")) return true;

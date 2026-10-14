@@ -1310,7 +1310,7 @@ fn processGoneWithin(pid: std.posix.pid_t, timeout_ms: i64) bool {
 
 test "in-process registry starts writes to and stops a real terminal" {
     // The fixture drives a POSIX shell and signals; US-033 covers Windows on its host.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var fixture: LiveTerminalFixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -1379,7 +1379,7 @@ test "in-process registry starts writes to and stops a real terminal" {
 
 test "closing owned terminals for exit leaves no orphan and records them ended" {
     // The fixture drives a POSIX shell and signals; US-033 covers Windows on its host.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var fixture: LiveTerminalFixture = undefined;
     try fixture.init();
     defer fixture.deinit();

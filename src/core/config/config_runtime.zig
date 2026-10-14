@@ -2161,7 +2161,7 @@ fn stableEmptyTestEnviron() !*const std.process.Environ.Map {
 }
 
 // Paths joined by the code under test use the native separator.
-const test_sep = std.fs.path.sep_str;
+const test_sep = std.Io.Dir.path.sep_str;
 
 const TestHome = struct {
     alloc: Allocator,
@@ -2199,7 +2199,7 @@ const TestHome = struct {
 
 test "settings load from the resolved profile home" {
     const alloc = std.testing.allocator;
-    const is_windows = @import("builtin").os.tag == .windows;
+    const is_windows = @import("builtin").target.os.tag == .windows;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(io_mod.getIo(), "profile/.pf");
@@ -2312,7 +2312,7 @@ test "merged settings rejects symlinked durable root reload path" {
 
 test "merged settings rejects writable user policy files" {
     // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");
@@ -4363,7 +4363,7 @@ test "invalid user model emits typed diagnostic and project model is ignored" {
 
 test "detailed settings report unsafe user permissions distinctly" {
     // Asserts POSIX mode bits; Windows keeps the inherited profile ACL and has no group or other classes.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(io_mod.getIo(), "home/.pf");

@@ -993,7 +993,7 @@ test "attachClipboard is silent on unsupported platforms" {
 
     try Commands(FakeApp).attachClipboard(&app);
 
-    if (@import("builtin").os.tag == .windows) {
+    if (@import("builtin").target.os.tag == .windows) {
         try expectTranscriptContains(&app, windows_clipboard_image_unavailable);
     } else {
         try std.testing.expectEqual(@as(usize, 0), app.transcript.items.len);

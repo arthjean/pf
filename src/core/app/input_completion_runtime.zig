@@ -1993,7 +1993,7 @@ test "streaming file selection commits the selected path" {
 
 test "file picker encodes literal quotes without reopening quote grammar" {
     // Windows file names cannot contain quotes, so the non-escaping native style rejects them.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const rt = CompletionRuntime(FilePickerTestApp);
     var app = FilePickerTestApp{
@@ -2014,7 +2014,7 @@ test "file picker encodes literal quotes without reopening quote grammar" {
 
 test "file picker quoted middle replacement preserves only the outside tail" {
     // A backslash is a separator in the native Windows style, so it is never escaped.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const rt = CompletionRuntime(FilePickerTestApp);
     var app = FilePickerTestApp{ .alloc = alloc, .file_completion_values = &.{.{ .path = "a\\b.txt", .kind = .file }} };

@@ -506,7 +506,7 @@ fn validateRun(
                 .{@errorName(err)},
             );
         };
-        if (builtin.os.tag == .windows and ctx.captured_command_host == .native) {
+        if (builtin.target.os.tag == .windows and ctx.captured_command_host == .native) {
             _ = shell_selection.current() catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 else => |selection_err| return try ctx.allocator.dupe(u8, shell_selection.errorMessage(selection_err)),

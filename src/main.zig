@@ -105,7 +105,7 @@ const update_target = @import("core/upgrade/update_target.zig");
 /// to `error.Unexpected` and prints a stack trace for it in Debug builds. pf
 /// handles the error, so the trace would only break its stderr contract.
 pub const std_options: std.Options = .{
-    .unexpected_error_tracing = builtin.os.tag != .windows and (std.Options{}).unexpected_error_tracing,
+    .unexpected_error_tracing = builtin.target.os.tag != .windows and (std.Options{}).unexpected_error_tracing,
 };
 
 const compiled_update_channel = update_target.Channel.parse(build_options.update_channel) orelse
@@ -3625,12 +3625,12 @@ fn rawArgs(c_argc: c_int, c_argv: [*][*:0]c_char) []const [*:0]const u8 {
 fn argsFromRaw(raw_args: []const [*:0]const u8) std.process.Args {
     // The C runtime's argv uses the ANSI code page on Windows; read the
     // WTF-16 command line instead so arguments arrive exactly as typed.
-    if (comptime builtin.os.tag == .windows) return .{ .vector = io_mod.windowsCommandLine() };
+    if (comptime builtin.target.os.tag == .windows) return .{ .vector = io_mod.windowsCommandLine() };
     return .{ .vector = raw_args };
 }
 
 fn environBlockFromRaw(raw_env: RawEnviron) std.process.Environ.Block {
-    if (comptime builtin.os.tag == .windows) return .global;
+    if (comptime builtin.target.os.tag == .windows) return .global;
     var count: usize = 0;
     while (raw_env[count] != null) : (count += 1) {}
     return .{ .slice = raw_env[0..count :null] };
@@ -4086,7 +4086,7 @@ fn handleResizeNotification() callconv(.c) void {
     resize_interlock.noteResizeSignal();
 }
 
-const handle_sigwinch: app_lifecycle.ResizeHandler = if (host_target.is_wasm or builtin.os.tag == .windows)
+const handle_sigwinch: app_lifecycle.ResizeHandler = if (host_target.is_wasm or builtin.target.os.tag == .windows)
     handleResizeNotification
 else
     handleSigWinchNative;

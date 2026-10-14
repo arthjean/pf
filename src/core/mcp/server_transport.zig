@@ -972,7 +972,7 @@ fn spawnStdioServer(alloc: Allocator, server: *McpServer, argv: []const []const 
         if (docker_cleanup) |*cleanup| cleanup.run(alloc);
         return err;
     };
-    if (builtin.os.tag == .windows) {
+    if (builtin.target.os.tag == .windows) {
         server.dispatcher.?.installProcessJob(job);
         job_owned = false;
     }

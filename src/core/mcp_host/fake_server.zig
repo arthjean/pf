@@ -33,7 +33,7 @@ pub const Fixture = struct {
 
     /// pf: skips the test on Windows, which has no sh and refuses MCP-v2.
     pub fn init(f: *Fixture) !void {
-        if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+        if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
         f.tmp = testing.tmpDir(.{});
         errdefer f.tmp.cleanup();
         try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "server", .data = script, .flags = .{ .permissions = .executable_file } });

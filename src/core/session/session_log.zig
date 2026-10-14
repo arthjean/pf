@@ -4151,7 +4151,7 @@ pub const Root = struct {
         errdefer if (loaded_owned) loaded.deinit(alloc);
         try loaded.conversation_writer.file.sync(io_mod.getIo());
         try io_mod.syncVerifiedDir(loaded.log.dir.dir);
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             // Windows refuses to rename a directory while handles below it
             // are open, so close the new session, publish it, and reopen it.
             const freshly_started = loaded.freshly_started;
@@ -5203,7 +5203,7 @@ test "conversation writer removes an unfinished turn before a torn final record"
 
 test "conversation writer initialization leaves file ownership with caller on failure" {
     // Probes descriptor state with fcntl, which Windows does not have.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const file = try tmp.dir.createFile(std.testing.io, "events.jsonl", .{ .read = true });

@@ -1752,7 +1752,7 @@ fn directoryTreePatternMatches(pattern: []const u8, candidate: []const u8) bool 
 /// Reports a path separator in a rule pattern or target: `/`, and on Windows
 /// also `\`, so a rule written with either separator matches native paths.
 fn isPatternSeparator(byte: u8) bool {
-    return byte == '/' or (builtin.os.tag == .windows and byte == '\\');
+    return byte == '/' or (builtin.target.os.tag == .windows and byte == '\\');
 }
 
 fn patternByteEql(pattern_byte: u8, candidate_byte: u8) bool {
@@ -1771,7 +1771,7 @@ fn patternBytesEql(candidate: []const u8, pattern: []const u8) bool {
 /// Rewrites a workspace-relative path in place with `/` separators, which
 /// policy display and persisted rules use on every platform. Returns it.
 fn portableRelativePath(relative: []u8) []u8 {
-    if (builtin.os.tag == .windows) std.mem.replaceScalar(u8, relative, '\\', '/');
+    if (builtin.target.os.tag == .windows) std.mem.replaceScalar(u8, relative, '\\', '/');
     return relative;
 }
 
@@ -2533,7 +2533,7 @@ test "generic wildcard matching remains total for maximum command-sized input" {
 }
 
 test "file rule patterns match either separator only on Windows" {
-    const windows = builtin.os.tag == .windows;
+    const windows = builtin.target.os.tag == .windows;
     try std.testing.expect(wildcardMatch("src/*", "src/app.zig"));
     try std.testing.expectEqual(windows, wildcardMatch("src/*", "src\\app.zig"));
     try std.testing.expectEqual(windows, directoryTreePatternMatches("src/**", "src\\nested\\app.zig"));
@@ -2548,7 +2548,7 @@ test "file rule patterns match either separator only on Windows" {
     const root = if (windows) "C:\\workspace" else "/workspace";
     try std.testing.expectEqual(
         if (windows) types.RuleDecision.deny else types.RuleDecision.none,
-        fileTargetRuleDecision(.{ .rules = &rules }, root, "write_file", root ++ std.fs.path.sep_str ++ "src\\app.zig"),
+        fileTargetRuleDecision(.{ .rules = &rules }, root, "write_file", root ++ std.Io.Dir.path.sep_str ++ "src\\app.zig"),
     );
 }
 
@@ -2747,7 +2747,7 @@ test "PowerShell commands match only exact allows while denies keep wildcards" {
     const rules: types.PermissionRuleSet = .{ .rules = &rules_buf };
     const decide = struct {
         fn run(a: std.mem.Allocator, set: types.PermissionRuleSet, command: []const u8) !RuleDecision {
-            const target = try std.fmt.allocPrint(a, "/tmp/workspace::{s}", .{command});
+            const target = try a.print("/tmp/workspace::{s}", .{command});
             defer a.free(target);
             return ruleDecisionFor(a, set, "/tmp/workspace", "run_command", target, .command_cwd);
         }
@@ -3189,13 +3189,13 @@ test "file target evaluator returns ordered complete workspace proof" {
     try std.testing.expectEqual(.target, evaluated.items[0].kind);
     try std.testing.expectEqual(.target_entry, evaluated.items[0].disposition);
     try std.testing.expect(evaluated.items[0].expected_identity == null);
-    try std.testing.expectEqualStrings(try std.fs.path.join(arena, &.{ "existing", "a", "b", "file.txt" }), evaluated.permissionPath(evaluated.items[0])[workspace.len + 1 ..]);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ "existing", "a", "b", "file.txt" }), evaluated.permissionPath(evaluated.items[0])[workspace.len + 1 ..]);
     try std.testing.expectEqual(.parent, evaluated.items[1].kind);
     try std.testing.expectEqual(.create_parent, evaluated.items[1].disposition);
-    try std.testing.expectEqualStrings(try std.fs.path.join(arena, &.{ "existing", "a", "b" }), evaluated.permissionPath(evaluated.items[1])[workspace.len + 1 ..]);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ "existing", "a", "b" }), evaluated.permissionPath(evaluated.items[1])[workspace.len + 1 ..]);
     try std.testing.expectEqual(.parent, evaluated.items[2].kind);
     try std.testing.expectEqual(.create_parent, evaluated.items[2].disposition);
-    try std.testing.expectEqualStrings(try std.fs.path.join(arena, &.{ "existing", "a" }), evaluated.permissionPath(evaluated.items[2])[workspace.len + 1 ..]);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ "existing", "a" }), evaluated.permissionPath(evaluated.items[2])[workspace.len + 1 ..]);
     try std.testing.expect(evaluated.prompt_required);
 }
 
@@ -3255,7 +3255,7 @@ test "file target evaluator scans intermediate deny before grants" {
     const tmp_root = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
     const grants = [_]types.PermissionGrant{.{
         .tool_name = @constCast("edit"),
-        .target_path = try std.fmt.allocPrint(arena, "{s}/**", .{tmp_root}),
+        .target_path = try arena.print("{s}/**", .{tmp_root}),
     }};
 
     const result = try evaluateFileMutationTargets(
@@ -3344,7 +3344,7 @@ test "file target evaluator binds external parent and grant state" {
     const tmp_root = try io_mod.dirRealpathAlloc(arena, tmp.dir, ".");
     const grants = [_]types.PermissionGrant{.{
         .tool_name = @constCast("edit"),
-        .target_path = try std.fmt.allocPrint(arena, "{s}/**", .{tmp_root}),
+        .target_path = try arena.print("{s}/**", .{tmp_root}),
     }};
 
     const result = try evaluateFileMutationTargets(

@@ -7532,7 +7532,7 @@ test "initializePersistence silently skips optional missing home and errors when
 
 test "v2 ultrafast resume applies process overrides without persisting them" {
     // The test sets POSIX modes with std.c.chmod.
-    if (comptime builtin.os.tag == .windows) return;
+    if (comptime builtin.target.os.tag == .windows) return;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

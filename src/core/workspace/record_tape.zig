@@ -848,8 +848,8 @@ test "debug recording request uses the temporary fallback when HOME is empty" {
     switch (status) {
         .active => |active| {
             // Windows falls back to the system temporary directory instead of `/tmp`.
-            const fallback_root = if (comptime @import("builtin").os.tag == .windows)
-                try std.fs.path.join(alloc, &.{ io_mod.tempDir(), "pf-recordings/" })
+            const fallback_root = if (comptime @import("builtin").target.os.tag == .windows)
+                try std.Io.Dir.path.join(alloc, &.{ io_mod.tempDir(), "pf-recordings/" })
             else
                 try alloc.dupe(u8, "/tmp/pf-recordings/");
             defer alloc.free(fallback_root);

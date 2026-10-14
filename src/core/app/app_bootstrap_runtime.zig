@@ -1152,7 +1152,7 @@ fn runBootstrapWithOverridesForTest(app: *TestApp, capture: *TestCapture, overri
     );
 }
 
-const resizeHandlerForTest: app_lifecycle.ResizeHandler = if (builtin.os.tag == .windows)
+const resizeHandlerForTest: app_lifecycle.ResizeHandler = if (builtin.target.os.tag == .windows)
     struct {
         fn handle() callconv(.c) void {}
     }.handle

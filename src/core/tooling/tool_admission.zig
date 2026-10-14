@@ -408,10 +408,9 @@ pub fn prepareFileMutationCall(
 
     // Windows opens a device such as NUL or CON.txt in any directory, so a
     // reserved name is refused before any file is opened.
-    if (builtin.os.tag == .windows) {
+    if (builtin.target.os.tag == .windows) {
         if (pathing.reservedWindowsDeviceName(input.path())) |name| {
-            return .{ .tool_failure = try std.fmt.allocPrint(
-                alloc,
+            return .{ .tool_failure = try alloc.print(
                 "{s} is a reserved Windows device name.",
                 .{name},
             ) };
@@ -2806,7 +2805,7 @@ test "interactive command approval keeps activity projection out of permission r
 
 test "terminal exec timeout and profile omission share user grants while clean stays isolated" {
     // Windows has no login shell profile, so every profile is the legacy one.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -3852,7 +3851,7 @@ fn testInputWithClassifier(
 /// Windows has no login shell profile: a captured command carries the legacy
 /// environment, which admits a direct read-only plan before any shell lane
 /// and keeps the bare command as its permission identity.
-const test_login_profile = builtin.os.tag != .windows;
+const test_login_profile = builtin.target.os.tag != .windows;
 
 /// Expects `source` where the default user profile forces the shell route.
 /// Without a login profile, a direct plan (`windows_direct`) runs direct.
@@ -5417,7 +5416,7 @@ test "PowerShell commands in auto mode always go to the security review" {
     defer shell_selection.test_dialect = null;
 
     for ([_][]const u8{ "git status --short --branch", "ls", "Get-ChildItem" }, 1..) |command, calls| {
-        const arguments = try std.fmt.allocPrint(arena_state.allocator(), "{{\"action\":\"run\",\"command\":{f}}}", .{std.json.fmt(command, .{})});
+        const arguments = try arena_state.allocator().print("{{\"action\":\"run\",\"command\":{f}}}", .{std.json.fmt(command, .{})});
         const outcome = requestPermissionOutcome(
             input,
             arena_state.allocator(),
@@ -5513,7 +5512,7 @@ test "configured command authority skips automatic review" {
 
 test "automatic clean direct command bypasses the reviewer" {
     // Windows has no login shell profile, so no clean profile environment.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     var worker: WorkerRuntime = .{};
@@ -5663,32 +5662,28 @@ test "TTY admission fingerprints route and explicit shell startup" {
 
     // An explicit shell must be absolute and, on Windows, of the selected
     // dialect, so Windows uses the selected shell.
-    const shell_path = if (comptime builtin.os.tag == .windows)
+    const shell_path = if (comptime builtin.target.os.tag == .windows)
         (shell_selection.current() catch return error.SkipZigTest).path
     else
         "/bin/bash";
     const shell_json = try std.json.Stringify.valueAlloc(arena, shell_path, .{});
-    const clean_shell_args = try std.fmt.allocPrint(
-        arena,
+    const clean_shell_args = try arena.print(
         "{{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{{\"kind\":\"executable\",\"path\":{s},\"clean_start\":true}}}}",
         .{shell_json},
     );
-    const user_shell_args = try std.fmt.allocPrint(
-        arena,
+    const user_shell_args = try arena.print(
         "{{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{{\"kind\":\"executable\",\"path\":{s},\"clean_start\":false}}}}",
         .{shell_json},
     );
     const encoded_shell = try std.json.Stringify.valueAlloc(
         arena,
-        try std.fmt.allocPrint(
-            arena,
+        try arena.print(
             "{{\"kind\":\"executable\",\"path\":{s},\"clean_start\":true}}",
             .{shell_json},
         ),
         .{},
     );
-    const encoded_shell_args = try std.fmt.allocPrint(
-        arena,
+    const encoded_shell_args = try arena.print(
         "{{\"action\":\"run\",\"command\":\"pwd\",\"tty\":true,\"shell\":{s}}}",
         .{encoded_shell},
     );
@@ -5746,7 +5741,7 @@ fn npmAliasSnapshotCapture(request: shell_snapshot.CaptureRequest) shell_snapsho
 
 test "routine commands that a user alias or function redefines go to review" {
     // shell_resolver.environment() returns .legacy on Windows, which has no login shell.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     shell_snapshot.resetProcessOwnerForTest(npmAliasSnapshotCapture);
     defer shell_snapshot.resetProcessOwnerForTest(shell_snapshot.real_capture_fn);
     const lease = (try shell_snapshot.processOwner().acquire("/bin/zsh", "/tmp", .{})).snapshot;
@@ -5797,7 +5792,7 @@ fn failedSnapshotCapture(_: shell_snapshot.CaptureRequest) shell_snapshot.Captur
 
 test "routine commands go to review while the snapshot has fallen back" {
     // shell_resolver.environment() returns .legacy on Windows, which has no login shell.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     shell_snapshot.resetProcessOwnerForTest(failedSnapshotCapture);
     defer shell_snapshot.resetProcessOwnerForTest(shell_snapshot.real_capture_fn);
     try std.testing.expect((try shell_snapshot.processOwner().acquire("/bin/zsh", "/tmp", .{})) == .full_startup);

@@ -939,7 +939,7 @@ test "grep_files access denial returns structured recovery" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     // Windows has no /tmp, so the workspace lives in the test directory there.
-    const workspace = if (comptime builtin.os.tag == .windows) try workspaceRoot(alloc, tmp) else blk: {
+    const workspace = if (comptime builtin.target.os.tag == .windows) try workspaceRoot(alloc, tmp) else blk: {
         try std.Io.Dir.cwd().createDirPath(io_mod.getIo(), root);
         break :blk try io_mod.realpathAlloc(alloc, root);
     };
@@ -955,7 +955,7 @@ test "grep_files access denial returns structured recovery" {
     const body = try grepFilesFailureWithOps(alloc, workspace, path, null, .{ .stat_root = accessDeniedStatRoot });
     defer alloc.free(body);
     // The body escapes the path as a JSON string, which leaves a POSIX path unchanged.
-    const quoted_path = try std.fmt.allocPrint(alloc, "{f}", .{std.json.fmt(path, .{})});
+    const quoted_path = try alloc.print("{f}", .{std.json.fmt(path, .{})});
     defer alloc.free(quoted_path);
 
     try std.testing.expect(tool_result_errors.isToolExecutionFailedOutput(body));

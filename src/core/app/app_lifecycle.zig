@@ -51,7 +51,7 @@ const alternate_mouse_tracking_enter = "\x1b[?1000h\x1b[?1006h";
 
 /// Windows delivers resize through console input records and closes through
 /// console control events, so it has no POSIX termination or job-control signals.
-const supports_posix_signals = shell_runtime.supports_resize_signal and builtin.os.tag != .windows;
+const supports_posix_signals = shell_runtime.supports_resize_signal and builtin.target.os.tag != .windows;
 
 /// Original handlers, written at bootstrap and restored at shutdown.
 /// Signal context never mutates them.
@@ -147,7 +147,7 @@ const console_close = struct {
 /// Until `bindConsoleCloseHandler` names the app's final state, a close
 /// keeps the default handling.
 pub fn installConsoleCloseHandler() void {
-    if (comptime builtin.os.tag != .windows) return;
+    if (comptime builtin.target.os.tag != .windows) return;
     const win32 = @import("../shared/win32.zig");
     _ = win32.SetConsoleCtrlHandler(console_close.handle, .TRUE);
 }
@@ -155,7 +155,7 @@ pub fn installConsoleCloseHandler() void {
 /// Points the console close handler at the app's terminal state and event
 /// loop exit flag, once the app has its final address.
 pub fn bindConsoleCloseHandler(terminal: *const TerminalState, exit_request: *bool) void {
-    if (comptime builtin.os.tag != .windows) return;
+    if (comptime builtin.target.os.tag != .windows) return;
     @atomicStore(?*const TerminalState, &console_close.terminal, terminal, .seq_cst);
     @atomicStore(?*bool, &console_close.exit_request, exit_request, .seq_cst);
 }
@@ -163,12 +163,12 @@ pub fn bindConsoleCloseHandler(terminal: *const TerminalState, exit_request: *bo
 /// Whether a Windows console close handler is waiting for shutdown. Console
 /// control handlers cannot be added or removed until it returns.
 pub fn consoleCloseInProgress() bool {
-    if (comptime builtin.os.tag != .windows) return false;
+    if (comptime builtin.target.os.tag != .windows) return false;
     return console_close.in_progress.load(.seq_cst);
 }
 
 pub fn uninstallAbnormalExitHandlers() void {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         if (consoleCloseInProgress()) return;
         const win32 = @import("../shared/win32.zig");
         _ = win32.SetConsoleCtrlHandler(console_close.handle, .FALSE);

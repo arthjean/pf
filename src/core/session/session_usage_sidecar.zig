@@ -471,7 +471,7 @@ test "recovery copy classifies accounting without changing normal resume" {
     try io_mod.durableReplaceVerified(alloc, &dir, sidecar_file, "{\"schema_version\":2,\"session_id\":\"session\",\"snapshot\":{}}");
     try std.testing.expectError(error.UnsupportedUsageSidecar, has_recoverable_corruption(alloc, &dir, "session"));
     // Windows has no group or other mode bits to widen.
-    if (comptime @import("builtin").os.tag == .windows) return;
+    if (comptime @import("builtin").target.os.tag == .windows) return;
     const file = try dir.dir.openFile(std.testing.io, sidecar_file, .{ .mode = .read_write });
     defer file.close(std.testing.io);
     try file.setPermissions(std.testing.io, .fromMode(0o644));
@@ -488,7 +488,7 @@ test "conversation accounting recovery refuses unsafe storage" {
     try std.testing.expectError(error.InvalidUsageSidecar, loadConversation(alloc, &verified, "session", 10));
     try temp.dir.deleteDir(std.testing.io, sidecar_file);
     // Windows has no group or other mode bits to widen.
-    if (comptime @import("builtin").os.tag == .windows) return;
+    if (comptime @import("builtin").target.os.tag == .windows) return;
     var file = try temp.dir.createFile(std.testing.io, sidecar_file, .{ .permissions = .fromMode(0o644) });
     defer file.close(std.testing.io);
     try file.writeStreamingAll(std.testing.io, "{corrupt but not private");

@@ -76,7 +76,7 @@ const FileTargetResolveError = error{
 
 const path_entry_whitespace = " \t\r\n";
 const max_symbolic_link_expansions: usize = 40;
-const is_windows = builtin_mod.os.tag == .windows;
+const is_windows = builtin_mod.target.os.tag == .windows;
 
 /// Reports a path separator: `/` everywhere, and `\` as well on Windows.
 fn isPathSep(byte: u8) bool {
@@ -112,8 +112,8 @@ fn writeNormalizedRoot(scratch: []u8, root: []const u8) FileTargetResolveError!u
     const needs_trailing = !isPathSep(root[root.len - 1]);
     const len = root.len + @intFromBool(needs_trailing);
     if (len > scratch.len) return error.InvalidPath;
-    for (root, 0..) |byte, index| scratch[index] = if (isPathSep(byte)) std.fs.path.sep else byte;
-    if (needs_trailing) scratch[root.len] = std.fs.path.sep;
+    for (root, 0..) |byte, index| scratch[index] = if (isPathSep(byte)) std.Io.Dir.path.sep else byte;
+    if (needs_trailing) scratch[root.len] = std.Io.Dir.path.sep;
     if (is_windows and scratch[1] == ':') scratch[0] = std.ascii.toUpper(scratch[0]);
     return len;
 }
@@ -132,7 +132,7 @@ fn expandShortComponent(
     // A path Windows cannot expand keeps its short name, and containment then
     // treats it as a path outside the workspace.
     const long_path = io_mod.windowsLongPathInto(scratch[0..path_len.*], &long_buffer) orelse return span;
-    const long_name = std.fs.path.basename(long_path);
+    const long_name = std.Io.Dir.path.basename(long_path);
     if (long_name.len == 0) return span;
     const end = span.start + long_name.len;
     if (end > scratch.len) return error.InvalidPath;
@@ -479,7 +479,7 @@ fn classifyExternalPathInput(cleaned: []const u8) error{InvalidPath}!ExternalPat
     if (std.Io.Dir.path.isAbsolute(cleaned)) return .{ .absolute = cleaned };
     if (std.mem.eql(u8, cleaned, "~")) return .{ .home_relative = "" };
     if (std.mem.startsWith(u8, cleaned, "~/") or
-        (builtin_mod.os.tag == .windows and std.mem.startsWith(u8, cleaned, "~\\")))
+        (builtin_mod.target.os.tag == .windows and std.mem.startsWith(u8, cleaned, "~\\")))
     {
         return .{ .home_relative = cleaned[1..] };
     }
@@ -1375,21 +1375,21 @@ test "bounded resolver contains Windows targets by case and rejects junction esc
     const outside = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "outside");
     defer alloc.free(outside);
 
-    var primary: [std.fs.max_path_bytes]u8 = undefined;
-    var secondary: [std.fs.max_path_bytes]u8 = undefined;
+    var primary: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    var secondary: [std.Io.Dir.max_path_bytes]u8 = undefined;
     var components: [8]BoundedFileTargetComponent = undefined;
 
     // `C:\DEV\PF\src\x.zig` is inside `C:\dev\pf`.
     const upper = try std.ascii.allocUpperString(alloc, workspace);
     defer alloc.free(upper);
-    const upper_target = try std.fs.path.join(alloc, &.{ upper, "src", "x.zig" });
+    const upper_target = try std.Io.Dir.path.join(alloc, &.{ upper, "src", "x.zig" });
     defer alloc.free(upper_target);
     const inside = try resolveFileMutationTargetBounded(workspace, upper_target, .create, &primary, &secondary, &components);
     try std.testing.expect(!inside.anchor_is_external);
     try std.testing.expect(pathInside(workspace, inside.canonical_target_path));
 
     // A junction inside the workspace that points outside it is an escape.
-    const link = try std.fs.path.join(alloc, &.{ workspace, "link" });
+    const link = try std.Io.Dir.path.join(alloc, &.{ workspace, "link" });
     defer alloc.free(link);
     const result = try std.process.run(alloc, io_mod.getIo(), .{
         .argv = &.{ "cmd.exe", "/c", "mklink", "/J", link, outside },
@@ -1409,7 +1409,7 @@ test "home-relative inputs accept a backslash separator on Windows only" {
         .home_relative => |relative| try std.testing.expectEqualStrings("/notes.md", relative),
         else => return error.TestUnexpectedResult,
     }
-    if (builtin_mod.os.tag == .windows) {
+    if (builtin_mod.target.os.tag == .windows) {
         switch (try classifyExternalPathInput("~\\notes.md")) {
             .home_relative => |relative| try std.testing.expectEqualStrings("\\notes.md", relative),
             else => return error.TestUnexpectedResult,
@@ -2031,7 +2031,7 @@ test "external resolver handles exact home root and normalized home escapes" {
         .existing,
     );
     // The filesystem root is `/`, or the workspace drive root on Windows.
-    const root_home = std.fs.path.parsePath(workspace).root;
+    const root_home = std.Io.Dir.path.parsePath(workspace).root;
     const filesystem_root = try resolveWorkspaceOrExternalPathWithHome(arena, workspace, "~", root_home, .existing);
 
     try std.testing.expectEqualStrings(home, exact_home);

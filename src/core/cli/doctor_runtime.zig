@@ -549,14 +549,14 @@ fn appendGhCheck(checks: *std.ArrayList(Check), alloc: Allocator) !void {
 /// Reports the shell that runs model commands on Windows, its path, and why
 /// it was selected.
 fn appendShellCheck(checks: *std.ArrayList(Check), alloc: Allocator) !void {
-    if (comptime @import("builtin").os.tag != .windows) return;
+    if (comptime @import("builtin").target.os.tag != .windows) return;
     const shell = shell_selection.current() catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => |selection_err| return appendCheck(checks, alloc, "shell", .fail, shell_selection.errorMessage(selection_err)),
     };
     const label = try shell.dialectLabel(alloc);
     defer alloc.free(label);
-    const detail = try std.fmt.allocPrint(alloc, "{s} at {s}, selected because {s}", .{ label, shell.path, shell.reason.text() });
+    const detail = try alloc.print("{s} at {s}, selected because {s}", .{ label, shell.path, shell.reason.text() });
     try appendCheckOwned(checks, alloc, "shell", .ok, detail);
 }
 
@@ -673,7 +673,7 @@ fn hasGitMetadata(alloc: Allocator, workspace_root: []const u8) !bool {
 /// Windows runs a bare command name through these extensions, the `PATHEXT`
 /// entries that need no file association.
 const windows_command_extensions = [_][]const u8{ ".exe", ".com", ".cmd", ".bat" };
-const command_extensions: []const []const u8 = if (@import("builtin").os.tag == .windows)
+const command_extensions: []const []const u8 = if (@import("builtin").target.os.tag == .windows)
     &windows_command_extensions
 else
     &.{""};

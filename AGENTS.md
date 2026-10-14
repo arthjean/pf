@@ -216,7 +216,7 @@ Do not bypass the permission system for new tools.
 
 ### Zig 0.17 Standard Library
 
-New pf code does not use declarations that Zig 0.17 deprecates. They still compile, so check new code against this list:
+pf does not use declarations that Zig 0.17 deprecates outside `src/core/upgrade/`, where the disabled upgrade code keeps them until pf has its own release channel. They still compile, so check new code against this list; `python3 scripts/zig-deprecations.py` counts the remaining sites and exits 1 when one exists outside `src/core/upgrade/`:
 
 * Format with `alloc.print(fmt, args)` and `std.mem.print(buf, fmt, args)`, not `std.fmt.allocPrint` or `std.fmt.bufPrint`.
 

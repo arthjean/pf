@@ -165,7 +165,7 @@ fn prepareFileMutationSuccessResult(
     const display_path = try call_alloc.dupe(u8, fileMutationDisplayTargetPath(prepared.policy_targets));
     defer call_alloc.free(display_path);
     // Workspace-relative paths read with `/` on every platform.
-    if (builtin.os.tag == .windows and prepared.policy_targets.anchor.scope == .workspace) {
+    if (builtin.target.os.tag == .windows and prepared.policy_targets.anchor.scope == .workspace) {
         std.mem.replaceScalar(u8, display_path, '\\', '/');
     }
     var encoded_path = try text_utils.encodeTerminalSafe(

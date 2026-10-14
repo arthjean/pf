@@ -64,15 +64,15 @@ pub const AlternateScreenOwner = enum {
 /// Placeholder handles until `TerminalState.init` binds the standard streams.
 /// Windows resolves console handles only at run time, so its defaults are an
 /// invalid handle that fails every call.
-const unbound_input: std.Io.File = if (builtin.os.tag == .windows) unbound_windows_file else std.Io.File.stdin();
-const unbound_output: std.Io.File = if (builtin.os.tag == .windows) unbound_windows_file else std.Io.File.stdout();
-const unbound_windows_file: std.Io.File = if (builtin.os.tag == .windows)
+const unbound_input: std.Io.File = if (builtin.target.os.tag == .windows) unbound_windows_file else std.Io.File.stdin();
+const unbound_output: std.Io.File = if (builtin.target.os.tag == .windows) unbound_windows_file else std.Io.File.stdout();
+const unbound_windows_file: std.Io.File = if (builtin.target.os.tag == .windows)
     .{ .handle = std.os.windows.INVALID_HANDLE_VALUE, .flags = .{ .nonblocking = false } }
 else
     undefined;
 
 /// Terminal mode state saved by each platform backend.
-const SavedModes = switch (builtin.os.tag) {
+const SavedModes = switch (builtin.target.os.tag) {
     .wasi => struct {},
     .windows => struct {
         input_mode: u32 = 0,
@@ -114,7 +114,7 @@ pub const TerminalState = struct {
     }
 
     pub fn inputIsTerminal(self: TerminalState) bool {
-        return switch (builtin.os.tag) {
+        return switch (builtin.target.os.tag) {
             .wasi => true,
             .windows => windowsConsoleMode(self.input) != null,
             else => std.c.isatty(self.input.handle) != 0,
@@ -229,7 +229,7 @@ pub const TerminalState = struct {
 
     pub fn installResizeSignal(self: *TerminalState, handler: ResizeHandler) void {
         if (!supports_resize_signal) return;
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             // Resizes arrive as console input records; see `pollInput`.
             windows_console.resize_handler = handler;
             self.signal_handler_installed = true;
@@ -250,7 +250,7 @@ pub const TerminalState = struct {
 
     pub fn uninstallResizeSignal(self: *TerminalState) void {
         if (!supports_resize_signal or !self.signal_handler_installed) return;
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             windows_console.resize_handler = null;
         } else if (self.saved.old_winch_action) |old| {
             std.posix.sigaction(std.posix.SIG.WINCH, &old, null);

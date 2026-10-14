@@ -7301,7 +7301,7 @@ test "app_input_runtime quotes whitespace paths only while they are active" {
 
 test "app_input_runtime file completion escapes quotes inside whitespace paths" {
     // Windows file names cannot contain quotes, so the non-escaping native style rejects them.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const completions = [_]file_index.Candidate{.{ .path = "space\" dir", .kind = .directory }};
     var app = try RoutingFakeApp.init(alloc);
