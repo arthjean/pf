@@ -33,10 +33,10 @@
     {
       "id": "EP-004",
       "title": "Zig 0.17 toolchain, docs, Ctrl+O, and libpf follow-ups (merges 30 to 44)",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 0
+      "stories_done": 5
     },
     {
       "id": "EP-005",
@@ -212,71 +212,71 @@
       "id": "US-012",
       "title": "Port fx #1163 and migrate pf-only code to Zig 0.17",
       "epic": "EP-004",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": [
         "US-011"
       ],
       "started_at": "2026-10-14T12:41:22+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-14T15:19:07+02:00",
+      "reviewed_at": "2026-10-14T15:19:07+02:00"
     },
     {
       "id": "US-013",
       "title": "Retire deprecated Zig names in pf code",
       "epic": "EP-004",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P2",
       "size": "M",
       "blocked_by": [
         "US-012"
       ],
       "started_at": "2026-10-14T13:17:12+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-14T15:19:07+02:00",
+      "reviewed_at": "2026-10-14T15:19:07+02:00"
     },
     {
       "id": "US-014",
       "title": "Port merges 31 to 35 (docs model, Gateway key masking, README, sdk/README)",
       "epic": "EP-004",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-012"
       ],
       "started_at": "2026-10-14T13:33:07+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-14T15:19:07+02:00",
+      "reviewed_at": "2026-10-14T15:19:07+02:00"
     },
     {
       "id": "US-015",
       "title": "Port merges 36 to 38 (Ctrl+O tool rows, CONTRIBUTING, PGSO log)",
       "epic": "EP-004",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-014"
       ],
       "started_at": "2026-10-14T13:39:30+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-14T15:19:07+02:00",
+      "reviewed_at": "2026-10-14T15:19:07+02:00"
     },
     {
       "id": "US-016",
       "title": "Port merges 39 to 44 (libpf leases and latency, Ctrl+O anchor, gVisor)",
       "epic": "EP-004",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-015"
       ],
       "started_at": "2026-10-14T13:56:07+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-14T15:19:07+02:00",
+      "reviewed_at": "2026-10-14T15:19:07+02:00"
     },
     {
       "id": "US-017",
