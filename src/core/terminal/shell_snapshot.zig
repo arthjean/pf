@@ -44,7 +44,7 @@ const max_stamps = @max(
 const shell_owned_variables = [_][]const u8{ "PWD", "OLDPWD", "SHLVL", "_" };
 
 pub fn isSupported() bool {
-    return comptime builtin.os.tag != .windows and builtin.os.tag != .wasi;
+    return comptime builtin.target.os.tag != .windows and builtin.target.os.tag != .wasi;
 }
 
 const Stamp = struct {
@@ -117,7 +117,7 @@ fn fingerprintFor(kind: shell_resolver.ShellKind, user_dirs: []const ?[]const u8
         .powershell => &.{},
     };
     for (system_files) |path| result.add(path);
-    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    var path_buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
     for (user_dirs, 0..) |maybe_dir, index| {
         const dir = maybe_dir orelse continue;
         if (dir.len == 0) continue;
@@ -128,7 +128,7 @@ fn fingerprintFor(kind: shell_resolver.ShellKind, user_dirs: []const ?[]const u8
         }
         if (repeated) continue;
         for (user_files) |name| {
-            const path = std.fmt.bufPrint(&path_buffer, "{s}/{s}", .{ dir, name }) catch continue;
+            const path = std.mem.print(&path_buffer, "{s}/{s}", .{ dir, name }) catch continue;
             result.add(path);
         }
     }
@@ -287,7 +287,7 @@ pub const Owner = struct {
     capture_thread: ?std.Thread = null,
     capture_fn: CaptureFn = captureWithShell,
     capture_environ: ?*const Environ.Map = null,
-    failed_shell: [std.fs.max_path_bytes]u8 = undefined,
+    failed_shell: [std.Io.Dir.max_path_bytes]u8 = undefined,
     failed_shell_len: usize = 0,
     failed_fingerprint: Fingerprint = .{},
     notice: Notice = .{},
@@ -598,7 +598,7 @@ pub const Owner = struct {
         @memcpy(self.failed_shell[0..len], shell_path[0..len]);
         self.failed_shell_len = len;
         self.failed_fingerprint = fingerprint.*;
-        const text = std.fmt.bufPrint(
+        const text = std.mem.print(
             &self.notice.text,
             "shell snapshot unavailable ({s}); startup files run for every command",
             .{reason.description()},

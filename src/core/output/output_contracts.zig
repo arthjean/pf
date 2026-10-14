@@ -855,9 +855,9 @@ pub const ModelListSnapshot = struct {
         if (self.ids.len == 0) {
             const provider_name = self.emptyCatalogProviderName();
             if (self.catalogExplanation()) |explanation| {
-                return std.fmt.allocPrint(alloc, "[models] no models returned by {s}\n[models] {s}\n", .{ provider_name, explanation });
+                return alloc.print("[models] no models returned by {s}\n[models] {s}\n", .{ provider_name, explanation });
             }
-            return std.fmt.allocPrint(alloc, "[models] no models returned by {s}\n", .{provider_name});
+            return alloc.print("[models] no models returned by {s}\n", .{provider_name});
         }
 
         var out: std.Io.Writer.Allocating = .init(alloc);
@@ -885,9 +885,9 @@ pub const ModelListSnapshot = struct {
         if (self.ids.len == 0) {
             const provider_name = self.emptyCatalogProviderName();
             if (self.catalogExplanation()) |explanation| {
-                return std.fmt.allocPrint(alloc, "no models returned by {s}\n{s}", .{ provider_name, explanation });
+                return alloc.print("no models returned by {s}\n{s}", .{ provider_name, explanation });
             }
-            return std.fmt.allocPrint(alloc, "no models returned by {s}", .{provider_name});
+            return alloc.print("no models returned by {s}", .{provider_name});
         }
 
         var out: std.Io.Writer.Allocating = .init(alloc);
@@ -997,7 +997,7 @@ pub const SessionListSnapshot = struct {
 
     pub fn renderText(self: SessionListSnapshot, alloc: Allocator) ![]u8 {
         if (self.sessions.len == 0 and self.skipped_invalid == 0) {
-            return std.fmt.allocPrint(alloc, "[sessions] no saved sessions\n", .{});
+            return alloc.print("[sessions] no saved sessions\n", .{});
         }
 
         var out: std.Io.Writer.Allocating = .init(alloc);
@@ -1136,7 +1136,7 @@ fn writeUtcTimestamp(writer: *std.Io.Writer, timestamp_ms: i64) !void {
 
     try writer.print("{d:0>4}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}.{d:0>3} UTC", .{
         year_day.year,
-        @intFromEnum(month_day.month),
+        @backingInt(month_day.month),
         month_day.day_index + 1,
         day.getHoursIntoDay(),
         day.getMinutesIntoHour(),
@@ -1156,8 +1156,7 @@ pub const SessionSummarySnapshot = struct {
     }
 
     pub fn renderText(self: SessionSummarySnapshot, alloc: Allocator) ![]u8 {
-        return std.fmt.allocPrint(
-            alloc,
+        return alloc.print(
             "[session] {s}\ncreated_at_ms: {d}\nupdated_at_ms: {d}\nlanguage: {s}\nhistory_len: {d}\n",
             .{
                 self.summary.id,
@@ -1346,8 +1345,7 @@ pub const SessionRecoverySnapshot = struct {
     ) ![]u8 {
         const usage_warning = if (self.result.usage_incomplete) "warning: historical usage is incomplete because the source accounting data is corrupt\n" else "";
         if (self.result.status == .indeterminate) {
-            return std.fmt.allocPrint(
-                alloc,
+            return alloc.print(
                 "[session recovery] could not confirm target {s}\nsource: {s} (unchanged)\n{s}resolve: pf --resume {s}\ninspect: pf doctor\n",
                 .{
                     self.result.recovered_session_id,
@@ -1358,8 +1356,7 @@ pub const SessionRecoverySnapshot = struct {
             );
         }
         if (self.result.status == .recovered_with_unverified_artifacts) {
-            return std.fmt.allocPrint(
-                alloc,
+            return alloc.print(
                 "[session recovery] copied {s} to {s}\nhistory_turns: {d}\nwarning: legacy command artifacts could not be authenticated\n{s}resume: pf --resume {s}\n",
                 .{
                     self.result.source_session_id,
@@ -1370,8 +1367,7 @@ pub const SessionRecoverySnapshot = struct {
                 },
             );
         }
-        return std.fmt.allocPrint(
-            alloc,
+        return alloc.print(
             "[session recovery] copied {s} to {s}\nhistory_turns: {d}\n{s}resume: pf --resume {s}\n",
             .{
                 self.result.source_session_id,
@@ -1770,11 +1766,11 @@ fn displayGrantTarget(alloc: Allocator, workspace_root: []const u8, grant: types
         return alloc.dupe(u8, grant.target_path);
     }
 
-    if (std.fs.path.isAbsolute(grant.target_path)) {
-        const relative = std.fs.path.relative(alloc, "/", null, workspace_root, grant.target_path) catch
+    if (std.Io.Dir.path.isAbsolute(grant.target_path)) {
+        const relative = std.Io.Dir.path.relativeAlloc(alloc, "/", null, workspace_root, grant.target_path) catch
             return alloc.dupe(u8, grant.target_path);
         // Grant display matches persisted rule patterns, which use `/`.
-        if (builtin.os.tag == .windows) std.mem.replaceScalar(u8, relative, '\\', '/');
+        if (builtin.target.os.tag == .windows) std.mem.replaceScalar(u8, relative, '\\', '/');
         return relative;
     }
 
@@ -2540,7 +2536,7 @@ test "core session list snapshot text and json stay stable" {
         script_text,
     );
 
-    const long_title = "a" ** session_display_metadata.max_title_bytes;
+    const long_title = text_utils.repeat("a", session_display_metadata.max_title_bytes);
     var long_session = sessions[0];
     long_session.title = @constCast(long_title);
     const long_text = try (SessionListSnapshot{ .sessions = @as(*const [1]session_store.SessionSummary, &long_session) }).renderText(std.testing.allocator);

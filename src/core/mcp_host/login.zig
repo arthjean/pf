@@ -28,7 +28,13 @@ pub const Listener = struct {
 
     /// The redirect URI to sign in with, in `buffer`.
     pub fn redirectUri(l: *const Listener, buffer: *[64]u8) []const u8 {
-        return std.fmt.bufPrint(buffer, "http://127.0.0.1:{d}/callback", .{l.port}) catch unreachable;
+        const origin = "http://127.0.0.1:";
+        const path = "/callback";
+        comptime std.debug.assert(origin.len + std.fmt.count("{d}", .{std.math.maxInt(@TypeOf(l.port))}) + path.len <= buffer.len);
+        buffer[0..origin.len].* = origin.*;
+        const port_end = origin.len + std.fmt.printInt(buffer[origin.len..], l.port, 10, .lower, .{});
+        buffer[port_end..][0..path.len].* = path.*;
+        return buffer[0 .. port_end + path.len];
     }
 
     /// Waits for the browser's `GET /callback` and returns the full address it
@@ -72,7 +78,7 @@ fn answer(stream: std.Io.net.Stream, io: std.Io, alloc: Allocator, port: u16) !?
     const outcome: browser_callback.Response = if (!ours) .unrelated else if (hasParam(query, "error")) .failed else .ok;
     browser_callback.writeResponse(stream, outcome, null) catch {};
     if (!ours) return null;
-    return try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}{s}", .{ port, target });
+    return try alloc.print("http://127.0.0.1:{d}{s}", .{ port, target });
 }
 
 /// Whether the query string has a parameter called `name`.
@@ -134,7 +140,7 @@ test "the browser's return is the callback address; other requests get a 404 and
     };
     thread.join();
     defer testing.allocator.free(url);
-    const want = try std.fmt.allocPrint(testing.allocator, "http://127.0.0.1:{d}/callback?code=c1&state=s1", .{listener.port});
+    const want = try testing.allocator.print("http://127.0.0.1:{d}/callback?code=c1&state=s1", .{listener.port});
     defer testing.allocator.free(want);
     try testing.expectEqualStrings(want, url);
     try testing.expect(std.mem.startsWith(u8, browser.icon_reply, "HTTP/1.1 404"));
@@ -162,4 +168,16 @@ test "a refused sign-in comes back to the failure page" {
     testing.allocator.free(url);
     try testing.expect(std.mem.startsWith(u8, browser.reply, "HTTP/1.1 400"));
     try testing.expect(std.mem.find(u8, browser.reply, "Authorization failed") != null);
+}
+
+test "the redirect URI spells out every port in full" {
+    var buffer: [64]u8 = undefined;
+    for ([_]struct { u16, []const u8 }{
+        .{ 1, "http://127.0.0.1:1/callback" },
+        .{ 8080, "http://127.0.0.1:8080/callback" },
+        .{ 65535, "http://127.0.0.1:65535/callback" },
+    }) |case| {
+        const listener: Listener = .{ .server = undefined, .port = case[0] };
+        try testing.expectEqualStrings(case[1], listener.redirectUri(&buffer));
+    }
 }

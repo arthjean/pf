@@ -368,5 +368,5 @@ test "minisign verifies a 15 MB archive within the release budget" {
     try verifyFile(io, file, sig, &.{signer.publicKey()}, test_expected);
     const elapsed_ms = started.durationTo(std.Io.Timestamp.now(io, .awake)).toMilliseconds();
     // Debug builds are not the shipped binary; the budget applies to ReleaseSafe.
-    if (builtin.mode != .Debug) try std.testing.expect(elapsed_ms < 500);
+    if (builtin.optimize != .debug) try std.testing.expect(elapsed_ms < 500);
 }

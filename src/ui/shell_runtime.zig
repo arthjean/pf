@@ -9,7 +9,7 @@ const frame_layout = @import("render_engine/frame_layout.zig");
 const cursor_probe = @import("terminal/cursor_probe.zig");
 const resize_runtime = @import("resize_runtime.zig");
 const ui_terminal = @import("terminal/terminal.zig");
-const wasm_terminal = if (builtin.os.tag == .wasi) @import("terminal/wasm_terminal.zig") else struct {};
+const wasm_terminal = if (builtin.target.os.tag == .wasi) @import("terminal/wasm_terminal.zig") else struct {};
 
 const Allocator = std.mem.Allocator;
 const Layout = types.Layout;
@@ -19,7 +19,7 @@ const TranscriptRuntime = transcript_runtime.TranscriptRuntime;
 const TmuxHistoryClearRunner = *const fn (Allocator, []const []const u8) anyerror!void;
 var tmux_history_clear_test_runner: if (builtin.is_test) ?TmuxHistoryClearRunner else void = if (builtin.is_test) null else {};
 
-const supports_test_pty = switch (builtin.os.tag) {
+const supports_test_pty = switch (builtin.target.os.tag) {
     .linux,
     .macos,
     .freebsd,
@@ -35,7 +35,7 @@ extern "c" fn unlockpt(fd: c_int) c_int;
 extern "c" fn ptsname(fd: c_int) ?[*:0]u8;
 
 pub const supports_resize_signal = resize_runtime.supports_resize_signal;
-pub const ResizeHandler = if (builtin.os.tag == .wasi or builtin.os.tag == .windows)
+pub const ResizeHandler = if (builtin.target.os.tag == .wasi or builtin.target.os.tag == .windows)
     *const fn () callconv(.c) void
 else
     std.posix.Sigaction.handler_fn;
@@ -122,8 +122,8 @@ pub const TerminalState = struct {
     }
 
     pub fn ensureInteractive(self: TerminalState) !void {
-        if (comptime builtin.os.tag == .wasi) return;
-        const output_is_terminal = if (comptime builtin.os.tag == .windows)
+        if (comptime builtin.target.os.tag == .wasi) return;
+        const output_is_terminal = if (comptime builtin.target.os.tag == .windows)
             windowsConsoleMode(self.output) != null
         else
             std.c.isatty(self.output.handle) != 0;
@@ -133,7 +133,7 @@ pub const TerminalState = struct {
     }
 
     pub fn captureOriginalTermios(self: *TerminalState) !void {
-        switch (builtin.os.tag) {
+        switch (builtin.target.os.tag) {
             .wasi => {},
             .windows => {
                 const win32 = @import("../core/shared/win32.zig");
@@ -144,12 +144,12 @@ pub const TerminalState = struct {
                     .output_code_page = win32.GetConsoleOutputCP(),
                 };
             },
-            else => self.saved.termios = try std.posix.tcgetattr(self.input.handle),
+            else => self.saved.termios = try io_mod.tcgetattr(self.input.handle),
         }
     }
 
     pub fn enableRawMode(self: *TerminalState) !void {
-        switch (builtin.os.tag) {
+        switch (builtin.target.os.tag) {
             .wasi => {},
             .windows => try self.enableWindowsRawMode(),
             else => try self.enablePosixRawMode(),
@@ -183,7 +183,7 @@ pub const TerminalState = struct {
             raw.cc[vtime_idx] = 0;
         }
 
-        try std.posix.tcsetattr(self.input.handle, .NOW, raw);
+        try io_mod.tcsetattr(self.input.handle, .NOW, raw);
     }
 
     /// Windows raw mode: virtual terminal input and window events in, no line
@@ -209,10 +209,10 @@ pub const TerminalState = struct {
 
     pub fn disableRawMode(self: *TerminalState) void {
         if (!self.raw_enabled) return;
-        switch (builtin.os.tag) {
+        switch (builtin.target.os.tag) {
             .wasi => {},
             .windows => self.restoreWindowsConsole(),
-            else => std.posix.tcsetattr(self.input.handle, .FLUSH, self.saved.termios) catch {},
+            else => io_mod.tcsetattr(self.input.handle, .FLUSH, self.saved.termios) catch {},
         }
         self.raw_enabled = false;
     }
@@ -259,7 +259,7 @@ pub const TerminalState = struct {
     }
 
     pub fn queryLayout(self: TerminalState, footer_rows: u16) !Layout {
-        return switch (builtin.os.tag) {
+        return switch (builtin.target.os.tag) {
             .wasi => wasm_terminal.queryLayout(footer_rows),
             // The console window size belongs to the screen buffer, so it is
             // read from the output handle.
@@ -269,7 +269,7 @@ pub const TerminalState = struct {
     }
 
     pub fn queryCursorPosition(self: TerminalState) !CursorPosition {
-        if (comptime builtin.os.tag == .wasi) {
+        if (comptime builtin.target.os.tag == .wasi) {
             // JavaScript hosts provide a fresh terminal surface rather than an
             // existing shell viewport, so there are no launch rows to preserve.
             return .{ .row = 1, .col = 1 };
@@ -334,7 +334,7 @@ pub const TerminalState = struct {
     }
 
     pub fn read(self: TerminalState, out: []u8) !usize {
-        return switch (builtin.os.tag) {
+        return switch (builtin.target.os.tag) {
             .wasi => std.Io.File.stdin().readStreaming(io_mod.getIo(), &.{out}),
             .windows => windows_console.read(self.input, out),
             else => std.posix.read(self.input.handle, out),
@@ -342,7 +342,7 @@ pub const TerminalState = struct {
     }
 
     pub fn pollInput(self: TerminalState, timeout_ms: i32) !PollResult {
-        switch (builtin.os.tag) {
+        switch (builtin.target.os.tag) {
             .wasi => return switch (wasm_terminal.pollInput(timeout_ms)) {
                 1 => .{ .readable = true },
                 -1 => .{ .hung_up = true },
@@ -806,7 +806,7 @@ fn historyResetUsesRisForValues(term_program: ?[]const u8, tmux: ?[]const u8) bo
 }
 
 fn vminIndex() usize {
-    return switch (builtin.os.tag) {
+    return switch (builtin.target.os.tag) {
         .linux => 6,
         .macos, .ios, .tvos, .watchos, .visionos => 16,
         .freebsd, .netbsd, .dragonfly, .openbsd => 16,
@@ -815,7 +815,7 @@ fn vminIndex() usize {
 }
 
 fn vtimeIndex() usize {
-    return switch (builtin.os.tag) {
+    return switch (builtin.target.os.tag) {
         .linux => 5,
         .macos, .ios, .tvos, .watchos, .visionos => 17,
         .freebsd, .netbsd, .dragonfly, .openbsd => 17,
@@ -878,7 +878,7 @@ test "enableRawMode preserves already queued input" {
     const pty = try TestPty.open();
     defer pty.close();
 
-    var original = try std.posix.tcgetattr(pty.slave);
+    var original = try io_mod.tcgetattr(pty.slave);
     original.lflag.ECHO = false;
     original.lflag.ICANON = false;
     original.lflag.ISIG = false;
@@ -888,7 +888,7 @@ test "enableRawMode preserves already queued input" {
         original.cc[vmin_idx] = 1;
         original.cc[vtime_idx] = 0;
     }
-    try std.posix.tcsetattr(pty.slave, .NOW, original);
+    try io_mod.tcsetattr(pty.slave, .NOW, original);
 
     var terminal = TerminalState{ .input = .{ .handle = pty.slave, .flags = .{ .nonblocking = false } } };
     try terminal.captureOriginalTermios();
@@ -921,18 +921,18 @@ test "enableRawMode preserves carriage return input" {
     const pty = try TestPty.open();
     defer pty.close();
 
-    var original = try std.posix.tcgetattr(pty.slave);
+    var original = try io_mod.tcgetattr(pty.slave);
     original.iflag.IGNCR = true;
     original.iflag.ICRNL = true;
     original.iflag.INLCR = true;
-    try std.posix.tcsetattr(pty.slave, .NOW, original);
+    try io_mod.tcsetattr(pty.slave, .NOW, original);
 
     var terminal = TerminalState{ .input = .{ .handle = pty.slave, .flags = .{ .nonblocking = false } } };
     try terminal.captureOriginalTermios();
     try terminal.enableRawMode();
     defer terminal.disableRawMode();
 
-    const raw = try std.posix.tcgetattr(pty.slave);
+    const raw = try io_mod.tcgetattr(pty.slave);
     try std.testing.expect(!raw.iflag.IGNCR);
     try std.testing.expect(!raw.iflag.ICRNL);
     try std.testing.expect(!raw.iflag.INLCR);

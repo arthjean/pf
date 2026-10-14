@@ -154,7 +154,7 @@ fn parseOptionalInteger(
 ) tool_dispatch.DispatchError!OptionalIntegerParse {
     const value = object.get(key) orelse return .missing;
     if (value != .integer or value.integer < min_value) {
-        return .{ .failure = try std.fmt.allocPrint(alloc, "grep_files field \"{s}\" must be a {s} integer", .{ key, description }) };
+        return .{ .failure = try alloc.print("grep_files field \"{s}\" must be a {s} integer", .{ key, description }) };
     }
     return .{ .value = @intCast(value.integer) };
 }
@@ -230,14 +230,14 @@ fn callWithOps(ctx: tool_dispatch.DispatchContext, erased: tool_dispatch.ToolInp
         if (tool_result_errors.isFilesystemAccessDenied(err)) {
             return .{ .failure = try tool_result_errors.filesystemAccessDeniedJson(ctx.allocator, "grep_files", input.path, err) };
         }
-        return .{ .failure = try std.fmt.allocPrint(ctx.allocator, "Unable to resolve grep search root: {s} ({s})", .{ input.path, @errorName(err) }) };
+        return .{ .failure = try ctx.allocator.print("Unable to resolve grep search root: {s} ({s})", .{ input.path, @errorName(err) }) };
     };
 
     var include_pattern: ?glob_pattern.Pattern = null;
     if (input.include) |include| {
         include_pattern = glob_pattern.Pattern.compile(arena, include) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
-            error.PatternTooLong => return .{ .failure = try std.fmt.allocPrint(ctx.allocator, "grep_files field \"include\" must be at most {d} bytes", .{glob_pattern.max_pattern_bytes}) },
+            error.PatternTooLong => return .{ .failure = try ctx.allocator.print("grep_files field \"include\" must be at most {d} bytes", .{glob_pattern.max_pattern_bytes}) },
         };
     }
 
@@ -245,7 +245,7 @@ fn callWithOps(ctx: tool_dispatch.DispatchContext, erased: tool_dispatch.ToolInp
         if (tool_result_errors.isFilesystemAccessDenied(err)) {
             return .{ .failure = try tool_result_errors.filesystemAccessDeniedJson(ctx.allocator, "grep_files", absolute_root, err) };
         }
-        return .{ .failure = try std.fmt.allocPrint(ctx.allocator, "Unable to stat grep search root: {s} ({s})", .{ absolute_root, @errorName(err) }) };
+        return .{ .failure = try ctx.allocator.print("Unable to stat grep search root: {s} ({s})", .{ absolute_root, @errorName(err) }) };
     };
 
     return switch (try searchGrepRoot(ctx, arena, input, absolute_root, root_stat, include_pattern, ops)) {
@@ -285,7 +285,7 @@ fn searchGrepRoot(
                 return searchFailure(ctx.allocator, absolute_root, "scan grep file root", err);
             } },
         },
-        else => .{ .failure = try std.fmt.allocPrint(ctx.allocator, "Not a regular file or directory: {s}", .{absolute_root}) },
+        else => .{ .failure = try ctx.allocator.print("Not a regular file or directory: {s}", .{absolute_root}) },
     };
 }
 
@@ -299,7 +299,7 @@ fn searchFailure(
     if (tool_result_errors.isFilesystemAccessDenied(err)) {
         return .{ .failure = try tool_result_errors.filesystemAccessDeniedJson(alloc, "grep_files", absolute_root, err) };
     }
-    return .{ .failure = try std.fmt.allocPrint(alloc, "Unable to {s}: {s} ({s})", .{ action, absolute_root, @errorName(err) }) };
+    return .{ .failure = try alloc.print("Unable to {s}: {s} ({s})", .{ action, absolute_root, @errorName(err) }) };
 }
 
 fn statRoot(absolute_root: []const u8) anyerror!std.Io.File.Stat {
@@ -689,7 +689,7 @@ fn dispatchGrepFilesRaw(alloc: Allocator, workspace_root: []const u8, args_json:
 }
 
 fn writeTempFile(alloc: Allocator, tmp: *std.testing.TmpDir, sub_path: []const u8, content: []const u8) ![]u8 {
-    if (std.fs.path.dirname(sub_path)) |parent| {
+    if (std.Io.Dir.path.dirname(sub_path)) |parent| {
         try tmp.dir.createDirPath(io_mod.getIo(), parent);
     }
     var file = try tmp.dir.createFile(std.testing.io, sub_path, .{});
@@ -909,7 +909,7 @@ test "grep_files reports overlong include patterns before scanning" {
     var result = try dispatchGrepFiles(alloc, workspace, "needle", path, include, null, null, null);
     defer result.deinit(alloc);
 
-    const expected = try std.fmt.allocPrint(alloc, "grep_files field \"include\" must be at most {d} bytes", .{glob_pattern.max_pattern_bytes});
+    const expected = try alloc.print("grep_files field \"include\" must be at most {d} bytes", .{glob_pattern.max_pattern_bytes});
     defer alloc.free(expected);
     try std.testing.expectEqual(.failure, result.status);
     try std.testing.expectEqualStrings(expected, result.body);
@@ -933,7 +933,7 @@ test "grep_files reports stat failures after root resolution" {
 
 test "grep_files access denial returns structured recovery" {
     const alloc = std.testing.allocator;
-    const root = try std.fmt.allocPrint(alloc, "/tmp/pf-grep-files-access-{d}", .{io_mod.nanoTimestamp()});
+    const root = try alloc.print("/tmp/pf-grep-files-access-{d}", .{io_mod.nanoTimestamp()});
     defer alloc.free(root);
     defer std.Io.Dir.cwd().deleteTree(io_mod.getIo(), root) catch {};
     var tmp = std.testing.tmpDir(.{});
@@ -944,7 +944,7 @@ test "grep_files access denial returns structured recovery" {
         break :blk try io_mod.realpathAlloc(alloc, root);
     };
     defer alloc.free(workspace);
-    const path = try std.fs.path.join(alloc, &.{ workspace, "file.txt" });
+    const path = try std.Io.Dir.path.join(alloc, &.{ workspace, "file.txt" });
     defer alloc.free(path);
     {
         var file = try std.Io.Dir.createFileAbsolute(io_mod.getIo(), path, .{});
@@ -1120,7 +1120,7 @@ test "grep_files finds match beyond former traversal cap" {
     var i: usize = 0;
     while (i < 2050) : (i += 1) {
         var name_buf: [64]u8 = undefined;
-        const name = try std.fmt.bufPrint(&name_buf, "many/file-{d:0>4}.txt", .{i});
+        const name = try std.mem.print(&name_buf, "many/file-{d:0>4}.txt", .{i});
         const path = try writeTempFile(alloc, &tmp, name, "not here\n");
         alloc.free(path);
     }

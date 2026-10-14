@@ -89,7 +89,7 @@ const RawInput = struct {
                 return .{ .saved = .{ .input_mode = mode, .output_code_page = output_code_page } };
             },
             else => {
-                const original = std.posix.tcgetattr(std.posix.STDIN_FILENO) catch return error.ReadFailed;
+                const original = io_mod.tcgetattr(std.posix.STDIN_FILENO) catch return error.ReadFailed;
                 var raw = original;
                 raw.iflag.BRKINT = false;
                 raw.iflag.ICRNL = false;
@@ -108,7 +108,7 @@ const RawInput = struct {
                     raw.cc[vmin_idx] = 1;
                     raw.cc[vtime_idx] = 0;
                 }
-                std.posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, raw) catch return error.ReadFailed;
+                io_mod.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, raw) catch return error.ReadFailed;
                 return .{ .saved = original };
             },
         }
@@ -120,7 +120,7 @@ const RawInput = struct {
                 _ = win32.SetConsoleMode(stdinHandle(), self.saved.input_mode);
                 _ = win32.SetConsoleOutputCP(self.saved.output_code_page);
             },
-            else => std.posix.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, self.saved) catch {},
+            else => io_mod.tcsetattr(std.posix.STDIN_FILENO, .FLUSH, self.saved) catch {},
         }
     }
 };
@@ -439,7 +439,8 @@ pub const LinePoller = struct {
     fn pollConsole(self: *LinePoller) ReadError!?[]const u8 {
         var fixed = std.heap.FixedBufferAllocator.init(&self.buffer);
         var editor: LineEditor = .{ .options = self.options };
-        editor.line = .{ .items = self.buffer[0..self.len], .capacity = self.buffer.len };
+        editor.line = .initBuffer(&self.buffer);
+        editor.line.items.len = self.len;
         defer self.len = editor.line.items.len;
         while (true) {
             const byte = switch (try self.reader.next(0)) {

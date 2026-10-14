@@ -793,8 +793,7 @@ fn writeProviderActivationError(
     caller: ProviderActivationCaller,
     detail: []const u8,
 ) !void {
-    const message = try std.fmt.allocPrint(
-        alloc,
+    const message = try alloc.print(
         "{s}: {s}\n",
         .{ if (caller == .provider_login) "pf login" else "pf provider", detail },
     );
@@ -890,7 +889,7 @@ fn activateProviderSelectionFallible(
             },
             .outcome => {},
         }
-        const message = try std.fmt.allocPrint(alloc, "Provider set to {s}.\n", .{bound.label()});
+        const message = try alloc.print("Provider set to {s}.\n", .{bound.label()});
         defer alloc.free(message);
         if (caller == .provider_command) try writeStdout(deps, message);
         return true;
@@ -997,8 +996,7 @@ fn activateProviderSelectionFallible(
         },
         .failed => |failure| {
             debug_trace.logf("catalog", "provider selection catalog failed provider={s} category={s}", .{ @tagName(target), @tagName(failure.failure.category) });
-            const detail = try std.fmt.allocPrint(
-                alloc,
+            const detail = try alloc.print(
                 "could not load the target model catalog ({s})",
                 .{@tagName(failure.failure.category)},
             );
@@ -1536,8 +1534,7 @@ fn runNonInteractiveWithDeps(
                 .loaded => |loaded| loaded,
                 .failure => |failure| {
                     const error_name = @errorName(failure.failure.asError());
-                    const message = try std.fmt.allocPrint(
-                        alloc,
+                    const message = try alloc.print(
                         "could not list models: {s}",
                         .{catalogFailureDetail(failure.failure)},
                     );
@@ -2137,8 +2134,7 @@ fn runPasteSetup(
         };
     }
 
-    const message = try std.fmt.allocPrint(
-        alloc,
+    const message = try alloc.print(
         "Saved API key to {s}.\n",
         .{secret_store.backend_label},
     );
@@ -2300,14 +2296,14 @@ fn doctorSnapshotFromRuntime(snapshot: doctor_runtime.Snapshot) output_contracts
 }
 
 fn writeRealStdout(_: ?*anyopaque, text: []const u8) !void {
-    if (comptime builtin.os.tag != .windows) {
+    if (comptime builtin.target.os.tag != .windows) {
         return writeFdAll(std.posix.STDOUT_FILENO, text);
     }
     try std.Io.File.stdout().writeStreamingAll(io_mod.getIo(), text);
 }
 
 fn writeRealStderr(_: ?*anyopaque, text: []const u8) !void {
-    if (comptime builtin.os.tag != .windows) {
+    if (comptime builtin.target.os.tag != .windows) {
         return writeFdAll(std.posix.STDERR_FILENO, text);
     }
     try std.Io.File.stderr().writeStreamingAll(io_mod.getIo(), text);
@@ -3425,13 +3421,11 @@ fn writeSessionDetailFailure(
     format: output_contracts.OutputFormat,
 ) !void {
     const message = switch (err) {
-        error.InvalidSessionFormat => try std.fmt.allocPrint(
-            alloc,
+        error.InvalidSessionFormat => try alloc.print(
             "session {s} is corrupt; run `pf session recover {s}`",
             .{ session_id, session_id },
         ),
-        error.UnsupportedSessionSchema => try std.fmt.allocPrint(
-            alloc,
+        error.UnsupportedSessionSchema => try alloc.print(
             "session {s} uses an unsupported session version",
             .{session_id},
         ),
@@ -3892,7 +3886,7 @@ fn parseSessionListCursor(raw: []const u8) !session_store.ResumableSessionContin
     const updated_at_ms = std.fmt.parseInt(i64, updated_text, 10) catch
         return error.InvalidLocalSurfaceArgs;
     var canonical: [320]u8 = undefined;
-    const encoded = std.fmt.bufPrint(
+    const encoded = std.mem.print(
         &canonical,
         "v1:{d}:{s}",
         .{ updated_at_ms, id },
@@ -3905,8 +3899,7 @@ fn formatSessionListCursor(
     alloc: Allocator,
     summary: session_store.SessionSummary,
 ) ![]u8 {
-    return std.fmt.allocPrint(
-        alloc,
+    return alloc.print(
         "v1:{d}:{s}",
         .{ summary.updated_at_ms, summary.id },
     );
@@ -5133,8 +5126,7 @@ test "top-level MCP trust persists project approval without interactive startup"
         deps,
     );
     try std.testing.expectEqual(RunResult.handled_success, result);
-    const expected = try std.fmt.allocPrint(
-        alloc,
+    const expected = try alloc.print(
         "Approved project MCP server 'fixture' for {s}.\n",
         .{workspace_root},
     );

@@ -943,14 +943,14 @@ fn spawnStdioServer(alloc: Allocator, server: *McpServer, argv: []const []const 
         .stderr = .pipe,
         .environ_map = if (server.env_map != null) &server.env_map.? else null,
         .cwd = if (server.config.cwd) |cwd| .{ .path = cwd } else .inherit,
-        .pgid = if (builtin.os.tag == .windows) null else 0,
+        .pgid = if (builtin.target.os.tag == .windows) null else 0,
     };
     // On Windows the server runs in its own Job Object, so a launcher such as
     // `npx.cmd` cannot leave its `node.exe` running after pf stops the server.
-    var job = if (builtin.os.tag == .windows) try process_job.Job.create() else {};
-    var job_owned = builtin.os.tag == .windows;
-    defer if (builtin.os.tag == .windows and job_owned) job.close();
-    const spawned = if (builtin.os.tag == .windows)
+    var job = if (builtin.target.os.tag == .windows) try process_job.Job.create() else {};
+    var job_owned = builtin.target.os.tag == .windows;
+    defer if (builtin.target.os.tag == .windows and job_owned) job.close();
+    const spawned = if (builtin.target.os.tag == .windows)
         process_job.spawn(io_mod.getIo(), options, job)
     else
         std.process.spawn(io_mod.getIo(), options);
@@ -1351,7 +1351,7 @@ fn writeSignalPhrase(writer: *std.Io.Writer, verb: []const u8, signal: anytype) 
     if (@TypeOf(signal) == void) {
         try writer.print("{s} a signal", .{verb});
     } else {
-        try writer.print("{s} signal {d}", .{ verb, @intFromEnum(signal) });
+        try writer.print("{s} signal {d}", .{ verb, @backingInt(signal) });
     }
 }
 
@@ -1597,7 +1597,7 @@ test "server stderr display keeps the first line and the end, bounded and masked
     try std.testing.expect(std.mem.find(u8, cut_display, "ijklmnop") == null);
 
     // An escape sequence cut at the gap cannot swallow the start of a token.
-    const token = "ghp_" ++ "a1b2c3d4e5" ** 4;
+    const token = "ghp_" ++ text_utils.repeat("a1b2c3d4e5", 4);
     var cut_escape = testOmittedCapture("log line \x1b[ ", "xx " ++ token ++ " rejected\n");
     const escape_display = try displayStderr(arena, &cut_escape);
     try std.testing.expect(std.mem.find(u8, escape_display, token[1..]) == null);

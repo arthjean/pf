@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing_allocator = @import("../core/shared/testing_allocator.zig");
 
 const builtin_tools = @import("tools.zig");
 const debug_trace = @import("../core/shared/debug_trace.zig");
@@ -86,8 +87,7 @@ fn handleCommand(alloc: Allocator, rest: []const u8, command_request: CommandReq
             const warning_text = try renderProfileWarning(alloc, warning);
             defer alloc.free(warning_text);
             return .{
-                .display = .{ .line = try std.fmt.allocPrint(
-                    alloc,
+                .display = .{ .line = try alloc.print(
                     "{s}\nEvaluating trusted profile MCP configuration.",
                     .{warning_text},
                 ) },
@@ -127,13 +127,13 @@ fn handleCommand(alloc: Allocator, rest: []const u8, command_request: CommandReq
         if (tokens.next() != null) return lineLiteral(alloc, "usage: /mcp trust approve|reject <server>", false);
         if (std.mem.eql(u8, operation, "approve")) {
             return .{
-                .display = .{ .line = try std.fmt.allocPrint(alloc, "Approving project MCP server '{s}'.", .{name}) },
+                .display = .{ .line = try alloc.print("Approving project MCP server '{s}'.", .{name}) },
                 .project_action = .{ .approve = name },
             };
         }
         if (std.mem.eql(u8, operation, "reject")) {
             return .{
-                .display = .{ .line = try std.fmt.allocPrint(alloc, "Rejecting project MCP server '{s}'.", .{name}) },
+                .display = .{ .line = try alloc.print("Rejecting project MCP server '{s}'.", .{name}) },
                 .project_action = .{ .reject = name },
             };
         }
@@ -202,7 +202,7 @@ fn handleCommand(alloc: Allocator, rest: []const u8, command_request: CommandReq
 
     if (std.mem.startsWith(u8, trimmed, "logout ")) {
         const name = std.mem.trim(u8, trimmed[7..], " \t");
-        if (name.len == 0 or std.mem.indexOfAny(u8, name, " \t") != null) {
+        if (name.len == 0 or std.mem.findAny(u8, name, " \t") != null) {
             return lineLiteral(alloc, "usage: /mcp logout <name>", false);
         }
         const logout = command_request.logout_server orelse
@@ -233,8 +233,7 @@ fn handleCommand(alloc: Allocator, rest: []const u8, command_request: CommandReq
         }
         if (result.repaired_entries > 0) {
             const text = if (result.revocation_failed)
-                try std.fmt.allocPrint(
-                    alloc,
+                try alloc.print(
                     "Logged out of MCP server '{s}' locally; remote revocation failed. Removed {d} unreadable MCP credential {s}.",
                     .{
                         name,
@@ -243,8 +242,7 @@ fn handleCommand(alloc: Allocator, rest: []const u8, command_request: CommandReq
                     },
                 )
             else
-                try std.fmt.allocPrint(
-                    alloc,
+                try alloc.print(
                     "Logged out of MCP server '{s}'. Removed {d} unreadable MCP credential {s}.",
                     .{
                         name,
@@ -477,7 +475,7 @@ fn handlePromptCommand(alloc: Allocator, rest: []const u8, command_request: Comm
 fn takeToken(input: *[]const u8) ?[]const u8 {
     input.* = std.mem.trimStart(u8, input.*, " \t");
     if (input.*.len == 0) return null;
-    const end = std.mem.indexOfAny(u8, input.*, " \t") orelse input.*.len;
+    const end = std.mem.findAny(u8, input.*, " \t") orelse input.*.len;
     const token = input.*[0..end];
     input.* = input.*[end..];
     return token;
@@ -1274,13 +1272,13 @@ fn tmpRoot(alloc: Allocator, tmp: std.testing.TmpDir) ![]u8 {
 }
 
 fn tmpPath(alloc: Allocator, root: []const u8, name: []const u8) ![]u8 {
-    return std.fs.path.join(alloc, &.{ root, name });
+    return std.Io.Dir.path.join(alloc, &.{ root, name });
 }
 
 test "saving MCP config replaces the file durably" {
     // Seeds POSIX mode bits and replaces a file this test holds open, which
     // Windows refuses; Windows durable replace is covered in io.zig.
-    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+    if (@import("builtin").target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -1336,7 +1334,7 @@ fn tmpDirPath(alloc: Allocator, dir: std.Io.Dir, sub_path: []const u8) ![]u8 {
 }
 
 fn writeTempFile(tmp: *std.testing.TmpDir, sub_path: []const u8, content: []const u8) !void {
-    if (std.fs.path.dirname(sub_path)) |parent| {
+    if (std.Io.Dir.path.dirname(sub_path)) |parent| {
         try tmp.dir.createDirPath(io_mod.getIo(), parent);
     }
     var file = try tmp.dir.createFile(io_mod.getIo(), sub_path, .{ .truncate = true });
@@ -1418,7 +1416,7 @@ test "MCP config diagnostic preserves the startup parser error" {
 }
 
 test "MCP config diagnostic propagates allocation failure" {
-    const alloc = std.testing.allocator;
+    const alloc = testing_allocator.no_resize;
     const test_home = try TestHome.install(alloc, "/tmp");
     defer test_home.deinit();
 
@@ -1434,7 +1432,7 @@ test "MCP config diagnostic propagates allocation failure" {
 
 test "MCP config diagnostic preserves parser allocation failure" {
     var failing = std.testing.FailingAllocator.init(
-        std.testing.allocator,
+        testing_allocator.no_resize,
         .{ .fail_index = 0 },
     );
     try std.testing.expectError(
@@ -1487,8 +1485,7 @@ test "workspace MCP missing environment variable is actionable and secret free" 
     );
     const workspace_root = try tmpDirPath(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace_root);
-    const settings = try std.fmt.allocPrint(
-        alloc,
+    const settings = try alloc.print(
         "{{\"workspaces\":{{{f}:{{\"enableAllProjectMcpServers\":true}}}}}}",
         .{std.json.fmt(workspace_root, .{})},
     );
@@ -1566,7 +1563,7 @@ test "built-in MCP runtime loading leaves enabled servers disconnected" {
 }
 
 test "built-in MCP runtime config transfer cleans its unvisited suffix on append failure" {
-    const alloc = std.testing.allocator;
+    const alloc = testing_allocator.no_resize;
     var configs = try loadConfigFromJson(alloc,
         \\{"mcp":{"first":{"type":"local","command":["node"],"enabled":false},"second":{"type":"local","command":["node"],"environment":{"TOKEN":"value"},"enabled":false}}}
     );
@@ -1871,7 +1868,7 @@ test "saving MCP config refuses a symlinked target" {
     defer alloc.free(external_path);
     try tmp.dir.symLink(io_mod.getIo(), external_path, "home/.pf/mcp.json", .{ .is_directory = false });
 
-    const path = try std.fs.path.join(alloc, &.{ std.fs.path.dirname(external_path).?, ".pf", "mcp.json" });
+    const path = try std.Io.Dir.path.join(alloc, &.{ std.Io.Dir.path.dirname(external_path).?, ".pf", "mcp.json" });
     defer alloc.free(path);
 
     // The durable helper refuses a target that is not a plain private file, so

@@ -173,7 +173,7 @@ pf does not distribute a JavaScript SDK. The [SDK sources](sdk/README.md) build 
 
 ## Build from source
 
-Building pf requires [Zig 0.16.0+](https://ziglang.org/download/). From a clone of this repository:
+Building pf requires [Zig 0.17.0](https://ziglang.org/download/). From a clone of this repository:
 
 ```bash
 zig build -Doptimize=ReleaseSafe
@@ -186,7 +186,7 @@ Run the test suite with `zig build test`. See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 pf runs natively on Windows 10 version 1809 or later and Windows 11, on x86_64. The interactive shell needs a console with virtual terminal support: Windows Terminal and the VS Code integrated terminal are supported, and pf exits with an error in a console that cannot process escape sequences. Headless commands such as `pf ask` and `pf status` run from any console.
 
-Build from source as above, from PowerShell or Git Bash, with Zig 0.16.0 for Windows x86_64 on `PATH`. The build produces `zig-out\bin\pf.exe`; put that directory on `PATH`. Your profile lives in `%USERPROFILE%\.pf`, so pf finds the same settings, credentials, and sessions from PowerShell and from Git Bash.
+Build from source as above, from PowerShell or Git Bash, with Zig 0.17.0 for Windows x86_64 on `PATH`. The build produces `zig-out\bin\pf.exe`; put that directory on `PATH`. Your profile lives in `%USERPROFILE%\.pf`, so pf finds the same settings, credentials, and sessions from PowerShell and from Git Bash.
 
 ### Command shell
 

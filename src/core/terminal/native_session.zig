@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing_allocator = @import("../shared/testing_allocator.zig");
 const builtin = @import("builtin");
 const contracts = @import("contracts.zig");
 const terminal_engine = @import("engine.zig");
@@ -19,6 +20,7 @@ const io_mod = @import("../shared/io.zig");
 const self_exe = @import("../shared/self_exe.zig");
 const debug_trace = @import("../shared/debug_trace.zig");
 const types = @import("../shared/types.zig");
+const text_utils = @import("../shared/text_utils.zig");
 const conpty = @import("conpty.zig");
 const windows_socket = @import("windows_socket.zig");
 
@@ -52,12 +54,12 @@ const default_dimensions: contracts.Dimensions = .{
     .rows = 24,
     .columns = 80,
 };
-const ioctl_set_controlling_terminal: c_int = switch (builtin.os.tag) {
+const ioctl_set_controlling_terminal: c_int = switch (builtin.target.os.tag) {
     .macos => 0x20007461,
     .linux => @intCast(std.os.linux.T.IOCSCTTY),
     else => 0,
 };
-const ioctl_set_window_size: c_int = switch (builtin.os.tag) {
+const ioctl_set_window_size: c_int = switch (builtin.target.os.tag) {
     .macos => @bitCast(@as(u32, 0x80087467)),
     .linux => @intCast(std.os.linux.T.IOCSWINSZ),
     else => 0,
@@ -415,7 +417,7 @@ const WindowsLauncher = struct {
         }
         self.console.resumeChild() catch {
             self.console.terminate();
-            self.writeFrame(.startup_failed, @intFromEnum(StartupFailure.shell_unavailable));
+            self.writeFrame(.startup_failed, @backingInt(StartupFailure.shell_unavailable));
             return;
         };
         const code = self.supervise();
@@ -425,13 +427,13 @@ const WindowsLauncher = struct {
         // that makes `controlMain` wait for the output to end.
         self.console.closeConsole();
         if (self.control_failed) {
-            self.writeFrame(.startup_failed, @intFromEnum(StartupFailure.control_failed));
+            self.writeFrame(.startup_failed, @backingInt(StartupFailure.control_failed));
             return;
         }
         const trusted_term = self.phase == .command_started or
             (self.phase == .shell_ready and self.command_path == null);
         if (!trusted_term) {
-            self.writeFrame(.startup_failed, @intFromEnum(StartupFailure.profile_failed));
+            self.writeFrame(.startup_failed, @backingInt(StartupFailure.profile_failed));
             return;
         }
         const outcome = windowsExitOutcome(code, self.requested_signal.load(.acquire));
@@ -604,10 +606,10 @@ test "Windows launcher directory stays in the profile or fails" {
 
     // A shared temporary directory would not be private, so a profile too
     // long for a launcher's control socket has no launcher directory.
-    const too_long = "C:\\" ++ "a" ** 66 ++ "\\.pf";
+    const too_long = "C:\\" ++ text_utils.repeat("a", 66) ++ "\\.pf";
     try std.testing.expect(too_long.len + "\\terminal-run".len + 1 + windows_launcher_socket_name_len >= windows_unix_path_limit);
     try std.testing.expectError(error.NameTooLong, windowsLauncherDir(alloc, too_long));
-    const longest = "C:\\" ++ "a" ** 65 ++ "\\.pf";
+    const longest = "C:\\" ++ text_utils.repeat("a", 65) ++ "\\.pf";
     const fits = try windowsLauncherDir(alloc, longest);
     defer alloc.free(fits);
     try std.testing.expect(fits.len + 1 + windows_launcher_socket_name_len == windows_unix_path_limit - 1);
@@ -641,7 +643,7 @@ pub const WorkTracker = struct {
 };
 
 pub fn isSupported() bool {
-    return isSupportedForOs(builtin.os.tag);
+    return isSupportedForOs(builtin.target.os.tag);
 }
 
 fn isSupportedForOs(os_tag: std.Target.Os.Tag) bool {
@@ -663,9 +665,9 @@ test "native terminal backend selection follows canonical platform support" {
             isSupportedForOs(os_tag),
         );
     }
-    try std.testing.expectEqual(isSupportedForOs(builtin.os.tag), isSupported());
+    try std.testing.expectEqual(isSupportedForOs(builtin.target.os.tag), isSupported());
     const ExpectedRegistry = if (comptime host_capabilities
-        .terminalSupportForOs(builtin.os.tag)
+        .terminalSupportForOs(builtin.target.os.tag)
         .isSupported())
         SupportedRegistry
     else
@@ -705,7 +707,7 @@ pub fn runControlMarker(args: []const [:0]const u8) !void {
 
     var bytes: [marker_frame_len]u8 = @splat(0);
     @memcpy(bytes[0..control_nonce_len], nonce);
-    bytes[control_nonce_len] = @intFromEnum(kind);
+    bytes[control_nonce_len] = @backingInt(kind);
     if (comptime is_windows) {
         // `std.Io.net` has no receive timeout on Windows; Winsock does.
         const stream = try windows_socket.connect(control_path);
@@ -760,16 +762,16 @@ pub fn runLauncher(alloc: Allocator) !void {
     );
     defer parsed.deinit();
     if (parsed.value.argv.len == 0) return error.InvalidLauncherConfig;
-    if (!std.fs.path.isAbsolute(parsed.value.cwd) or
-        !std.fs.path.isAbsolute(parsed.value.control_path) or
-        !std.fs.path.isAbsolute(parsed.value.bootstrap_path) or
+    if (!std.Io.Dir.path.isAbsolute(parsed.value.cwd) or
+        !std.Io.Dir.path.isAbsolute(parsed.value.control_path) or
+        !std.Io.Dir.path.isAbsolute(parsed.value.bootstrap_path) or
         parsed.value.control_nonce.len != control_nonce_len or
         (parsed.value.command == null) != (parsed.value.command_path == null))
     {
         return error.InvalidLauncherConfig;
     }
     if (parsed.value.command_path) |path| {
-        if (!std.fs.path.isAbsolute(path)) return error.InvalidLauncherConfig;
+        if (!std.Io.Dir.path.isAbsolute(path)) return error.InvalidLauncherConfig;
     }
     try parsed.value.dimensions.validate();
 
@@ -842,7 +844,7 @@ pub fn runLauncher(alloc: Allocator) !void {
         try writeControlFd(
             std.posix.STDERR_FILENO,
             .startup_failed,
-            @intFromEnum(StartupFailure.shell_unavailable),
+            @backingInt(StartupFailure.shell_unavailable),
         );
         return;
     };
@@ -897,7 +899,7 @@ pub fn runLauncher(alloc: Allocator) !void {
         try writeControlFd(
             std.posix.STDERR_FILENO,
             .startup_failed,
-            @intFromEnum(StartupFailure.control_failed),
+            @backingInt(StartupFailure.control_failed),
         );
         return;
     }
@@ -907,7 +909,7 @@ pub fn runLauncher(alloc: Allocator) !void {
         try writeControlFd(
             std.posix.STDERR_FILENO,
             .startup_failed,
-            @intFromEnum(StartupFailure.profile_failed),
+            @backingInt(StartupFailure.profile_failed),
         );
         return;
     }
@@ -920,7 +922,7 @@ pub fn runLauncher(alloc: Allocator) !void {
         .signal => |signal| try writeControlFd(
             std.posix.STDERR_FILENO,
             .command_signal,
-            @intFromEnum(signal),
+            @backingInt(signal),
         ),
         .stopped, .unknown => try writeControlFd(
             std.posix.STDERR_FILENO,
@@ -958,15 +960,15 @@ test "launcher wait status classifies terminal results before stops" {
     );
     try std.testing.expectEqual(
         std.process.Child.Term{ .signal = .TERM },
-        launcherStatusToTerm(@intFromEnum(std.c.SIG.TERM)),
+        launcherStatusToTerm(@backingInt(std.c.SIG.TERM)),
     );
     try std.testing.expectEqual(
         std.process.Child.Term{ .signal = .SEGV },
-        launcherStatusToTerm(@intFromEnum(std.c.SIG.SEGV) | 0x80),
+        launcherStatusToTerm(@backingInt(std.c.SIG.SEGV) | 0x80),
     );
     try std.testing.expectEqual(
         std.process.Child.Term{ .stopped = .TTIN },
-        launcherStatusToTerm((@as(u32, @intFromEnum(std.c.SIG.TTIN)) << 8) | 0x7f),
+        launcherStatusToTerm((@as(u32, @backingInt(std.c.SIG.TTIN)) << 8) | 0x7f),
     );
 }
 
@@ -2094,21 +2096,18 @@ const Session = struct {
         var path_bytes: [16]u8 = undefined;
         io_mod.getIo().random(&path_bytes);
         const path_suffix = std.fmt.bytesToHex(path_bytes, .lower);
-        const control_path = try std.fmt.allocPrint(
-            self.alloc,
+        const control_path = try self.alloc.print(
             "/tmp/pf-terminal-{s}.sock",
             .{path_suffix},
         );
         defer self.alloc.free(control_path);
-        const bootstrap_path = try std.fmt.allocPrint(
-            self.alloc,
+        const bootstrap_path = try self.alloc.print(
             "/tmp/pf-terminal-{s}.bootstrap",
             .{path_suffix},
         );
         defer self.alloc.free(bootstrap_path);
         const command_path = if (request.command != null)
-            try std.fmt.allocPrint(
-                self.alloc,
+            try self.alloc.print(
                 "/tmp/pf-terminal-{s}.command",
                 .{path_suffix},
             )
@@ -2752,7 +2751,7 @@ const Session = struct {
 
     fn matchesSignalTarget(self: *Session, target: SignalTarget) bool {
         var pid_buffer: [32]u8 = undefined;
-        const pid_text = std.fmt.bufPrint(
+        const pid_text = std.mem.print(
             &pid_buffer,
             "{d}",
             .{target.pid},
@@ -2834,7 +2833,7 @@ const Session = struct {
         self.mutex.unlock(zio);
         if (!running or pid == null or token == null) return false;
         var pid_buffer: [32]u8 = undefined;
-        const pid_text = std.fmt.bufPrint(&pid_buffer, "{d}", .{pid.?}) catch
+        const pid_text = std.mem.print(&pid_buffer, "{d}", .{pid.?}) catch
             return false;
         if (self.durable.profile.process_provider.matchToken(
             self.alloc,
@@ -3081,7 +3080,7 @@ const Session = struct {
             return;
         };
         var pid_buffer: [32]u8 = undefined;
-        const pid_text = std.fmt.bufPrint(&pid_buffer, "{d}", .{pid}) catch {
+        const pid_text = std.mem.print(&pid_buffer, "{d}", .{pid}) catch {
             self.failClosed(.session_lost);
             return;
         };
@@ -3199,7 +3198,7 @@ const Session = struct {
         }
         const persisted: terminal_store.PersistedTermination = switch (term) {
             .exited => |code| .{ .exited = code },
-            .signal => |signal| .{ .signal = @intFromEnum(signal) },
+            .signal => |signal| .{ .signal = @backingInt(signal) },
             .stopped, .unknown => {
                 self.persistLostLocked(io_mod.milliTimestamp());
                 self.mutex.unlock(zio);
@@ -3968,7 +3967,7 @@ fn terminalSignalCompleted(
 fn processGroupMissing(pid: io_mod.ProcessId) bool {
     while (true) switch (std.c.errno(std.c.kill(
         -io_mod.posixPid(pid),
-        @enumFromInt(0),
+        @fromBackingInt(@intCast(0)),
     ))) {
         .SUCCESS, .PERM => return false,
         .INTR => continue,
@@ -4174,9 +4173,9 @@ fn resizeFd(fd: std.posix.fd_t, dimensions: contracts.Dimensions) !void {
 }
 
 fn setEcho(fd: std.posix.fd_t, enabled: bool) !void {
-    var termios = try std.posix.tcgetattr(fd);
+    var termios = try io_mod.tcgetattr(fd);
     termios.lflag.ECHO = enabled;
-    try std.posix.tcsetattr(fd, .NOW, termios);
+    try io_mod.tcsetattr(fd, .NOW, termios);
 }
 
 fn closeFd(fd: std.posix.fd_t) void {
@@ -4246,7 +4245,7 @@ const ControlFrame = struct {
 
 fn writeControlFd(fd: std.posix.fd_t, kind: ControlKind, value: u32) !void {
     var bytes: [control_frame_len]u8 = undefined;
-    bytes[0] = @intFromEnum(kind);
+    bytes[0] = @backingInt(kind);
     std.mem.writeInt(u32, bytes[1..5], value, .little);
     try writeAllFd(fd, &bytes, false);
 }
@@ -4536,7 +4535,7 @@ fn signalTestBarrier(name: []const u8) void {
 fn outcomeFromTerm(term: std.process.Child.Term) ?contracts.ReturnOutcome {
     return switch (term) {
         .exited => |code| .{ .exited = code },
-        .signal => |signal| .{ .signal = @intFromEnum(signal) },
+        .signal => |signal| .{ .signal = @backingInt(signal) },
         .stopped, .unknown => null,
     };
 }
@@ -4588,7 +4587,7 @@ fn signalValue(signal: contracts.Signal) std.c.SIG {
 
 fn signalFromInt(value: u32) ?std.posix.SIG {
     if (value == 0 or value > 255) return null;
-    return @enumFromInt(value);
+    return @fromBackingInt(@intCast(value));
 }
 
 fn projectedFacts(
@@ -4699,14 +4698,14 @@ test "terminal outcomes preserve exact exit and signal status" {
         outcomeFromTerm(.{ .exited = 23 }).?,
     );
     try std.testing.expectEqual(
-        contracts.ReturnOutcome{ .signal = @intFromEnum(std.posix.SIG.TERM) },
+        contracts.ReturnOutcome{ .signal = @backingInt(std.posix.SIG.TERM) },
         outcomeFromTerm(.{ .signal = .TERM }).?,
     );
     try std.testing.expect(outcomeFromTerm(.{ .unknown = 1 }) == null);
     try std.testing.expect(outcomeFromTerm(.{ .stopped = if (builtin.os.tag == .windows) .TERM else .STOP }) == null);
     try std.testing.expectEqual(
         std.posix.SIG.SEGV,
-        signalFromInt(@intFromEnum(std.posix.SIG.SEGV)).?,
+        signalFromInt(@backingInt(std.posix.SIG.SEGV)).?,
     );
     try std.testing.expect(signalFromInt(0) == null);
     try std.testing.expect(signalFromInt(256) == null);
@@ -4807,8 +4806,6 @@ fn testPersistence(cwd: []const u8) contracts.StartPersistence {
 
 test "Windows hosted session resizes its pseudo console for the shell" {
     if (comptime !is_windows) return error.SkipZigTest;
-    // The control markers run the product binary that `zig build test` names.
-    if (std.c.getenv("PF_TEST_PRODUCT_EXE") == null) return error.SkipZigTest;
     // The fixture's provider captures tokens through this hook; the shell's
     // pid gets the real `windows:<pid>:<creation>` token.
     const Identity = struct {
@@ -4973,7 +4970,7 @@ fn checkSessionInitAllocationFailures(alloc: Allocator) !void {
 
 test "session initialization owns durable resources" {
     try std.testing.checkAllAllocationFailures(
-        std.testing.allocator,
+        testing_allocator.no_resize,
         checkSessionInitAllocationFailures,
         .{},
     );
@@ -5465,7 +5462,7 @@ test "recovery classifiers preserve allocation and transient failures" {
 }
 
 test "checkpoint load allocation failure preserves durable recovery facts" {
-    const alloc = std.testing.allocator;
+    const alloc = testing_allocator.no_resize;
     var fixture = try TestDurableFixture.init(alloc);
     defer fixture.deinit();
     const id = try alloc.dupe(u8, "terminal-checkpoint-load-oom");
@@ -5519,7 +5516,7 @@ test "checkpoint load allocation failure preserves durable recovery facts" {
 }
 
 test "journal engine feed allocation failure preserves durable recovery facts" {
-    const alloc = std.testing.allocator;
+    const alloc = testing_allocator.no_resize;
     var fixture = try TestDurableFixture.init(alloc);
     defer fixture.deinit();
     const id = try alloc.dupe(u8, "terminal-replay-feed-oom");

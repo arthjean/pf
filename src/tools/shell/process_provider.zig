@@ -21,7 +21,7 @@ fn captureToken(
 ) process_provider.ProviderError!process_identity.ProcessInstanceToken {
     const pid = std.fmt.parseInt(io_mod.ProcessId, pid_text, 10) catch
         return error.InvalidPid;
-    return switch (builtin.os.tag) {
+    return switch (builtin.target.os.tag) {
         .linux => captureLinuxToken(alloc, pid) catch |err| switch (err) {
             error.OutOfMemory => error.OutOfMemory,
             error.ProcessNotFound => error.ProcessNotFound,
@@ -69,7 +69,7 @@ fn matchToken(
 }
 
 fn readLinuxProcStat(file: std.Io.File, buffer: []u8) !usize {
-    if (builtin.os.tag != .linux) return error.ProcessIdentityUnsupported;
+    if (builtin.target.os.tag != .linux) return error.ProcessIdentityUnsupported;
     while (true) {
         const rc = std.posix.system.read(file.handle, buffer.ptr, buffer.len);
         switch (std.posix.errno(rc)) {
@@ -119,7 +119,7 @@ fn captureLinuxToken(
     }
     if (boot_len != boot_id.len) return error.ProcessIdentityUnavailable;
 
-    const stat_path = try std.fmt.allocPrint(alloc, "/proc/{d}/stat", .{pid});
+    const stat_path = try alloc.print("/proc/{d}/stat", .{pid});
     defer alloc.free(stat_path);
     var stat_file = std.Io.Dir.openFileAbsolute(
         zio,
@@ -133,7 +133,7 @@ fn captureLinuxToken(
     var stat_text: [4096]u8 = undefined;
     const stat_text_len = try readLinuxProcStat(stat_file, &stat_text);
     const stat = stat_text[0..stat_text_len];
-    const close_paren = std.mem.lastIndexOfScalar(u8, stat, ')') orelse
+    const close_paren = std.mem.findScalarLast(u8, stat, ')') orelse
         return error.ProcessIdentityUnavailable;
     var fields = std.mem.tokenizeScalar(u8, stat[close_paren + 1 ..], ' ');
     var field_number: usize = 3;
@@ -148,7 +148,7 @@ fn captureLinuxToken(
     _ = std.fmt.parseUnsigned(u64, ticks, 10) catch
         return error.ProcessIdentityUnavailable;
     var token_buf: [128]u8 = undefined;
-    const text = try std.fmt.bufPrint(
+    const text = try std.mem.print(
         &token_buf,
         "linux:{s}:{s}",
         .{ boot_id[0..], ticks },
@@ -159,7 +159,7 @@ fn captureLinuxToken(
 fn captureMacOSToken(
     pid: io_mod.ProcessId,
 ) !process_identity.ProcessInstanceToken {
-    if (builtin.os.tag != .macos) return error.ProcessIdentityUnsupported;
+    if (builtin.target.os.tag != .macos) return error.ProcessIdentityUnsupported;
     const ProcBsdInfo = extern struct {
         pbi_flags: u32,
         pbi_status: u32,
@@ -229,7 +229,7 @@ fn captureMacOSToken(
     }
     if (normalized_len != uuid.len) return error.ProcessIdentityUnavailable;
     var token_buf: [128]u8 = undefined;
-    const text = try std.fmt.bufPrint(
+    const text = try std.mem.print(
         &token_buf,
         "macos:{s}:{d}:{d}",
         .{ uuid[0..], info.pbi_start_tvsec, info.pbi_start_tvusec },

@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing_allocator = @import("../shared/testing_allocator.zig");
 const builtin = @import("builtin");
 const debug_trace = @import("../shared/debug_trace.zig");
 const vision_contracts = @import("../agent/runtime/vision_contracts.zig");
@@ -423,8 +424,7 @@ pub fn prepareFileMutationCall(
         request.workspace_root,
         input,
     )) {
-        .target_resolution_failure => |failure| return .{ .tool_failure = try std.fmt.allocPrint(
-            alloc,
+        .target_resolution_failure => |failure| return .{ .tool_failure = try alloc.print(
             "file mutation target resolution failed: {s}",
             .{@tagName(failure)},
         ) },
@@ -494,8 +494,7 @@ pub fn preflightPreparedFileMutation(
         );
     var policy_targets = switch (policy_result) {
         .target_resolution_failure => |failure| {
-            return .{ .tool_failure = try std.fmt.allocPrint(
-                arena,
+            return .{ .tool_failure = try arena.print(
                 "file mutation target resolution failed: {s}",
                 .{@tagName(failure)},
             ) };
@@ -713,9 +712,9 @@ fn pathContainsComponentSequence(
     var matched: usize = 0;
     var index: usize = 0;
     while (index < path.len) {
-        while (index < path.len and std.fs.path.isSep(path[index])) : (index += 1) {}
+        while (index < path.len and std.Io.Dir.path.isSep(path[index])) : (index += 1) {}
         const start = index;
-        while (index < path.len and !std.fs.path.isSep(path[index])) : (index += 1) {}
+        while (index < path.len and !std.Io.Dir.path.isSep(path[index])) : (index += 1) {}
         if (start == index) break;
         const component = path[start..index];
         if (std.mem.eql(u8, component, expected[matched])) {
@@ -2153,7 +2152,7 @@ pub fn runCommandContext(
     return .{
         .command = command,
         .resolved_cwd = cwd,
-        .target_os = builtin.os.tag,
+        .target_os = builtin.target.os.tag,
         .environment = environment_value,
         .execution_mode = execution_mode,
         .dialect = shell_selection.dialect(),
@@ -2364,8 +2363,7 @@ fn filePermissionStateDisplay(
     std.crypto.hash.sha2.Sha256.hash(prepared.after_content, &after_hash, .{});
     const after_hex = std.fmt.bytesToHex(after_hash[0..8].*, .lower);
     return switch (prepared.preimage) {
-        .absent => try std.fmt.allocPrint(
-            arena,
+        .absent => try arena.print(
             "{s} {s} preimage=absent after={s}",
             .{ prepared.tool_name, prepared.display_path, &after_hex },
         ),
@@ -2374,8 +2372,7 @@ fn filePermissionStateDisplay(
                 preimage.content_hash[0..8].*,
                 .lower,
             );
-            break :blk try std.fmt.allocPrint(
-                arena,
+            break :blk try arena.print(
                 "{s} {s} preimage={s} after={s}",
                 .{ prepared.tool_name, prepared.display_path, &before_hex, &after_hex },
             );
@@ -2500,14 +2497,14 @@ pub fn permissionTargetResolutionFailureMessage(
     const path_arg = try targetPathForFailureMessage(arena, call);
     if (reason) |text| {
         return if (path_arg) |path|
-            try std.fmt.allocPrint(arena, "{s}: {s}", .{ text, path })
+            try arena.print("{s}: {s}", .{ text, path })
         else
             try arena.dupe(u8, text);
     }
     return if (path_arg) |path|
-        try std.fmt.allocPrint(arena, "Cannot resolve path \"{s}\": {s}", .{ path, @errorName(err) })
+        try arena.print("Cannot resolve path \"{s}\": {s}", .{ path, @errorName(err) })
     else
-        try std.fmt.allocPrint(arena, "Cannot resolve tool target path: {s}", .{@errorName(err)});
+        try arena.print("Cannot resolve tool target path: {s}", .{@errorName(err)});
 }
 
 /// Best-effort extraction of the path the caller asked for, so the failure
@@ -2587,8 +2584,7 @@ fn commandPermissionTarget(
         arena,
         context,
     );
-    return std.fmt.allocPrint(
-        arena,
+    return arena.print(
         "{s}::{s}",
         .{ context.resolved_cwd, identity },
     );
@@ -2893,8 +2889,8 @@ test "interactive command approval keeps dangerous-command guidance" {
         .arguments_json = "{\"action\":\"run\",\"command\":\"git reset --hard\"}",
     }, null);
 
-    try std.testing.expect(std.mem.indexOf(u8, request.label, "risk: command may discard version-control state") != null);
-    try std.testing.expect(std.mem.indexOf(u8, request.label, "safer: inspect git status first") != null);
+    try std.testing.expect(std.mem.find(u8, request.label, "risk: command may discard version-control state") != null);
+    try std.testing.expect(std.mem.find(u8, request.label, "safer: inspect git status first") != null);
 }
 
 test "interactive Vision path approval names every canonical image" {
@@ -2936,7 +2932,7 @@ test "interactive Vision path approval names every canonical image" {
         .ask,
         &.{},
     );
-    const expected = try std.fmt.allocPrint(alloc, "vision {s}, {s}", .{ first, second });
+    const expected = try alloc.print("vision {s}, {s}", .{ first, second });
     defer alloc.free(expected);
     try std.testing.expectEqualStrings(expected, recording.last_label.?);
     const authority = switch (outcome.execution_authority orelse
@@ -3241,7 +3237,7 @@ test "prepared file mutation admission decodes and resolves exactly once without
     };
     defer prepared.deinit(arena);
 
-    const expected_target = try std.fs.path.join(arena, &.{ workspace, "nested", "file.txt" });
+    const expected_target = try std.Io.Dir.path.join(arena, &.{ workspace, "nested", "file.txt" });
     try std.testing.expectEqualStrings(expected_target, prepared.targetPath());
     try std.testing.expect(prepared.targets.proofValid());
     try std.testing.expectEqual(@as(usize, 1), file_mutation_decode_count);
@@ -3280,12 +3276,11 @@ test "external file action identity is canonical across call IDs and distinguish
     var arena_state = std.heap.ArenaAllocator.init(alloc);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
-    const absolute_target = try std.fs.path.join(
+    const absolute_target = try std.Io.Dir.path.join(
         arena,
         &.{ external, "denied", "nested", "file.txt" },
     );
-    const absolute_arguments = try std.fmt.allocPrint(
-        arena,
+    const absolute_arguments = try arena.print(
         "{{\"path\":{f},\"content\":\"denied\\n\"}}",
         .{std.json.fmt(absolute_target, .{})},
     );
@@ -3346,7 +3341,7 @@ test "external file action identity is canonical across call IDs and distinguish
         error.FileNotFound,
         std.Io.Dir.accessAbsolute(
             std.testing.io,
-            try std.fs.path.join(arena, &.{ external, "denied" }),
+            try std.Io.Dir.path.join(arena, &.{ external, "denied" }),
             .{},
         ),
     );
@@ -3478,7 +3473,7 @@ test "prepared file mutation cleans every partial allocation failure" {
     defer alloc.free(workspace);
 
     try std.testing.checkAllAllocationFailures(
-        alloc,
+        testing_allocator.no_resize,
         checkFileMutationPreparationAllocationFailures,
         .{workspace},
     );
@@ -4072,10 +4067,9 @@ test "interactive file admission passes its canonical grant offer to the prompte
     );
     input.workspace_root = workspace;
     input.permission_prompter = recording.prompter();
-    const arguments_json = try std.fmt.allocPrint(
-        arena,
+    const arguments_json = try arena.print(
         "{{\"path\":{f},\"content\":\"hello\\n\"}}",
-        .{std.json.fmt(try std.fs.path.join(arena, &.{ workspace, "note.txt" }), .{})},
+        .{std.json.fmt(try std.Io.Dir.path.join(arena, &.{ workspace, "note.txt" }), .{})},
     );
 
     const outcome = try requestPermissionOutcome(
@@ -4226,7 +4220,7 @@ test "automatic review trace preserves the typed unavailable cause without actio
     defer tmp.cleanup();
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const trace_path = try std.fs.path.join(alloc, &.{ root, "permission.log" });
+    const trace_path = try std.Io.Dir.path.join(alloc, &.{ root, "permission.log" });
     defer alloc.free(trace_path);
 
     debug_trace.resetForTest();
@@ -4686,9 +4680,8 @@ test "yolo file admission preserves canonical mutation authority" {
         },
     };
     input.permission_rules = .{ .rules = &rules };
-    const target = try std.fs.path.join(arena, &.{ workspace, "yolo.txt" });
-    const arguments = try std.fmt.allocPrint(
-        arena,
+    const target = try std.Io.Dir.path.join(arena, &.{ workspace, "yolo.txt" });
+    const arguments = try arena.print(
         "{{\"path\":{f},\"content\":\"ok\\n\"}}",
         .{std.json.fmt(target, .{})},
     );
@@ -4860,11 +4853,11 @@ test "live authority resolves a missing read target without changing ordinary ad
     try tmp.dir.createDirPath(io_mod.getIo(), "workspace/src");
     const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace);
-    const expected = try std.fs.path.join(alloc, &.{ workspace, "src", "missing.zig" });
+    const expected = try std.Io.Dir.path.join(alloc, &.{ workspace, "src", "missing.zig" });
     defer alloc.free(expected);
     const external_root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(external_root);
-    const external_expected = try std.fs.path.join(
+    const external_expected = try std.Io.Dir.path.join(
         alloc,
         &.{ external_root, "external-missing.zig" },
     );
@@ -4906,8 +4899,7 @@ test "live authority resolves a missing read target without changing ordinary ad
             .{
                 .id = "external-missing-read",
                 .name = "read_file",
-                .arguments_json = try std.fmt.allocPrint(
-                    arena_state.allocator(),
+                .arguments_json = try arena_state.allocator().print(
                     "{{\"path\":{f}}}",
                     .{std.json.fmt(external_expected, .{})},
                 ),
@@ -4925,7 +4917,7 @@ test "live authority preserves a non-directory read failure for tool execution" 
     blocking_file.close(io_mod.getIo());
     const workspace = try io_mod.dirRealpathAlloc(alloc, tmp.dir, "workspace");
     defer alloc.free(workspace);
-    const expected = try std.fs.path.join(alloc, &.{ workspace, "not-a-dir", "child.txt" });
+    const expected = try std.Io.Dir.path.join(alloc, &.{ workspace, "not-a-dir", "child.txt" });
     defer alloc.free(expected);
 
     var arena_state = std.heap.ArenaAllocator.init(alloc);
@@ -5223,8 +5215,7 @@ test "delegated command effects remain reviewer owned" {
         "git rm -hf tracked.txt",
         "git reset -hq --hard",
     }) |command| {
-        const arguments_json = try std.fmt.allocPrint(
-            arena_state.allocator(),
+        const arguments_json = try arena_state.allocator().print(
             "{{\"action\":\"run\",\"command\":{f}}}",
             .{std.json.fmt(command, .{})},
         );
@@ -5861,8 +5852,7 @@ test "known reversible auto commands bypass the reviewer" {
         .{ "zig build test", false },
     }) |case| {
         const command, const direct = case;
-        const arguments = try std.fmt.allocPrint(
-            arena_state.allocator(),
+        const arguments = try arena_state.allocator().print(
             "{{\"action\":\"run\",\"command\":{f}}}",
             .{std.json.fmt(command, .{})},
         );
@@ -6198,7 +6188,7 @@ test "external prepared file review carries frozen path and diff authority" {
         ),
     );
     input.workspace_root = workspace;
-    const target_path = try std.fs.path.join(
+    const target_path = try std.Io.Dir.path.join(
         arena,
         &.{ external, "desktop-test.txt" },
     );
@@ -6211,8 +6201,7 @@ test "external prepared file review carries frozen path and diff authority" {
         defer existing.close(io_mod.getIo());
         try existing.writeStreamingAll(io_mod.getIo(), "before\n");
     }
-    const arguments_json = try std.fmt.allocPrint(
-        arena,
+    const arguments_json = try arena.print(
         "{{\"path\":{f},\"content\":\"hello\\n\"}}",
         .{std.json.fmt(target_path, .{})},
     );
@@ -6286,9 +6275,8 @@ test "automatic workspace write uses reversible admission without reviewer" {
         ),
     );
     input.workspace_root = workspace;
-    const target_path = try std.fs.path.join(arena, &.{ workspace, "note.txt" });
-    const arguments_json = try std.fmt.allocPrint(
-        arena,
+    const target_path = try std.Io.Dir.path.join(arena, &.{ workspace, "note.txt" });
+    const arguments_json = try arena.print(
         "{{\"path\":{f},\"content\":\"hello\\n\"}}",
         .{std.json.fmt(target_path, .{})},
     );
@@ -6316,9 +6304,8 @@ test "automatic workspace write uses reversible admission without reviewer" {
     try std.testing.expect(authorization.prepared != null);
     try std.testing.expectEqualStrings(target_path, authorization.input.path());
 
-    const edit_target = try std.fs.path.join(arena, &.{ workspace, "editable.txt" });
-    const edit_arguments = try std.fmt.allocPrint(
-        arena,
+    const edit_target = try std.Io.Dir.path.join(arena, &.{ workspace, "editable.txt" });
+    const edit_arguments = try arena.print(
         "{{\"path\":{f},\"old_string\":\"before\",\"new_string\":\"after\"}}",
         .{std.json.fmt(edit_target, .{})},
     );
@@ -6387,9 +6374,8 @@ test "automatic added-root write bypasses reviewer while untrusted external writ
         .{ .id = "external-write", .root = external, .expected_review_calls = 0 },
     };
     for (cases) |case| {
-        const target_path = try std.fs.path.join(arena, &.{ case.root, "note.txt" });
-        const arguments_json = try std.fmt.allocPrint(
-            arena,
+        const target_path = try std.Io.Dir.path.join(arena, &.{ case.root, "note.txt" });
+        const arguments_json = try arena.print(
             "{{\"path\":{f},\"content\":\"hello\\n\"}}",
             .{std.json.fmt(target_path, .{})},
         );
@@ -6444,9 +6430,8 @@ test "automatic trusted-root write keeps persistence targets on reviewer path" {
         "Library/LaunchAgents/com.pf.smoke.plist",
     };
     for (relative_targets, 0..) |relative_target, index| {
-        const target_path = try std.fs.path.join(arena, &.{ workspace, relative_target });
-        const arguments_json = try std.fmt.allocPrint(
-            arena,
+        const target_path = try std.Io.Dir.path.join(arena, &.{ workspace, relative_target });
+        const arguments_json = try arena.print(
             "{{\"path\":{f},\"content\":\"test\\n\"}}",
             .{std.json.fmt(target_path, .{})},
         );
@@ -6501,9 +6486,8 @@ test "automatic trusted-root overwrite preserves configured read disclosure revi
         .action = .deny,
     }};
     input.permission_rules = .{ .rules = &rules };
-    const target_path = try std.fs.path.join(arena, &.{ workspace, "secret.txt" });
-    const arguments_json = try std.fmt.allocPrint(
-        arena,
+    const target_path = try std.Io.Dir.path.join(arena, &.{ workspace, "secret.txt" });
+    const arguments_json = try arena.print(
         "{{\"path\":{f},\"content\":\"after\\n\"}}",
         .{std.json.fmt(target_path, .{})},
     );

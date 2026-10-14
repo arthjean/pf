@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing_allocator = @import("../shared/testing_allocator.zig");
 const builtin = @import("builtin");
 const contracts = @import("contracts.zig");
 const command_environment = @import("../execution/command_environment.zig");
@@ -21,8 +22,8 @@ pub const ShellKind = enum { bash, zsh, powershell };
 pub const Dialect = enum { posix, powershell };
 
 pub fn shellKind(path: []const u8) ?ShellKind {
-    const basename = std.fs.path.basename(path);
-    if (comptime builtin.os.tag == .windows) {
+    const basename = std.Io.Dir.path.basename(path);
+    if (comptime builtin.target.os.tag == .windows) {
         // Windows names executables without case, with or without `.exe`.
         const stem = if (std.ascii.endsWithIgnoreCase(basename, ".exe"))
             basename[0 .. basename.len - ".exe".len]
@@ -58,12 +59,12 @@ fn windowsDialectAdmits(kind: ShellKind) bool {
 }
 
 fn fallbackLoginShell() []const u8 {
-    return if (builtin.os.tag == .macos) "/bin/zsh" else "/bin/bash";
+    return if (builtin.target.os.tag == .macos) "/bin/zsh" else "/bin/bash";
 }
 
 fn supportedLoginShell(configured_login_shell: ?[]const u8) ResolveError![]const u8 {
     const path = configured_login_shell orelse return error.MissingLoginShell;
-    if (!std.fs.path.isAbsolute(path)) return error.RelativeShellPath;
+    if (!std.Io.Dir.path.isAbsolute(path)) return error.RelativeShellPath;
     if (shellKind(path) != null) return path;
     // The Windows login shell is the `shell_selection` pick, which has no
     // fallback of its own.
@@ -123,7 +124,7 @@ pub fn resolve(
             .clean_start = value.clean_start,
         },
     };
-    if (!std.fs.path.isAbsolute(selection.path)) {
+    if (!std.Io.Dir.path.isAbsolute(selection.path)) {
         return error.RelativeShellPath;
     }
 
@@ -163,13 +164,13 @@ pub fn resolve(
 /// The user's login shell, copied into `buffer`. On Windows it is the shell
 /// that `shell_selection` picks, Git Bash or PowerShell.
 pub fn configuredLoginShellInto(buffer: []u8) ?[]const u8 {
-    if (comptime builtin.os.tag == .windows) {
+    if (comptime builtin.target.os.tag == .windows) {
         const shell = shell_selection.current() catch return null;
         if (shell.path.len == 0 or shell.path.len > buffer.len) return null;
         @memcpy(buffer[0..shell.path.len], shell.path);
         return buffer[0..shell.path.len];
     }
-    if (comptime !builtin.link_libc or builtin.os.tag == .wasi) {
+    if (comptime !builtin.link_libc or builtin.target.os.tag == .wasi) {
         return null;
     }
     var entry: std.c.passwd = undefined;
@@ -282,7 +283,7 @@ pub fn capturedInvocation(
         },
         .user => |path| {
             var invocation = try resolve(path, .user_login);
-            if (std.mem.eql(u8, std.fs.path.basename(path), "bash")) {
+            if (std.mem.eql(u8, std.Io.Dir.path.basename(path), "bash")) {
                 removeInteractiveFlag(&invocation);
                 invocation.append("-O");
                 invocation.append("expand_aliases");
@@ -756,7 +757,7 @@ test "login shell resolution falls back without accepting explicit unsupported s
     if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
     const fallback = try resolve("/opt/homebrew/bin/fish", .user_login);
     try std.testing.expectEqualStrings(fallbackLoginShell(), fallback.path);
-    if (builtin.os.tag == .macos) {
+    if (builtin.target.os.tag == .macos) {
         try std.testing.expectEqualSlices(
             []const u8,
             &.{ "/bin/zsh", "-l", "-i" },
@@ -927,7 +928,7 @@ fn checkBootstrapAllocationFailures(alloc: Allocator) !void {
 
 test "bootstrap construction cleans every allocation failure" {
     try std.testing.checkAllAllocationFailures(
-        std.testing.allocator,
+        testing_allocator.no_resize,
         checkBootstrapAllocationFailures,
         .{},
     );

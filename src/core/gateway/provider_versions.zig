@@ -20,7 +20,7 @@ pub const Version = struct {
     pub fn parse(raw: []const u8) ?Version {
         const value = update_target.normalizeVersion(std.mem.trim(u8, raw, " \r\n\t"));
         if (!update_target.isValidVersion(value)) return null;
-        var version: Version = .{ .bytes = [_]u8{0} ** update_target.max_version_bytes, .len = @intCast(value.len) };
+        var version: Version = .{ .bytes = @as([update_target.max_version_bytes]u8, @splat(0)), .len = @intCast(value.len) };
         @memcpy(version.bytes[0..value.len], value);
         return version;
     }
@@ -145,7 +145,7 @@ fn saveCacheAtHome(alloc: Allocator, provider: Provider, cached: Cached, home: [
 
 fn writeCached(alloc: Allocator, dir: *io_mod.VerifiedDir, provider: Provider, cached: Cached) !void {
     var bytes: [max_cache_bytes]u8 = undefined;
-    const text = try std.fmt.bufPrint(&bytes, "{{\"version\":\"{s}\",\"checked_at_ms\":{d}}}\n", .{ cached.version.slice(), cached.checked_at_ms });
+    const text = try std.mem.print(&bytes, "{{\"version\":\"{s}\",\"checked_at_ms\":{d}}}\n", .{ cached.version.slice(), cached.checked_at_ms });
     try io_mod.durableReplaceVerified(alloc, dir, cacheFile(provider), text);
 }
 

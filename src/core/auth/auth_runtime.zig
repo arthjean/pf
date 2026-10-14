@@ -159,7 +159,7 @@ pub const FailureSnapshot = struct {
             },
         });
         if (self.http_status) |status| {
-            try out.writer.print(" · HTTP {d}", .{@intFromEnum(status)});
+            try out.writer.print(" · HTTP {d}", .{@backingInt(status)});
         }
         return try out.toOwnedSlice();
     }
@@ -179,7 +179,7 @@ pub const FailureSnapshot = struct {
         try writer.writeAll(",\"reason\":");
         try std.json.Stringify.value(@tagName(self.reason), .{}, writer);
         if (self.http_status) |status| {
-            try writer.print(",\"http_status\":{d}", .{@intFromEnum(status)});
+            try writer.print(",\"http_status\":{d}", .{@backingInt(status)});
         }
         try writer.writeByte('}');
     }
@@ -203,7 +203,7 @@ fn stampNowMs() u32 {
 }
 
 fn noteRequestPathCredentialVerified(source: credentials.Source) void {
-    request_path_verified_source.store(@intFromEnum(source), .seq_cst);
+    request_path_verified_source.store(@backingInt(source), .seq_cst);
     request_path_verified_ms.store(stampNowMs(), .seq_cst);
 }
 
@@ -213,7 +213,7 @@ fn noteRequestPathCredentialVerified(source: credentials.Source) void {
 pub fn requestPathCredentialVerifiedRecently(source: credentials.Source) bool {
     const verified_ms = request_path_verified_ms.load(.seq_cst);
     if (verified_ms == 0) return false;
-    if (request_path_verified_source.load(.seq_cst) != @intFromEnum(source)) return false;
+    if (request_path_verified_source.load(.seq_cst) != @backingInt(source)) return false;
     return stampNowMs() -% verified_ms < request_path_verified_window_ms;
 }
 
@@ -424,10 +424,10 @@ pub fn preparationFailureText(alloc: Allocator, provider: model_provider.Provide
     const label = provider_catalog.label(provider);
     const failure = classifyCredentialFailure(provider_catalog.find(provider).login_source, err);
     if (failure.reason == .undecryptable) {
-        return std.fmt.allocPrint(alloc, "{s}: {s}", .{ label, undecryptable_notice });
+        return alloc.print("{s}: {s}", .{ label, undecryptable_notice });
     }
-    const normalized = preparationError(failure) orelse return std.fmt.allocPrint(alloc, "{s} requires a new sign-in.", .{label});
-    return std.fmt.allocPrint(alloc, "{s}: {s}", .{ label, preparationFailureNotice(normalized).? });
+    const normalized = preparationError(failure) orelse return alloc.print("{s} requires a new sign-in.", .{label});
+    return alloc.print("{s}: {s}", .{ label, preparationFailureNotice(normalized).? });
 }
 
 test "credential preparation blocks an unavailable explicit source" {
@@ -1815,7 +1815,7 @@ pub const Runtime = struct {
         auth_mode: credentials.AuthMode,
     ) void {
         comptime {
-            if (std.meta.fields(Self).len != 33) {
+            if (@typeInfo(Self).@"struct".field_names.len != 33) {
                 @compileError("update Runtime.initInto for the changed field set");
             }
         }
@@ -3369,7 +3369,7 @@ fn expectApiKeyAllocationCleared(
 ) !void {
     try std.testing.expectEqual(@as(usize, 0), runtime.api_key_input.items.len);
     try std.testing.expectEqual(@as(usize, 0), runtime.api_key_input.capacity);
-    try std.testing.expect(std.mem.indexOf(u8, backing, sentinel) == null);
+    try std.testing.expect(std.mem.find(u8, backing, sentinel) == null);
 }
 
 test "auth runtime complete credential refresher ignores non-refreshable sources" {
@@ -4930,7 +4930,7 @@ test "api key stage zeroes its allocation on every exit path" {
     const sentinel = "PF_API_KEY_ZERO_SENTINEL";
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};
@@ -4942,7 +4942,7 @@ test "api key stage zeroes its allocation on every exit path" {
     }
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};
@@ -4971,7 +4971,7 @@ test "api key stage zeroes its allocation on every exit path" {
     }
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};
@@ -5000,7 +5000,7 @@ test "api key stage zeroes its allocation on every exit path" {
     }
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};
@@ -5029,7 +5029,7 @@ test "api key stage zeroes its allocation on every exit path" {
     }
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};
@@ -5058,7 +5058,7 @@ test "api key stage zeroes its allocation on every exit path" {
     }
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};
@@ -5086,7 +5086,7 @@ test "api key stage zeroes its allocation on every exit path" {
     }
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};
@@ -5098,7 +5098,7 @@ test "api key stage zeroes its allocation on every exit path" {
     }
 
     {
-        var backing: [16384]u8 = [_]u8{0xa5} ** 16384;
+        var backing: [16384]u8 = @splat(0xa5);
         var fixed = std.heap.FixedBufferAllocator.init(&backing);
         const alloc = fixed.allocator();
         var runtime: Runtime = .{};

@@ -53,7 +53,7 @@ pub const Outcome = enum { completed, failed, cancelled, interrupted, lost };
 
 pub const ActiveWork = struct {
     id: []u8,
-    request_fingerprint: [32]u8 = [_]u8{0} ** 32,
+    request_fingerprint: [32]u8 = @splat(0),
     message: []u8,
     root_user_intent_context: []u8 = &.{},
     root_user_messages: [][]u8 = &.{},
@@ -558,7 +558,7 @@ pub const V2Children = struct {
     registry: ?Registry = null,
     /// Settings for children with no log yet, from their admission; taken
     /// when their work first opens them (D34). Keys and models owned.
-    seeds: std.StringArrayHashMapUnmanaged(ChildSeed) = .empty,
+    seeds: std.array_hash_map.String(ChildSeed) = .empty,
 
     pub const ChildSeed = struct {
         preferences: session_codec.DurableSessionPreferences,
@@ -1229,7 +1229,7 @@ test "subagent failure codec reads historical absence and rejects invalid detail
     defer parsed.deinit();
     const record = &parsed.value.object.getPtr("children").?.array.items[0];
     const bad_values = [_]std.json.Value{
-        .{ .string = "x" ** (types.ModelFailureDiagnostic.max_bytes + 1) },
+        .{ .string = text_utils.repeat("x", types.ModelFailureDiagnostic.max_bytes + 1) },
         .{ .string = "unsafe\x1b[31m" },
         .{ .integer = 7 },
     };
@@ -1281,7 +1281,7 @@ test "interrupted active work clears ownership and remains round trippable" {
     defer registry.deinit(alloc);
     var active = ActiveWork{
         .id = try alloc.dupe(u8, "work-1"),
-        .request_fingerprint = [_]u8{7} ** 32,
+        .request_fingerprint = @as([32]u8, @splat(7)),
         .message = try alloc.dupe(u8, "review this"),
         .created_at_ms = 1,
     };
@@ -1300,7 +1300,7 @@ test "interrupted active work clears ownership and remains round trippable" {
     try std.testing.expectEqual(Phase.interrupted, child.phase);
     try std.testing.expect(child.active == null);
     try std.testing.expectEqualStrings("work-1", child.last_work_id.?);
-    try std.testing.expectEqual([_]u8{7} ** 32, child.last_request_fingerprint.?);
+    try std.testing.expectEqual(@as([32]u8, @splat(7)), child.last_request_fingerprint.?);
     try std.testing.expectEqual(Outcome.interrupted, child.last_outcome.?);
     const encoded = try renderRegistry(alloc, registry);
     defer alloc.free(encoded);
@@ -1387,7 +1387,7 @@ fn testWork(alloc: Allocator, id: []const u8, fingerprint_byte: u8) !ActiveWork 
     return .{
         .id = owned_id,
         .message = try alloc.dupe(u8, "do the work"),
-        .request_fingerprint = [_]u8{fingerprint_byte} ** 32,
+        .request_fingerprint = @as([32]u8, @splat(fingerprint_byte)),
         .created_at_ms = 1,
     };
 }
@@ -1419,7 +1419,7 @@ test "a v2 registry change writes only the child lines it implies (D22)" {
     try std.testing.expectEqualStrings("work-1", lines[0].spawned.work_id);
     const spawn = try std.json.parseFromSliceLeaky(SpawnData, a, lines[0].spawned.data.?, .{});
     try std.testing.expect(spawn.agent == null);
-    try std.testing.expectEqualStrings("ab" ** 32, spawn.fingerprint);
+    try std.testing.expectEqualStrings(text_utils.repeat("ab", 32), spawn.fingerprint);
     advance(alloc, &old, next);
 
     // A change of phase alone writes nothing.
@@ -1477,7 +1477,7 @@ test "a v2 registry change writes only the child lines it implies (D22)" {
 test "a v2 parent's folded children rebuild the registry v1 would hold (D22)" {
     const alloc = std.testing.allocator;
     const parent_id = "01J00000000000000000000000";
-    const fingerprint = "ab" ** 32;
+    const fingerprint = text_utils.repeat("ab", 32);
     var folded = [_]session_adapter.Child{
         .{ .id = @constCast("01J00000000000000000000001"), .work_id = @constCast("w1"), .open = false, .outcome = .ok, .spawn_data = @constCast("{\"fingerprint\":\"" ++ fingerprint ++ "\",\"later\":1}"), .finish_data = null, .seq = 5 },
         .{ .id = @constCast("01J00000000000000000000002"), .work_id = @constCast("w2"), .open = false, .outcome = .failed, .spawn_data = @constCast("{\"agent\":\"reviewer\",\"fingerprint\":\"" ++ fingerprint ++ "\"}"), .finish_data = @constCast("{\"failure\":\"boom\"}"), .seq = 9 },
@@ -1492,7 +1492,7 @@ test "a v2 parent's folded children rebuild the registry v1 would hold (D22)" {
     try std.testing.expectEqual(Phase.finished, one_off.phase);
     try std.testing.expectEqual(Outcome.completed, one_off.last_outcome.?);
     try std.testing.expectEqualStrings("w1", one_off.last_work_id.?);
-    try std.testing.expectEqual([_]u8{0xab} ** 32, one_off.last_request_fingerprint.?);
+    try std.testing.expectEqual(@as([32]u8, @splat(0xab)), one_off.last_request_fingerprint.?);
     try std.testing.expectEqual(@as(u64, 5), one_off.work_generation);
     try std.testing.expect(one_off.active == null);
     const failed = registry.children[1];
@@ -1584,5 +1584,5 @@ test "v2 children live in the parent's log and come back after a reopen (D22)" {
     try std.testing.expectEqual(Phase.idle, child.phase);
     try std.testing.expectEqualStrings("work-1", child.last_work_id.?);
     try std.testing.expectEqual(Outcome.completed, child.last_outcome.?);
-    try std.testing.expectEqual([_]u8{0x11} ** 32, child.last_request_fingerprint.?);
+    try std.testing.expectEqual(@as([32]u8, @splat(0x11)), child.last_request_fingerprint.?);
 }

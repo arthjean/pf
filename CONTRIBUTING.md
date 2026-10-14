@@ -20,7 +20,7 @@ Contributions should preserve that direction:
 
 Requirements:
 
-* Zig `0.16.0+`
+* Zig `0.17.0`
 
 * interactive terminal for manual shell testing
 
@@ -39,7 +39,7 @@ zig build run
 
 pf builds and runs natively on Windows x86_64, and the interactive terminal UI runs in a console with virtual terminal support, such as Windows Terminal or the VS Code terminal. The README's Windows section lists what is not ported yet. To work on it:
 
-* install Zig `0.16.0` for Windows x86_64 and put `zig.exe` on `PATH`
+* install Zig `0.17.0` for Windows x86_64 and put `zig.exe` on `PATH`
 
 * build natively from PowerShell or Git Bash with `zig build`; the target is `x86_64-windows-gnu`, and Linux and macOS still build from the same checkout with `zig build -Dtarget=x86_64-linux-gnu` and `zig build -Dtarget=aarch64-macos`
 
@@ -51,7 +51,7 @@ pf builds and runs natively on Windows x86_64, and the interactive terminal UI r
 
 * pf reads its profile from `USERPROFILE` before `HOME` on Windows, so a test that isolates its home must set both
 
-* run the Linux unit tests inside WSL on a copy of the checkout in the WSL filesystem with a Linux Zig `0.16.0`: `zig build test`
+* run the Linux unit tests inside WSL on a copy of the checkout in the WSL filesystem with a Linux Zig `0.17.0`: `zig build test`
 
 * run `bash ./scripts/check-public-surface.sh` through Git Bash
 

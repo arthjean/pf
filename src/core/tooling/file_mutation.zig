@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing_allocator = @import("../shared/testing_allocator.zig");
 const builtin = @import("builtin");
 const diff_mod = @import("../output/diff.zig");
 const file_mutation_contract = @import("file_mutation_contract.zig");
@@ -1463,8 +1464,7 @@ fn derivePostimage(
                 break :blk .{ .semantic_failure = "edit_file failed: old_string not found in file. Re-read the file to see its current contents; if the change is already applied, do not retry this edit." };
             }
             if (match.count > 1) {
-                break :blk .{ .semantic_failure = try std.fmt.allocPrint(
-                    alloc,
+                break :blk .{ .semantic_failure = try alloc.print(
                     "edit_file failed: old_string is not unique (found {d} occurrences), provide more context",
                     .{match.count},
                 ) };
@@ -1934,7 +1934,7 @@ test "prepare shows the canonical external target when a symlink redirects outsi
     };
 
     const workspace = try io_mod.dirRealpathAlloc(arena, tmp.dir, "workspace");
-    const misleading_path = try std.fs.path.join(arena, &.{ workspace, "link/new.txt" });
+    const misleading_path = try std.Io.Dir.path.join(arena, &.{ workspace, "link/new.txt" });
     const call: types.ToolCall = .{
         .id = "write-symlink-redirect",
         .name = "write_file",
@@ -1962,7 +1962,7 @@ test "prepare retains full review separately from the bounded approval preview" 
         var line: [32]u8 = undefined;
         try content.appendSlice(
             std.testing.allocator,
-            try std.fmt.bufPrint(&line, "line {d}\n", .{line_number}),
+            try std.mem.print(&line, "line {d}\n", .{line_number}),
         );
     }
 
@@ -2643,7 +2643,7 @@ test "apply installs reviewed bytes beneath an authorized external anchor" {
         tmp.dir,
         "external",
     );
-    const target_path = try std.fs.path.join(
+    const target_path = try std.Io.Dir.path.join(
         call_alloc,
         &.{ external, "nested/new.txt" },
     );
@@ -2695,11 +2695,11 @@ test "apply rejects binding mismatches before allocation or filesystem access" {
     const prepared = try prepareForApply(owner_alloc, root, call);
 
     var failing_call = std.testing.FailingAllocator.init(
-        std.testing.allocator,
+        testing_allocator.no_resize,
         .{ .fail_index = 0 },
     );
     var failing_result = std.testing.FailingAllocator.init(
-        std.testing.allocator,
+        testing_allocator.no_resize,
         .{ .fail_index = 0 },
     );
     const call_alloc = failing_call.allocator();
@@ -2789,7 +2789,7 @@ test "apply allocation failure before rename leaves target unchanged" {
     };
     const prepared = try prepareForApply(call_alloc, root, call);
     var failing = std.testing.FailingAllocator.init(
-        std.testing.allocator,
+        testing_allocator.no_resize,
         .{ .fail_index = 3 },
     );
     var test_state = StageTestState{};
@@ -3542,7 +3542,7 @@ test "apply returns deepest-first bounded residue when created parents are not e
 
 test "apply preserves the existing destination mode" {
     // Asserts a preserved POSIX mode; Windows files have no mode bits.
-    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

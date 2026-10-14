@@ -7,6 +7,7 @@ const mcp_contract = @import("mcp_contract.zig");
 const docker_run = @import("docker_run.zig");
 const process_job = @import("../shared/process_job.zig");
 const operation_control = @import("operation_control.zig");
+const text_utils = @import("../shared/text_utils.zig");
 
 const Allocator = std.mem.Allocator;
 const request_poll_ns: u64 = 5 * std.time.ns_per_ms;
@@ -50,7 +51,7 @@ pub const StderrCapture = struct {
         }
         const overflow = (self.tail_len + rest.len) -| stderr_tail_capacity;
         if (overflow > 0) {
-            std.mem.copyForwards(u8, self.tail[0 .. self.tail_len - overflow], self.tail[overflow..self.tail_len]);
+            @memmove(self.tail[0 .. self.tail_len - overflow], self.tail[overflow..self.tail_len]);
             self.tail_len -= overflow;
             self.omitted = true;
         }
@@ -1228,7 +1229,7 @@ pub const StdioDispatcher = struct {
 
     fn startStderrDrain(self: *StdioDispatcher) !void {
         if (comptime host_target.is_wasm) return;
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             self.stderr_done = false;
             self.stderr_thread = try std.Thread.spawn(.{}, stderrMainWindows, .{self});
             return;
@@ -1247,7 +1248,7 @@ pub const StdioDispatcher = struct {
             self.stderr_done = true;
             self.state_mutex.unlock(io_mod.getIo());
         }
-        if (comptime builtin.os.tag == .windows or host_target.is_wasm) return;
+        if (comptime builtin.target.os.tag == .windows or host_target.is_wasm) return;
         const file = self.stderr orelse return;
         const wake = self.stderr_wake orelse return;
         var fds = [_]std.posix.pollfd{
@@ -1304,7 +1305,7 @@ pub const StdioDispatcher = struct {
 
     /// Idempotent: wakes and joins the stderr drain, then closes its pipes.
     fn stopStderrDrain(self: *StdioDispatcher) void {
-        if (comptime builtin.os.tag == .windows) {
+        if (comptime builtin.target.os.tag == .windows) {
             // The drain ends once the server's tree is gone; terminate it
             // first so the join cannot wait on a live writer.
             if (self.stderr_thread) |thread| {
@@ -1313,7 +1314,7 @@ pub const StdioDispatcher = struct {
                 self.stderr_thread = null;
             }
         }
-        if (comptime builtin.os.tag != .windows and !host_target.is_wasm) {
+        if (comptime builtin.target.os.tag != .windows and !host_target.is_wasm) {
             if (self.stderr_wake) |wake| {
                 if (self.stderr_thread) |thread| {
                     const byte = [_]u8{0};
@@ -2056,10 +2057,10 @@ const ProcessJob = if (builtin.os.tag == .windows) ?process_job.Job else void;
 const no_process_job: ProcessJob = if (builtin.os.tag == .windows) null else {};
 
 fn terminateChild(child_id: std.process.Child.Id) void {
-    switch (builtin.os.tag) {
+    switch (builtin.target.os.tag) {
         .windows => {
             const windows = std.os.windows;
-            switch (windows.ntdll.NtTerminateProcess(child_id, @enumFromInt(1))) {
+            switch (windows.ntdll.NtTerminateProcess(child_id, @fromBackingInt(@intCast(1)))) {
                 .SUCCESS, .PROCESS_IS_TERMINATING, .ACCESS_DENIED => {},
                 else => |status| debug_trace.logf(
                     "mcp",
@@ -2083,7 +2084,7 @@ fn terminateChild(child_id: std.process.Child.Id) void {
 }
 
 fn terminateChildGracefully(child_id: std.process.Child.Id) void {
-    switch (builtin.os.tag) {
+    switch (builtin.target.os.tag) {
         .windows => terminateChild(child_id),
         .wasi => {},
         else => std.posix.kill(child_id, .TERM) catch |err| switch (err) {
@@ -2349,8 +2350,7 @@ const ConcurrentRequest = struct {
             return;
         };
         self.request_id = request_id;
-        const body = std.fmt.allocPrint(
-            std.heap.c_allocator,
+        const body = std.heap.c_allocator.print(
             "{{\"jsonrpc\":\"2.0\",\"id\":{d},\"method\":\"fixture/call\"}}",
             .{request_id},
         ) catch |err| {
@@ -2405,7 +2405,7 @@ fn createShellDispatcher(script: []const u8) !struct {
     dispatcher: *StdioDispatcher,
     pid: io_mod.ProcessId,
 } {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const child = try std.process.spawn(io_mod.getIo(), .{
@@ -2459,14 +2459,12 @@ test "one dispatcher keeps reversed concurrent responses with their requests" {
     try std.testing.expect(second.err == null);
     defer std.heap.c_allocator.free(first.response.?);
     defer std.heap.c_allocator.free(second.response.?);
-    const first_owner = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const first_owner = try std.testing.allocator.print(
         "\"owner\":{d}",
         .{first.request_id.?},
     );
     defer std.testing.allocator.free(first_owner);
-    const second_owner = try std.fmt.allocPrint(
-        std.testing.allocator,
+    const second_owner = try std.testing.allocator.print(
         "\"owner\":{d}",
         .{second.request_id.?},
     );
@@ -2899,7 +2897,7 @@ test "stderr capture keeps the leading bytes and the newest trailing bytes" {
 }
 
 test "MCP stdio records how a child that exits before replying ended and what it printed" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const fixture = try createShellDispatcher(
@@ -2930,7 +2928,7 @@ test "MCP stdio records how a child that exits before replying ended and what it
 }
 
 test "MCP stdio keeps the stdout line it rejected as not an MCP message" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const fixture = try createShellDispatcher(
@@ -2959,7 +2957,7 @@ test "MCP stdio keeps the stdout line it rejected as not an MCP message" {
 }
 
 test "rejected stdout keeps a bounded prefix of the line" {
-    const long_line = "x" ** (rejected_output_capacity + 10);
+    const long_line = text_utils.repeat("x", rejected_output_capacity + 10);
     const rejected = RejectedOutput.init(long_line);
     try std.testing.expectEqual(rejected_output_capacity, rejected.slice().len);
     try std.testing.expect(rejected.truncated);
@@ -2968,7 +2966,7 @@ test "rejected stdout keeps a bounded prefix of the line" {
 }
 
 test "MCP stdio reports a write to a child that closed stdin as a closed connection" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const fixture = try createShellDispatcher(
@@ -3002,7 +3000,7 @@ test "MCP stdio reports a write to a child that closed stdin as a closed connect
 }
 
 test "MCP stdio keeps draining stderr so a chatty child stays responsive" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const fixture = try createShellDispatcher(
@@ -3031,7 +3029,7 @@ test "MCP stdio keeps draining stderr so a chatty child stays responsive" {
 }
 
 test "MCP stdio exit is not held by a detached descendant that keeps stderr open" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const alloc = std.testing.allocator;
@@ -3039,12 +3037,11 @@ test "MCP stdio exit is not held by a detached descendant that keeps stderr open
     defer tmp.cleanup();
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const pid_path = try std.fmt.allocPrint(alloc, "{s}/descendant.pid", .{root});
+    const pid_path = try alloc.print("{s}/descendant.pid", .{root});
     defer alloc.free(pid_path);
     // The descendant publishes its pid only after leaving the process group,
     // and it keeps the inherited stderr pipe open.
-    const script = try std.fmt.allocPrint(
-        alloc,
+    const script = try alloc.print(
         "perl -MPOSIX -e 'setsid(); open(my $f, \">\", \"$ARGV[0].tmp\") or die; print $f \"$$\\n\"; close $f; rename(\"$ARGV[0].tmp\", $ARGV[0]) or die; sleep 30' \"{s}\" </dev/null >/dev/null &\nexec sleep 30",
         .{pid_path},
     );
@@ -3073,11 +3070,11 @@ test "MCP stdio exit is not held by a detached descendant that keeps stderr open
     try expectProcessReaped(fixture.pid);
     try std.testing.expect(elapsed_ms < shutdown_grace_ms);
     // Still alive: it escaped the group kill and held stderr the whole time.
-    try std.posix.kill(io_mod.posixPid(descendant.?), @enumFromInt(0));
+    try std.posix.kill(io_mod.posixPid(descendant.?), @fromBackingInt(@intCast(0)));
 }
 
 test "MCP immediate shutdown kills an uncooperative child without grace waits" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const fixture = try createShellDispatcher(
@@ -3093,7 +3090,7 @@ test "MCP immediate shutdown kills an uncooperative child without grace waits" {
 }
 
 test "MCP immediate shutdown waits out the drain window before the kill" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const fixture = try createShellDispatcher(
@@ -3108,7 +3105,7 @@ test "MCP immediate shutdown waits out the drain window before the kill" {
 }
 
 test "MCP abandoned shutdown kills an uncooperative child without grace waits" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const fixture = try createShellDispatcher(
@@ -3128,7 +3125,7 @@ const uncooperative_child_script =
 ;
 
 test "process exit kills every stdio child at once without waiting to reap them" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     defer resetProcessExitKillsForTest();
@@ -3153,7 +3150,7 @@ test "process exit refuses stdio launches that begin after it" {
 }
 
 test "process exit leaves a docker-backed child to the full teardown" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     defer resetProcessExitKillsForTest();
@@ -3163,7 +3160,7 @@ test "process exit leaves a docker-backed child to the full teardown" {
 
     try std.testing.expect(!killAllForProcessExit());
     try std.testing.expect(fixture.dispatcher.childMayBeRunning());
-    try std.posix.kill(io_mod.posixPid(fixture.pid), @enumFromInt(0));
+    try std.posix.kill(io_mod.posixPid(fixture.pid), @fromBackingInt(@intCast(0)));
 }
 
 test "process exit waits for a stdio launch under way before killing" {
@@ -3195,7 +3192,7 @@ test "process exit falls back to the full teardown when a child was not tracked"
 }
 
 test "MCP normal shutdown gives a cooperative child TERM before forced cleanup" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const alloc = std.testing.allocator;
@@ -3203,12 +3200,11 @@ test "MCP normal shutdown gives a cooperative child TERM before forced cleanup" 
     defer tmp.cleanup();
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const sentinel = try std.fmt.allocPrint(alloc, "{s}/term-sentinel", .{root});
+    const sentinel = try alloc.print("{s}/term-sentinel", .{root});
     defer alloc.free(sentinel);
-    const ready = try std.fmt.allocPrint(alloc, "{s}/ready", .{root});
+    const ready = try alloc.print("{s}/ready", .{root});
     defer alloc.free(ready);
-    const script = try std.fmt.allocPrint(
-        alloc,
+    const script = try alloc.print(
         "trap 'printf term > \"{s}\"; exit 0' TERM\nprintf ready > \"{s}\"\nwhile :; do :; done",
         .{ sentinel, ready },
     );
@@ -3224,7 +3220,7 @@ test "MCP normal shutdown gives a cooperative child TERM before forced cleanup" 
 }
 
 test "MCP forced shutdown gives launchers bounded TERM before KILL" {
-    if (builtin.os.tag == .windows or builtin.os.tag == .wasi) {
+    if (builtin.target.os.tag == .windows or builtin.target.os.tag == .wasi) {
         return error.SkipZigTest;
     }
     const alloc = std.testing.allocator;
@@ -3232,12 +3228,11 @@ test "MCP forced shutdown gives launchers bounded TERM before KILL" {
     defer tmp.cleanup();
     const root = try io_mod.dirRealpathAlloc(alloc, tmp.dir, ".");
     defer alloc.free(root);
-    const sentinel = try std.fmt.allocPrint(alloc, "{s}/term-sentinel", .{root});
+    const sentinel = try alloc.print("{s}/term-sentinel", .{root});
     defer alloc.free(sentinel);
-    const ready = try std.fmt.allocPrint(alloc, "{s}/ready", .{root});
+    const ready = try alloc.print("{s}/ready", .{root});
     defer alloc.free(ready);
-    const script = try std.fmt.allocPrint(
-        alloc,
+    const script = try alloc.print(
         "trap 'printf term > \"{s}\"; exit 0' TERM\nprintf ready > \"{s}\"\nwhile :; do :; done",
         .{ sentinel, ready },
     );

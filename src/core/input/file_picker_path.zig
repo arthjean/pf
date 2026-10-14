@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const testing_allocator = @import("../shared/testing_allocator.zig");
 const text_utils = @import("../shared/text_utils.zig");
 
 /// How `\` reads inside an @ path. Windows paths use it as a separator, so it
@@ -344,7 +345,7 @@ test "at path codec bounds decoding and cleans up failed allocations" {
     try std.testing.expectError(error.InvalidPath, decodeIntoStyle("\\", &small, .escaping));
     try std.testing.expect(queryAtStyle("@\"a\\\"b\"tail", 5, .escaping) == null);
     try std.testing.expect(contains_position("@\"a\\", 4));
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, struct {
+    try std.testing.checkAllAllocationFailures(testing_allocator.no_resize, struct {
         fn check(alloc: std.mem.Allocator) !void {
             const path = if (native_style == .escaping) "a\\b\"$c" else "a\\b$c";
             const encoded = try encode(alloc, path, .{});

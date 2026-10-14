@@ -27,7 +27,7 @@ const NapiSurface = enum {
 fn withWindowsVersionFloor(b: *std.Build, target: std.Build.ResolvedTarget) std.Build.ResolvedTarget {
     const floor: std.Target.Os.WindowsVersion = .win10_rs5;
     if (target.result.os.tag != .windows) return target;
-    if (@intFromEnum(target.result.os.version_range.windows.min) >= @intFromEnum(floor)) return target;
+    if (@backingInt(target.result.os.version_range.windows.min) >= @backingInt(floor)) return target;
     var query = target.query;
     query.os_version_min = .{ .windows = floor };
     return b.resolveTargetQuery(query);
@@ -72,9 +72,11 @@ pub fn build(b: *std.Build) void {
             .stack_check = false,
             .stack_protector = false,
             .omit_frame_pointer = true,
-            .unwind_tables = .none,
+            // Zig 0.17 compiles the MinGW startup code with this setting, and
+            // its SEH directives need unwind tables.
+            .unwind_tables = if (target.result.os.tag == .windows) null else .none,
             .error_tracing = false,
-            .strip = optimize != .Debug,
+            .strip = optimize != .debug,
         }),
     });
     exe.root_module.addImport("build_options", build_options.createModule());
@@ -84,9 +86,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run pf");
     run_step.dependOn(&run_cmd.step);
@@ -98,12 +98,12 @@ pub fn build(b: *std.Build) void {
     });
     const run_exe_tests = b.addRunArtifact(exe_tests);
     run_exe_tests.step.dependOn(b.getInstallStep());
-    run_exe_tests.setEnvironmentVariable(
-        "PF_TEST_PRODUCT_EXE",
-        b.getInstallPath(.bin, exe.out_filename),
-    );
-    // The session boundary test walks the source tree from here.
-    run_exe_tests.setEnvironmentVariable("PF_TEST_SOURCE_ROOT", b.pathFromRoot("src"));
+    // Tests launch the installed pf binary, and the session boundary test
+    // walks the source tree.
+    const test_paths = b.addOptions();
+    test_paths.addOptionPathUntracked("product_exe", b.graph.path(.install_bin, exe.out_filename));
+    test_paths.addOptionPathUntracked("source_root", b.path("src"));
+    exe.root_module.addImport("test_paths", test_paths.createModule());
 
     // The session manager's own tests, as pf compiles it (no hooks).
     const session_manager_tests = b.addTest(.{
@@ -150,12 +150,17 @@ pub fn build(b: *std.Build) void {
         mcp_test_exports,
     );
     const run_mcp_dispatcher_e2e = b.addRunArtifact(mcp_dispatcher_e2e);
-    if (b.args) |args| run_mcp_dispatcher_e2e.addArgs(args);
+    run_mcp_dispatcher_e2e.addPassthruArgs();
     const mcp_dispatcher_e2e_step = b.step(
         "run-mcp-stdio-dispatcher-e2e",
         "Run the MCP stdio dispatcher E2E driver",
     );
     mcp_dispatcher_e2e_step.dependOn(&run_mcp_dispatcher_e2e.step);
+    const build_mcp_dispatcher_e2e_step = b.step(
+        "build-mcp-stdio-dispatcher-e2e",
+        "Build the MCP stdio dispatcher E2E driver",
+    );
+    build_mcp_dispatcher_e2e_step.dependOn(&mcp_dispatcher_e2e.step);
 
     // --- Windows ConPTY driver and VT input probe ---
     const conpty_driver_step = b.step(
@@ -212,7 +217,7 @@ pub fn build(b: *std.Build) void {
 
     const run_bench = b.addRunArtifact(file_index_bench);
     run_bench.step.dependOn(&install_bench.step);
-    if (b.args) |args| run_bench.addArgs(args);
+    run_bench.addPassthruArgs();
     const run_bench_step = b.step("run-bench-file-index", "Build and run file_index search benchmark");
     run_bench_step.dependOn(&run_bench.step);
 
@@ -290,7 +295,7 @@ pub fn build(b: *std.Build) void {
 
     const run_approval_review_bench = b.addRunArtifact(approval_review_bench);
     run_approval_review_bench.step.dependOn(&install_approval_review_bench.step);
-    if (b.args) |args| run_approval_review_bench.addArgs(args);
+    run_approval_review_bench.addPassthruArgs();
     const run_approval_review_bench_step = b.step(
         "run-bench-approval-review",
         "Build and run the file-diff approval review benchmark",
@@ -387,7 +392,7 @@ fn addWasmArtifact(
         .root_module = b.createModule(.{
             .root_source_file = b.path(wasm_root),
             .target = wasm_target,
-            .optimize = .ReleaseSmall,
+            .optimize = .small,
             .single_threaded = true,
             .link_libc = true,
             .stack_check = false,
@@ -400,7 +405,7 @@ fn addWasmArtifact(
     });
     if (surface == .core) wasm_exe.stack_size = 1024 * 1024;
     wasm_exe.root_module.addImport("build_options", wasm_options.createModule());
-    _ = addSessionManager(b, wasm_exe.root_module, wasm_target, .ReleaseSmall, true);
+    _ = addSessionManager(b, wasm_exe.root_module, wasm_target, .small, true);
 
     const install_wasm = b.addInstallArtifact(wasm_exe, .{});
     const wasm_step = b.step(name ++ "-wasm", description);
@@ -432,19 +437,25 @@ fn addNapiArtifact(
         .root_module = b.createModule(.{
             .root_source_file = b.path(root),
             .target = target,
-            .optimize = .ReleaseSafe,
+            .optimize = .safe,
             .link_libc = true,
             .strip = true,
         }),
     });
     lib.root_module.addImport("build_options", napi_options.createModule());
-    _ = addSessionManager(b, lib.root_module, target, .ReleaseSafe, null);
+    _ = addSessionManager(b, lib.root_module, target, .safe, null);
     const node_include = b.option(
         []const u8,
         "node-include-dir",
         "Directory containing node_api.h for the N-API addon",
     ) orelse discoverNodeIncludeDir(b);
-    lib.root_module.addSystemIncludePath(.{ .cwd_relative = node_include });
+    const node_api = b.addTranslateC(.{
+        .root_source_file = .{ .cwd_relative = b.pathJoin(&.{ node_include, "node_api.h" }) },
+        .target = target,
+        .optimize = .safe,
+    });
+    node_api.addSystemIncludePath(.{ .cwd_relative = node_include });
+    lib.root_module.addImport("node_api", node_api.createModule());
     lib.linker_allow_shlib_undefined = true;
 
     const install = b.addInstallArtifact(lib, .{ .dest_sub_path = "libpf.node" });
@@ -454,25 +465,28 @@ fn addNapiArtifact(
 }
 
 fn discoverNodeIncludeDir(b: *std.Build) []const u8 {
-    var code: u8 = 0;
-    const out = b.runAllowFail(
+    const out = switch (b.runFallible(
         &.{ "node", "-p", "require('node:path').join(require('node:path').dirname(process.execPath), '..', 'include', 'node')" },
-        &code,
-        .ignore,
-    ) catch std.process.fatal("Node.js is required to locate node_api.h; pass -Dnode-include-dir=<path>", .{});
-    if (code != 0) std.process.fatal("could not locate node_api.h; pass -Dnode-include-dir=<path>", .{});
+        .{ .stderr_behavior = .ignore },
+    )) {
+        .success => |stdout| stdout,
+        .spawn_failed, .crashed => std.process.fatal("Node.js is required to locate node_api.h; pass -Dnode-include-dir=<path>", .{}),
+        .bad_exit_code => std.process.fatal("could not locate node_api.h; pass -Dnode-include-dir=<path>", .{}),
+    };
     const trimmed = std.mem.trim(u8, out, " \t\r\n");
     return b.allocator.dupe(u8, trimmed) catch std.process.fatal("could not allocate Node include path", .{});
 }
 
 fn readGitCommit(b: *std.Build) []const u8 {
-    var code: u8 = 0;
-    const out = b.runAllowFail(
+    // The configure cache cannot see a new commit, so rerun configure.
+    b.graph.poisonCache();
+    const out = switch (b.runFallible(
         &.{ "git", "rev-parse", "--short=12", "HEAD" },
-        &code,
-        .ignore,
-    ) catch return "unknown";
-    if (code != 0) return "unknown";
+        .{ .stderr_behavior = .ignore },
+    )) {
+        .success => |stdout| stdout,
+        .spawn_failed, .bad_exit_code, .crashed => return "unknown",
+    };
     const trimmed = std.mem.trim(u8, out, " \t\r\n");
     return b.allocator.dupe(u8, trimmed) catch "unknown";
 }
@@ -484,13 +498,13 @@ fn addSessionManager(
     b: *std.Build,
     importer: *std.Build.Module,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     single_threaded: ?bool,
 ) *std.Build.Module {
     const options = b.addOptions();
     options.addOption(bool, "hooks", false);
-    options.addOption([]const u8, "trace_dir", b.getInstallPath(.prefix, "session-manager-traces"));
-    options.addOption([]const u8, "src_dir", b.pathFromRoot("src/core/session_manager"));
+    options.addOptionPathUntracked("trace_dir", b.graph.path(.install_prefix, "session-manager-traces"));
+    options.addOptionPathUntracked("src_dir", b.path("src/core/session_manager"));
     const module = b.createModule(.{
         .root_source_file = b.path("src/core/session_manager/api.zig"),
         .target = target,
@@ -504,7 +518,9 @@ fn addSessionManager(
 }
 
 fn readAppVersion(b: *std.Build) []const u8 {
-    const bytes = std.Io.Dir.cwd().readFileAlloc(b.graph.io, "src/main.zig", b.allocator, .limited(1024 * 1024)) catch
+    b.dependOnFileContents(b.path("src/main.zig"));
+    const main_path = b.pathJoin(&.{ b.root.sub_path, "src/main.zig" });
+    const bytes = b.root.root_dir.handle.readFileAlloc(b.graph.io, main_path, b.allocator, .limited(1024 * 1024)) catch
         @panic("could not read src/main.zig to resolve app version");
     defer b.allocator.free(bytes);
 

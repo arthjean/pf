@@ -11,6 +11,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **ACP session workspace:** `session/new` rejects a `cwd` that is relative, empty, or names a directory that does not exist with JSON-RPC error -32602 instead of creating a session.
 - **Interactive terminals:** Terminals that the shell tool starts with `tty: true` now end when pf exits, on every platform, and a resumed session reports them as ended instead of reattaching them.
 - **ACP permission modes:** ACP session modes are the CLI's permission modes, `auto`, `ask`, and `full-access`, with `auto` as the default; the `code` mode is gone. A session starts in the saved `permission_mode`, choosing a mode with `session/set_mode` or `session/set_config_option` saves it like `/permissions`, and any other mode returns error -32602.
+- **Zig 0.17:** Building pf requires Zig 0.17.0.
 
 ### New Features
 

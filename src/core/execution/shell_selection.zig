@@ -101,8 +101,8 @@ pub fn selectWindows(alloc: Allocator, inputs: Inputs) (SelectionError || Alloca
     const preference: Preference = if (inputs.windows_shell) |raw| blk: {
         const value = std.mem.trim(u8, raw, " ");
         if (value.len == 0) break :blk .auto;
-        inline for (@typeInfo(Preference).@"enum".fields) |field| {
-            if (std.ascii.eqlIgnoreCase(value, field.name)) break :blk @enumFromInt(field.value);
+        inline for (@typeInfo(Preference).@"enum".field_names) |name| {
+            if (std.ascii.eqlIgnoreCase(value, name)) break :blk @field(Preference, name);
         }
         return error.InvalidWindowsShell;
     } else .auto;
