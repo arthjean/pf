@@ -43,6 +43,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Request size budget:** pf keeps each model request under 30 MiB and 100 images by leaving the oldest images out of that request, with a note telling the model to reopen them with `read_file` or `read_tool_result`; the saved conversation keeps every image. When AI Gateway reports that a provider rejected a request as too large, pf sends it again with fewer images, at most twice per turn, instead of compacting the conversation.
 - **Full transcript tool rows:** In the full transcript (Ctrl+O), a tool row longer than the terminal wraps onto more lines instead of ending in an ellipsis, so long commands show in full.
 - **Full transcript reading position:** When the full transcript (Ctrl+O) rebuilds a page while you read it, the entry at the top of the page stays at the top instead of moving.
+- **`@` menu folders:** In the `@` menu, Enter on a folder mentions it and Tab opens it. An opened folder lists itself first, so it can be mentioned from inside, and its rows appear with the keystroke instead of after a loading frame.
 
 ### Bug Fixes
 
@@ -54,3 +55,8 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Crash recovery on sessions v2:** Text the agent streamed before a tool call survives a crash or a killed process, and is sent once when the session resumes.
 - **Damaged compaction checkpoints:** A compaction checkpoint whose saved counts are out of range no longer stops pf; new records are numbered after the saved ones.
 - **Steering after a cancel:** Steering typed right after a tool result survives a canceled turn and appears exactly once when the session resumes.
+
+### Security
+
+- **Git-free file listing:** `@`-completion, `glob_files`, and `grep_files` list workspace files by reading git's index, ignore rules, and config as data, without starting git, so opening a repository cannot run the programs its config names, such as `core.fsmonitor`, hooks, or filters. Listings are saved under `~/.pf/file-index/` and reused only while current; listings saved by an earlier pf build are ignored and left in place.
+- **Safe git:** The git that pf runs itself, for `pf pr`, `pf issue`, and the agent's direct `git status`, `git diff`, and `git log`, turns off every program the repository's config can name and refuses to run when git would use a different repository than the one pf read. In `auto` mode, a git command that pf cannot run this way is returned to the agent without running; `ask` mode still asks.
