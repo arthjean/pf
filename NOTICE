@@ -54,6 +54,8 @@ and has been modified since. Notable modifications:
   default MCP engine.
 - On Windows, `safe_git` runs the git of the Git Bash that pf selected,
   with the Windows profile variables, instead of a fixed install path.
+- `homeDir` checks `USERPROFILE` then `HOME` on Windows and ignores a
+  relative value on every OS.
 
 "fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
 where this code comes from.

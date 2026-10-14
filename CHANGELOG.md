@@ -44,6 +44,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Full transcript tool rows:** In the full transcript (Ctrl+O), a tool row longer than the terminal wraps onto more lines instead of ending in an ellipsis, so long commands show in full.
 - **Full transcript reading position:** When the full transcript (Ctrl+O) rebuilds a page while you read it, the entry at the top of the page stays at the top instead of moving.
 - **`@` menu folders:** In the `@` menu, Enter on a folder mentions it and Tab opens it. An opened folder lists itself first, so it can be mentioned from inside, and its rows appear with the keystroke instead of after a loading frame.
+- **Large-file search:** `grep_files` searches files of any size in 64 KiB blocks instead of skipping files larger than 200 KiB, finds matches on lines longer than a block, and still skips a file that contains a NUL byte.
 
 ### Bug Fixes
 
@@ -55,6 +56,8 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Crash recovery on sessions v2:** Text the agent streamed before a tool call survives a crash or a killed process, and is sent once when the session resumes.
 - **Damaged compaction checkpoints:** A compaction checkpoint whose saved counts are out of range no longer stops pf; new records are numbered after the saved ones.
 - **Steering after a cancel:** Steering typed right after a tool result survives a canceled turn and appears exactly once when the session resumes.
+- **Relative home folder:** pf treats a relative `HOME`, or on Windows a relative `USERPROFILE`, as unset, so `pf sessions` reports that `HOME` is not set instead of crashing, and pf never creates profile files under the current folder.
+- **FIFOs in a workspace:** `grep_files` skips a FIFO, or a link to one, instead of waiting for a writer.
 
 ### Security
 

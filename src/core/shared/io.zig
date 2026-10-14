@@ -659,16 +659,28 @@ pub fn getenv(key: []const u8) ?[]const u8 {
     return null;
 }
 
-/// Returns the profile home directory: `USERPROFILE`, else `HOME`, on
-/// Windows, and `HOME` elsewhere. Git Bash exports its own `HOME`, so Windows
-/// prefers `USERPROFILE` to find one profile from every shell. The slice
-/// borrows the process environment.
+/// Returns the profile home directory pf keeps its own files under: the
+/// first non-empty absolute value of `USERPROFILE`, then `HOME`, on Windows,
+/// and `HOME` when it is absolute elsewhere. Git Bash exports its own `HOME`,
+/// so Windows prefers `USERPROFILE` to find one profile from every shell. A
+/// relative value counts as unset, so pf never builds profile paths relative
+/// to the current folder; child processes still inherit it unchanged. The
+/// slice borrows the process environment.
 pub fn homeDir() ?[]const u8 {
     const os_tag = if (comptime builtin.is_test) test_home_dir_os else builtin.target.os.tag;
+    return homeDirFrom(os_tag, getenv);
+}
+
+fn homeDirFrom(os_tag: std.Target.Os.Tag, lookup: *const fn ([]const u8) ?[]const u8) ?[]const u8 {
     if (os_tag == .windows) {
-        if (nonEmptyEnv("USERPROFILE")) |profile| return profile;
+        for ([_][]const u8{ "USERPROFILE", "HOME" }) |key| {
+            const value = lookup(key) orelse continue;
+            if (value.len > 0 and std.Io.Dir.path.isAbsoluteWindows(value)) return value;
+        }
+        return null;
     }
-    return getenv("HOME");
+    const home = lookup("HOME") orelse return null;
+    return if (std.Io.Dir.path.isAbsolutePosix(home)) home else null;
 }
 
 /// Lets a test take another platform's branch of `homeDir` on any host.
@@ -1897,6 +1909,26 @@ test "getenv returns set value after setEnvironMap" {
     global_environ = null;
 }
 
+test "homeDir accepts only an absolute HOME" {
+    const previous = global_environ;
+    defer global_environ = previous;
+
+    var environ = std.process.Environ.Map.init(std.testing.allocator);
+    defer environ.deinit();
+    setEnvironMap(&environ);
+    try std.testing.expect(homeDir() == null);
+
+    for ([_][]const u8{ "", "relative/home", "./home", "~" }) |value| {
+        try environ.put("HOME", value);
+        try std.testing.expect(homeDir() == null);
+        // The raw value stays available to code that passes it on.
+        try std.testing.expectEqualStrings(value, getenv("HOME").?);
+    }
+
+    try environ.put("HOME", "/Users/example");
+    try std.testing.expectEqualStrings("/Users/example", homeDir().?);
+}
+
 test "environMap returns borrowed process environment map" {
     const previous = global_environ;
     global_environ = null;
@@ -2531,6 +2563,38 @@ test "homeDir prefers USERPROFILE on Windows and reads HOME elsewhere" {
         _ = environ.swapRemove("USERPROFILE");
     }
     try std.testing.expect(homeDir() == null);
+}
+
+test "homeDir skips a relative candidate and keeps the Windows order on any host" {
+    const previous = global_environ;
+    defer global_environ = previous;
+    const previous_os = test_home_dir_os;
+    defer test_home_dir_os = previous_os;
+
+    var environ = std.process.Environ.Map.init(std.testing.allocator);
+    defer environ.deinit();
+    setEnvironMap(&environ);
+
+    test_home_dir_os = .windows;
+    try environ.put("USERPROFILE", "relative");
+    try environ.put("HOME", "C:\\Users\\a");
+    try std.testing.expectEqualStrings("C:\\Users\\a", homeDir().?);
+    try environ.put("USERPROFILE", "C:\\Users\\a");
+    try environ.put("HOME", "C:\\Users\\b");
+    try std.testing.expectEqualStrings("C:\\Users\\a", homeDir().?);
+    // Git Bash's own HOME is rooted, which Windows treats as absolute.
+    _ = environ.swapRemove("USERPROFILE");
+    try environ.put("HOME", "/git-bash/home");
+    try std.testing.expectEqualStrings("/git-bash/home", homeDir().?);
+    try environ.put("USERPROFILE", "");
+    try environ.put("HOME", "relative/home");
+    try std.testing.expect(homeDir() == null);
+
+    test_home_dir_os = .linux;
+    try environ.put("USERPROFILE", "/Users/a");
+    try std.testing.expect(homeDir() == null);
+    try environ.put("HOME", "/home/a");
+    try std.testing.expectEqualStrings("/home/a", homeDir().?);
 }
 
 test "tempDir follows the platform order" {
