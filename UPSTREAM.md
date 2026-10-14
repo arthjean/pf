@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `1a19ec9950dcab05e13fe4834ec6a0bae13ca6a3` |
+| Last ported | `f666cca0768918895554986422abb0025e86d6b5` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -41,6 +41,7 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 | `c673abcdb32a2b31cba81f42148092607faad5e3` | #1230 | Its `.github/workflows/ci.yml` lines that run the `queue` durability of `sdk/tests/test-durable-core.mjs` and the `queue` walks of `sdk/tests/model/drive.mjs` | `775b19ad6268f09dc59ad1a23331b08bee62c532` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 | `8da4aa06df2c128787ecad31f8faef0881e5a391` | #1242 | Its `.github/workflows/ci.yml` line that runs the `write` walks of `sdk/tests/model/drive.mjs` | `775b19ad6268f09dc59ad1a23331b08bee62c532` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 | `f3bc7e6bf415cffbda532b0bd6964f73aaa2b3c9` | #1196 | Its `.github/workflows/ci.yml` step that runs `scripts/check-indexer-boundary.sh` and its entry in the Shellcheck script list | `335f67a08c1592278383ca3a7b903cd8fc5645e1` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
+| `f666cca0768918895554986422abb0025e86d6b5` | #1254 | Its `.github/workflows/ci.yml` lines that run the `send` and `consume` walks of `sdk/tests/model/drive-agents.mjs` | `pending` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 
