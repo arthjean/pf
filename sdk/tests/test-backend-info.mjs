@@ -35,7 +35,7 @@ const matchingCore = {
   createCore() { assert.fail("backend probing must not create a core"); },
 };
 const matchingTerminal = {
-  libpfApiVersion: 2,
+  libpfApiVersion: 3,
   createPfTerminal() { assert.fail("backend probing must not create a terminal"); },
 };
 

@@ -69,7 +69,7 @@ export function keys(event: KeyboardEvent): string | null {
 }
 
 export async function agents(): Promise<void> {
-  assertType<Equal<typeof libpfApiVersion, 2>>();
+  assertType<Equal<typeof libpfApiVersion, 3>>();
   if (!supportsJspi()) return;
   const agent = createPfAgent({ apiKey: "<short-lived credential>", durability: memory() });
   const turn = agent.session().prompt("Hello");

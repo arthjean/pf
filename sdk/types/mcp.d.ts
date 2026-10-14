@@ -1,5 +1,5 @@
 // `libpf/mcp` (mcp.js): tools and instructions from a host-owned MCP client.
-import type { PfHostTool } from "./libpf.cjs";
+import type { PfAgentHostTool } from "./libpf.cjs";
 
 /**
  * The parts of an MCP client the adapter calls, with the MCP TypeScript SDK
@@ -30,7 +30,8 @@ export interface McpAdapterOptions {
 
 /** What `createMcpAdapter()` resolves to. Pass `tools` and `instructions` to the agent. */
 export interface McpAdapter {
-  tools: PfHostTool[];
+  /** Each tool has `idempotent: false`; set it to `true` on a tool known to be safe to run twice. */
+  tools: PfAgentHostTool[];
   instructions: string;
   /** Closes the client once. */
   close(): Promise<void>;

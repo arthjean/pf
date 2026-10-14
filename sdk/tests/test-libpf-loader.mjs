@@ -15,9 +15,9 @@ import {
 } from "../node.js";
 import * as browser from "../browser.js";
 
-assert.equal(libpfApiVersion, 2);
+assert.equal(libpfApiVersion, 3);
 assert.equal(pfSdkApiVersion, 2);
-assert.equal(browser.libpfApiVersion, 2);
+assert.equal(browser.libpfApiVersion, 3);
 assert.equal(typeof browser.createPfEngine, "function");
 assert.equal(typeof browser.createPfTerminal, "function");
 assert.equal(typeof browser.listModels, "function");
@@ -28,14 +28,14 @@ const realNativeAddon = resolve(scriptDir, "../../zig-out/lib/libpf.node");
 const dir = await mkdtemp(resolve(tmpdir(), "libpf-loader-"));
 const nativePath = resolve(dir, "native.mjs");
 await writeFile(nativePath, `
-  export const libpfApiVersion = 2;
+  export const libpfApiVersion = 3;
   export async function createPfTerminal(options) { return { backend: "native-terminal", options }; }
 `);
 const nativeUrl = pathToFileURL(nativePath);
 
 const highLevelAgentPath = resolve(dir, "high-level-agent.mjs");
 await writeFile(highLevelAgentPath, `
-  export const libpfApiVersion = 2;
+  export const libpfApiVersion = 3;
   export function createPfEngine() { throw new Error("high-level createPfEngine invoked"); }
 `);
 

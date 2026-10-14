@@ -14,7 +14,7 @@ import {
 } from "./pf-sdk.js";
 
 export { createMemoryPersistence, encodeXtermKeyEvent, PfFencedError, PfJournalVersionError, pfSdkApiVersion, listModels, memory, supportsJspi, xtermAdapter };
-export const libpfApiVersion = 2;
+export const libpfApiVersion = 3;
 
 const defaultCoreWasm = new URL("./pf-core.wasm", import.meta.url).href;
 const defaultTermWasm = new URL("./pf-term.wasm", import.meta.url).href;

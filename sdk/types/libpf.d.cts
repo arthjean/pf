@@ -170,11 +170,17 @@ export interface PfHostTool<Input = any> {
   inputSchema: PfJsonSchema;
   /** Runs one call. A string is sent as is, an `PfToolResult` as rich content, and any other value as JSON text. */
   execute: (input: Input, context: PfToolContext) => unknown;
-  /** Running a call twice is safe, so a call cut off by a crash runs again. */
+  /** Running a call twice is safe, so a call cut off by a crash runs again. Default `false`. */
   idempotent?: boolean;
-  /** Calls must not overlap others: one starts after every earlier call in the response finishes. */
+  /** Calls must not overlap others: one starts after every earlier call in the response finishes. Defaults to `!idempotent`. */
   writes?: boolean;
   providerExecuted?: false;
+}
+
+/** A tool the JavaScript host runs for `createPfAgent()`, which must say whether a call is safe to run twice. */
+export interface PfAgentHostTool<Input = any> extends PfHostTool<Input> {
+  /** `true` when running a call twice is harmless, `false` when it is not. Required. */
+  idempotent: boolean;
 }
 
 /** A tool the provider runs, such as Gateway web search. `web_search` is currently the supported name. */
@@ -194,6 +200,17 @@ export type PfKeyedTool =
 
 /** At most 64 tools: an array of descriptors, or an object keyed by tool name. */
 export type PfTools = readonly PfTool[] | { readonly [name: string]: PfKeyedTool };
+
+/** A tool descriptor for `createPfAgent()`. */
+export type PfAgentTool = PfAgentHostTool | PfProviderTool;
+
+/** A `createPfAgent()` tool descriptor in an object keyed by tool name. */
+export type PfAgentKeyedTool =
+  | (Omit<PfAgentHostTool, "name"> & { name?: string })
+  | (Omit<PfProviderTool, "name"> & { name?: "web_search" });
+
+/** At most 64 `createPfAgent()` tools: an array of descriptors, or an object keyed by tool name. */
+export type PfAgentTools = readonly PfAgentTool[] | { readonly [name: string]: PfAgentKeyedTool };
 
 // ---------------------------------------------------------------------------
 // Turn events and results
@@ -341,16 +358,31 @@ export interface JournalRecord {
 export interface PersistenceLoadResult {
   checkpoint?: { data: PfBytes; through: string };
   journal?: Iterable<{ cursor: string; data: PfBytes }> | AsyncIterable<{ cursor: string; data: PfBytes }>;
+  /** The cursor the next `append()` names as `expected`, for a store whose log holds entries of its own after the last record. Defaults to the last record's cursor, or the checkpoint's `through`. */
+  head?: string | null;
 }
+
+/** What one record tells a store that set `marks: true` about turns: a turn started, ended or yielded, or an input was accepted. Other marks may appear; a store keeps or ignores them. */
+export type PfJournalMark =
+  | { start: string }
+  | { end: true }
+  | { yield: true }
+  | { accepted: string }
+  | { step: string };
 
 /** A store for one session's records and checkpoints. libpf writes opaque bytes; the store never parses them. */
 export interface Persistence {
   /** Called once by `createPfEngine()`. Resolve to `{}` for a session with nothing stored. */
   load(): Promise<PersistenceLoadResult>;
-  /** Stores one record and resolves to its cursor. Reject with an `PfFencedError` when `expected` is not the last stored record's cursor. */
-  append(input: { expected: string | null; idempotencyKey: string; data: Uint8Array }): Promise<{ cursor: string }>;
+  /**
+   * Stores one record and resolves to its cursor. Reject with an `PfFencedError` when `expected` is not the last stored record's cursor.
+   * `barrier` is true when libpf waits for the record before it goes on, such as before a tool call with effects. A store may resolve a record with `barrier: false` before it is durable, if it keeps records in order and resolves one with `barrier: true` only once it and every record before it are durable.
+   */
+  append(input: { expected: string | null; idempotencyKey: string; data: Uint8Array; barrier: boolean; marks?: PfJournalMark[] }): Promise<{ cursor: string }>;
   /** Stores a checkpoint covering the records through `through`. */
   saveCheckpoint?(input: { through: string; data: Uint8Array }): Promise<void>;
+  /** Set to receive each record's `marks`, for a store that tracks turns and accepted inputs without reading records. */
+  marks?: boolean;
 }
 
 /** The persistence store `createMemoryPersistence()` returns. */
@@ -370,7 +402,7 @@ export declare class PfFencedError extends Error {
   code: "PF_FENCED";
 }
 
-/** The journal was written by a newer libpf than this one. Its `code` is `PF_JOURNAL_VERSION`. */
+/** The journal, or the `checkpoint` option, was written by a newer libpf than this one. Its `code` is `PF_JOURNAL_VERSION`. */
 export declare class PfJournalVersionError extends Error {
   constructor(message?: string);
   name: "PfJournalVersionError";
@@ -393,12 +425,16 @@ export interface PfEnginePromptOptions {
   /** The turn's id, so a retried prompt continues or answers the same turn. 1 to 128 letters, digits, `.`, `_`, or `-`. */
   turnId?: string;
   onAmbiguous?: PfOnAmbiguous;
+  /** With `persistence`: a time, in milliseconds since the epoch, after which the turn stops before its next model request with the stop reason `yielded`. The journal keeps it open, and the next `resume()` continues it without telling the model it was interrupted. */
+  yieldAt?: number;
 }
 
 /** Options for an engine's `resume()`. */
 export interface PfResumeOptions {
   signal?: AbortSignal;
   onAmbiguous?: PfOnAmbiguous;
+  /** As `PfEnginePromptOptions.yieldAt`. */
+  yieldAt?: number;
 }
 
 /** How an engine turn ended. */
@@ -570,7 +606,9 @@ export declare function memory(options?: MemoryOptions): Durability;
 // Durable agents
 
 /** Options for `createPfAgent()`. */
-export type PfAgentOptions = PfSharedOptions<PfAgentEvent> & PfModelChoice & (PfGatewayProvider | PfCodexProvider | PfGrokProvider | PfCustomProvider) & {
+export type PfAgentOptions = Omit<PfSharedOptions<PfAgentEvent>, "tools"> & PfModelChoice & (PfGatewayProvider | PfCodexProvider | PfGrokProvider | PfCustomProvider) & {
+  /** Every host tool sets `idempotent`. */
+  tools?: PfAgentTools;
   /** The AI Gateway credential. Without it, libpf uses `AI_GATEWAY_API_KEY`, then on Vercel the deployment's OIDC token. */
   apiKey?: string | undefined;
   /** Where sessions live. Without it, libpf picks one from the environment. */
@@ -626,7 +664,7 @@ export interface PfIdleResult {
 /** A turn event as a durable session delivers it, with the lease epoch of the worker that wrote it. */
 export type PfSessionTurnEvent = PfTurnEvent & { epoch?: number };
 
-/** A view of one durable turn. Dropping it cancels nothing; call `session.cancel()` to stop the turn. */
+/** A view of one durable turn. It reads the session stream only once its events, `readable` or `result` are used. Dropping it cancels nothing; call `session.cancel()` to stop the turn. */
 export interface PfTurnView<Result> {
   /** Resolves once the prompt is stored, or at once for a prompt whose signal had already aborted. */
   readonly accepted: Promise<PfAccepted>;

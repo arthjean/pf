@@ -1,6 +1,6 @@
 // `libpf/skills/node` (skills-node.js): loads a `SKILL.md` explicitly in
 // Node.js or Bun.
-import type { PfTool } from "./libpf.cjs";
+import type { PfAgentTool } from "./libpf.cjs";
 import type { SkillRecord, SkillResource } from "./skills.js";
 
 export { createSkillsAdapter } from "./skills.js";
@@ -11,14 +11,14 @@ export interface LoadSkillFileOptions {
   /** Replaces `fs.promises.readFile`. */
   readFile?: (path: string, encoding: "utf8") => string | Promise<string>;
   resources?: readonly SkillResource[];
-  tools?: readonly PfTool[];
+  tools?: readonly PfAgentTool[];
 }
 
 /** A skill read from a `SKILL.md`: its frontmatter `name` and `description`, and its body as instructions. */
 export interface LoadedSkill extends SkillRecord {
   description: string;
   resources: readonly SkillResource[];
-  tools: readonly PfTool[];
+  tools: readonly PfAgentTool[];
 }
 
 /** Reads one `SKILL.md`. Without a frontmatter `name`, the file name is the skill's name. */

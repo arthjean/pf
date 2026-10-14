@@ -29,7 +29,11 @@ export type {
   PfAccepted,
   PfAgent,
   PfAgentEvent,
+  PfAgentHostTool,
+  PfAgentKeyedTool,
   PfAgentOptions,
+  PfAgentTool,
+  PfAgentTools,
   PfApiKeyCredentials,
   PfBackendAttempt,
   PfBackendChoice,
@@ -148,4 +152,4 @@ export declare function createPfTerminal(options: PfNodeTerminalOptions): Promis
 export declare function getBackendInfo(options?: PfBackendInfoOptions): Promise<PfBackendInfo>;
 
 /** The version of the libpf agent API. */
-export declare const libpfApiVersion: 2;
+export declare const libpfApiVersion: 3;

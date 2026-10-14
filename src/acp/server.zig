@@ -1847,10 +1847,14 @@ fn handleKernelRestore(
         .code = ErrorCode.invalid_request,
         .message = "A journaled libpf session cannot restore a checkpoint",
     });
-    const saved = active.session_rt.agent.restoreCheckpoint(alloc, bytes) catch
+    const saved = active.session_rt.agent.restoreCheckpoint(alloc, bytes) catch |err|
         return state.writer.writeError(alloc, msg.id, .{
             .code = ErrorCode.invalid_params,
-            .message = "Invalid or non-fresh libpf checkpoint",
+            // The host reports a newer checkpoint as it reports a newer journal.
+            .message = if (err == error.UnsupportedCheckpointVersion)
+                "libpf checkpoint was written by a newer pf"
+            else
+                "Invalid or non-fresh libpf checkpoint",
         });
     defer saved.free(alloc);
     if (saved.isEmpty()) return state.writer.writeResponse(alloc, msg.id, "null");

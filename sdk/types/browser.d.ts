@@ -26,7 +26,11 @@ export type {
   PfAccepted,
   PfAgent,
   PfAgentEvent,
+  PfAgentHostTool,
+  PfAgentKeyedTool,
   PfAgentOptions,
+  PfAgentTool,
+  PfAgentTools,
   PfApiKeyCredentials,
   PfBrowserBackendOptions,
   PfBytes,
@@ -130,4 +134,4 @@ export declare function createPfEngine(options: PfBrowserEngineOptions): Promise
 export declare function createPfTerminal(options: PfBrowserTerminalOptions): Promise<PfTerminal>;
 
 /** The version of the libpf agent API. */
-export declare const libpfApiVersion: 2;
+export declare const libpfApiVersion: 3;

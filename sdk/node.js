@@ -25,7 +25,7 @@ import {
 } from "./pf-sdk.js";
 
 export { createMemoryPersistence, encodeXtermKeyEvent, PfFencedError, PfJournalVersionError, pfSdkApiVersion, listModels, memory, supportsJspi, xtermAdapter };
-export const libpfApiVersion = 2;
+export const libpfApiVersion = 3;
 const nativeCoreApiVersion = 4;
 
 const fetchOperationStale = 0;

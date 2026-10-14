@@ -205,7 +205,7 @@ export async function models(): Promise<void> {
   await createPfEngine({ apiKey, backend: "wasm", wasm: fetch("https://cdn.example.com/pf-core.wasm") });
   await createPfEngine({ apiKey, backend: "native", nativeAddon: "./libpf.darwin-arm64.node" });
 
-  assertType<Equal<typeof libpfApiVersion, 2>>();
+  assertType<Equal<typeof libpfApiVersion, 3>>();
   assertType<Equal<typeof pfSdkApiVersion, 2>>();
   assertType<Equal<ReturnType<typeof supportsJspi>, boolean>>();
 }
