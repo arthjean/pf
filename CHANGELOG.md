@@ -42,9 +42,11 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Status modes:** `pf status --json` reports the permission `mode` a new session in the workspace starts in and lists the `modes` with their `id`, `name`, and `description`.
 - **Request size budget:** pf keeps each model request under 30 MiB and 100 images by leaving the oldest images out of that request, with a note telling the model to reopen them with `read_file` or `read_tool_result`; the saved conversation keeps every image. When AI Gateway reports that a provider rejected a request as too large, pf sends it again with fewer images, at most twice per turn, instead of compacting the conversation.
 - **Full transcript tool rows:** In the full transcript (Ctrl+O), a tool row longer than the terminal wraps onto more lines instead of ending in an ellipsis, so long commands show in full.
+- **Full transcript reading position:** When the full transcript (Ctrl+O) rebuilds a page while you read it, the entry at the top of the page stays at the top instead of moving.
 
 ### Bug Fixes
 
+- **Process scans under gVisor:** On Linux sandboxes such as gVisor, pf no longer fails to scan a command's processes when one of them exits during the scan.
 - **Gateway connections:** A request's timer no longer interrupts other open connections to the model provider.
 - **Host statuses:** A libpf host that reports an HTTP status outside 100 to 599 now fails the request with a provider error instead of crashing pf.
 - **Tall prompts:** A submitted prompt or steering message taller than the screen stays whole in the terminal scrollback instead of losing its first lines.

@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `31ddc74d6487682a2e1effafa4db70ca9f55c4b0` |
+| Last ported | `4e9f14916adf099d9b43b20d65919c305e87791a` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -37,6 +37,8 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 | `f7d6cd1120f25438b200761d133fb32dce38c729` | #1163 | Its edit of `src/core/mcp/slack_preset.zig`, the Slack preset that pf skipped with fx #1101 | `7742a8320e6164febb3593cb4ff39f296fa7ab40` | Q1 of `tasks/prd-fx-sync-0-0-13.md`, answered D | permanent |
 | `f7d6cd1120f25438b200761d133fb32dce38c729` | #1163 | Its edit of the held Slack bridge `src/core/mcp_host/slack.zig` | `7742a8320e6164febb3593cb4ff39f296fa7ab40` | Q3 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 | `f7d6cd1120f25438b200761d133fb32dce38c729` | #1163 | Its Zig 0.17.0 and LLVM 22 pins in `.github/actions/setup-pgso/action.yml`, `.github/workflows/bench.yml`, `binary-size.yml`, `ci.yml`, `dev-release.yml`, `macos.yml` and `release.yml`, including `ZIG_GLOBAL_CACHE_DIR` in place of `--global-cache-dir` | `7742a8320e6164febb3593cb4ff39f296fa7ab40` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
+| `c673abcdb32a2b31cba81f42148092607faad5e3` | #1230 | Its `.github/workflows/ci.yml` lines that run the `queue` durability of `sdk/tests/test-durable-core.mjs` and the `queue` walks of `sdk/tests/model/drive.mjs` | `pending` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
+| `8da4aa06df2c128787ecad31f8faef0881e5a391` | #1242 | Its `.github/workflows/ci.yml` line that runs the `write` walks of `sdk/tests/model/drive.mjs` | `pending` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 
