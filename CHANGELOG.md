@@ -12,6 +12,7 @@ Paneflow Agent starts from fx 0.0.12 ([vercel-labs/fx](https://github.com/vercel
 - **Interactive terminals:** Terminals that the shell tool starts with `tty: true` now end when pf exits, on every platform, and a resumed session reports them as ended instead of reattaching them.
 - **ACP permission modes:** ACP session modes are the CLI's permission modes, `auto`, `ask`, and `full-access`, with `auto` as the default; the `code` mode is gone. A session starts in the saved `permission_mode`, choosing a mode with `session/set_mode` or `session/set_config_option` saves it like `/permissions`, and any other mode returns error -32602.
 - **Zig 0.17:** Building pf requires Zig 0.17.0.
+- **Usage from provider reports:** `/usage` and `pf usage` show what your provider reports instead of a local cost ledger: with AI Gateway, your team's spend and budget after `pf login`, or an API key's own spend; with Codex, your ChatGPT plan's limits and activity; with Grok, your plan's allowance and credits. `/cost` is removed, `pf usage --period` takes `today`, `7d`, or `month` in UTC days instead of `24h`, `7d`, or `30d`, `pf usage --json` reports `schema_version` 2 and exits 1 when no provider is signed in, and ACP `usage_update` no longer carries `cost`. Finished days are cached under `~/.pf/usage-cache/`. The former ledger's files, `~/.pf/usage.jsonl`, `~/.pf/usage.lock`, `~/.pf/usage-v2.json`, `~/.pf/usage-state`, and the `~/.pf/usage-recovery` and `~/.pf/usage-recovery-v2` folders, are no longer read and are left in place.
 
 ### New Features
 

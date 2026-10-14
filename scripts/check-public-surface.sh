@@ -35,14 +35,16 @@ fi
 
 # Private state goes through the io.zig API, which owns every mode conversion.
 # Top-level test blocks may still assert POSIX modes directly. The session
-# manager module may import only build_options, never io.zig, so its storage
-# layer and the tests that fault it convert modes themselves.
+# manager module may import only build_options, and the usage module only
+# std, never io.zig, so the session manager's storage layer, the tests that
+# fault it, and the usage cache's private modes convert modes themselves.
 mode_conversions="$({
   # shellcheck disable=SC2016 # The single quotes hold an awk program.
   git ls-files -z -- 'src/*.zig' ':(exclude)src/core/shared/io.zig' \
     ':(exclude)src/core/session_manager/storage.zig' \
     ':(exclude)src/core/session_manager/storage_fault.zig' \
-    ':(exclude)src/core/session_manager/api.zig' |
+    ':(exclude)src/core/session_manager/api.zig' \
+    ':(exclude)src/usage/cache.zig' |
     xargs -0 awk '
       FNR == 1 { in_test = 0 }
       /^test / { in_test = 1 }
