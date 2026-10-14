@@ -167,6 +167,16 @@ ACP sessions offer the CLI's permission modes, `auto` (the default), `ask`, and 
 
 pf does not distribute a JavaScript SDK. The [SDK sources](sdk/README.md) build the `libpf` package from this repository for pf's own tests and benchmarks, and the WebAssembly SDK is experimental. To embed an agent in a JavaScript application from npm, use the SDK that the upstream [fx](https://github.com/vercel-labs/fx) project publishes; it embeds that project's agent, not pf.
 
+## For coding agents
+
+To run pf from your own tools, use `pf ask`. It takes the prompt as arguments or on stdin, writes its result to stdout and progress and diagnostics to stderr, and exits with a nonzero status when the request fails. With `--json`, the final answer is in `final_output`. For the flags of the built version, run `pf <command> --help`.
+
+To inspect a user's setup, run `pf status --json` for configuration and runtime information, or `pf doctor --json` for local health checks. Neither changes the setup.
+
+`pf ask` uses the user's saved permission mode, which is `auto` unless they changed it. Pass `--full-access` only when the user asks for it, because it turns off pf's permission checks.
+
+To change pf itself, read [AGENTS.md](AGENTS.md) first, then build and verify the change as described in [Build from source](#build-from-source).
+
 ## Slack workspace installation
 
 `pf slack install` and personal Slack MCP authorization still use the fx Slack app and its bridge on fx.sh, which Vercel operates. Paneflow Agent does not run its own Slack app yet. Run `pf slack --help` for the commands; credentials stay in the owner-only file `~/.pf/slack/installation.json`.
@@ -219,7 +229,7 @@ Turn notifications ring the terminal bell, as on Linux. In Windows Terminal, pf 
 - Image paste from the clipboard
 - `pf slack install`
 - The full output of a truncated command in a session that is not saved, such as `pf ask --no-save`: saved sessions keep it
-- Release downloads and `pf upgrade`: build from source
+- Release downloads: build from source
 - Sessions v2 (`--sessions-v2`, `PF_SESSIONS_V2`): pf exits with an error and keeps saving sessions in the default store
 
 ### Key bindings in Windows Terminal

@@ -18,13 +18,11 @@ If you cannot run the binary in your environment, say so explicitly and ask the 
 
 ### Always use the built binary in this repo
 
-When running pf for verification, **always use the freshly-built binary at** **`./zig-out/bin/pf`** from this checkout. Never run `pf` from `PATH`, never rely on whatever is at `~/.pf/bin/pf`, and never assume an installed copy reflects your change.
+When running pf for verification, **always use the freshly-built binary at** **`./zig-out/bin/pf`** from this checkout. Never run `pf` from `PATH`, never rely on an installed copy on `PATH`, and never assume an installed copy reflects your change.
 
 * The user may have an older `pf` on their PATH (e.g. an older build copied there). Running that one will not exercise your edits.
 
-* `zig build` writes to `zig-out/bin/pf`. That is the only binary that contains your latest change.
-
-* When a user reports "still not working" after you believe you fixed something, do not assume they are running the wrong binary. Assume your fix is incomplete and investigate further. If you genuinely suspect a PATH mismatch, ask — do not silently copy binaries into `~/.pf/bin/`.
+* When a user reports "still not working" after you believe you fixed something, do not assume they are running the wrong binary. Assume your fix is incomplete and investigate further. If you genuinely suspect a PATH mismatch, ask — do not silently copy binaries onto their `PATH`.
 
 * In any shell invocation — tmux, direct run, scripts — reference pf as `/Users/<you>/path/to/repo/zig-out/bin/pf` (absolute) or `./zig-out/bin/pf` (when cwd is the repo root). Bare `pf` is always wrong for dev verification.
 
@@ -35,17 +33,18 @@ This project is written in **Zig 0.17.0**. There is no Node.js runtime, no `pack
 Build and test commands:
 
 ```bash
-zig build          # build the binary
-zig build test     # run all unit tests
-zig build run      # build and run
-zig fmt src/       # format all source files
+zig build              # build the binary
+zig build test         # run all unit tests
+zig build run          # build and run
+zig fmt src/           # format all source files
+zig fmt --check src/   # the formatting check CI runs
 ```
 
 The test suites under `tests/` use Bun but are separate from the Zig codebase. See **Testing** below.
 
 ## Code Style
 
-* Format all Zig source with `zig fmt` before committing. The canonical check is `zig fmt src/`.
+* Format all Zig source with `zig fmt src/` before committing.
 
 * Do not use emojis in code, output, or documentation. Unicode symbols (e.g. checkmark, arrow) are acceptable.
 
@@ -55,9 +54,11 @@ The test suites under `tests/` use Bun but are separate from the Zig codebase. S
 
 * CLI flags use kebab-case (e.g. `--no-save`, `--json`). Never use camelCase for flags.
 
-* Prefer `snake_case` for all Zig identifiers. Types use `PascalCase` per Zig convention.
+* Follow Zig naming: `camelCase` for functions, `snake_case` for variables, fields, and file names, and `PascalCase` for types.
 
 * Keep `pub` surface area minimal. Only mark declarations `pub` when they are used outside the file.
+
+* Never commit personal home-directory paths, real team IDs, internal team slugs, or personal project slugs. `scripts/check-public-surface.sh` rejects them in CI. Use `/Users/example/` in fixtures.
 
 ## Architecture
 
@@ -78,6 +79,8 @@ Key rules:
 * `src/acp/` owns the ACP (Agent Client Protocol) JSON-RPC 2.0 server.
 
 * `src/mcp/` is the MCP-v2 engine. `PF_MCP_ENGINE=v2` selects it in place of the default v1 client in `src/core/mcp/` on Linux and macOS; Windows refuses it. Its files import only `std` and each other, and the host passes in `std.Io` and every other service through `src/mcp/host.zig`. pf connects to it through `src/core/mcp_host/`.
+
+* `src/wasm_core_main.zig`, `src/wasm_term_main.zig`, and `src/napi_core_main.zig` are the libpf SDK entry points. Read `sdk/AGENTS.md` before changing them or anything under `sdk/`.
 
 ### Adding a Feature
 
@@ -111,9 +114,12 @@ its stale corpus entry. Normal PR CI loads the corpus and rejects missing,
 duplicate, stale, or unclassified files without running the expensive PGSO
 qualification.
 
+Every root E2E file also needs a weight in `tests/e2e/ci-shard-weights.json`.
+CI fails on a missing or stale entry.
+
 ### Adding a Command
 
-1. Add the spec to `src/core/slash_commands/command_specs.zig`
+1. Add the command kind in `src/core/slash_commands/command_specs.zig` and its spec, including usage, summary, and options, in `src/builtins/commands.zig`
 2. Add dispatch wiring in `src/core/cli/cli_surface.zig`
 3. Add a snapshot type if it has structured output
 4. Render text and JSON from the same snapshot via `src/core/output/output_contracts.zig`
@@ -132,15 +138,15 @@ Config precedence (highest wins):
 4. `<workspace>/.pf.json` (committed project defaults)
 5. Built-in defaults
 
-Project `.pf.json` accepts only repo-safe defaults: `sandbox`, `max_agent_steps`, `max_tool_result_bytes`, `context`, `provider_order`, and `provider_strict`. Profile-owned keys such as `provider`, `providers`, `models`, `model`, `effort`, `fast_mode`, `ultrafast_mode`, `slash_menu_categories`, `startup_scrollback`, `prompt_history`, `statusLine`, `skill_match_fuzzy`, `first_call_tool_choice`, `auto_upgrade`, `auto_compact_percent`, `permission_mode`, `credential_source`, `permission`, and `skill_symlink_authorities` are ignored from project config before their values are parsed.
+Project `.pf.json` accepts only repo-safe defaults: `max_agent_steps`, `max_tool_result_bytes`, `context`, `provider_order`, and `provider_strict`, parsed by `parseProjectSafeFields` in `src/core/config/config_runtime.zig`. The project layer never parses profile-owned keys, such as provider and model selection, permissions, and interface preferences.
 
-Runtime state lives under `~/.pf/sessions/<session-id>/` (`session.json`, `background/`, `subagent/`, `logs/`). Sessions are global and portable across workspaces. Each session tracks its `workspace_root`, which updates when resumed in a different workspace. A subagent child is an internal ordinary session with its own history. Its parent owns one bounded `subagent/children.json` registry, and the child carries only an immutable owner marker. Child sessions stay out of ordinary session discovery and cannot be resumed directly. A first `subagent.message` creates a named persistent child in that parent; later messages continue it, and optional instructions replace only its child-specific system overlay. `--sessions-v2` or `PF_SESSIONS_V2` opts into an append-only store under `~/.pf/sessions/v2/`, which keeps tool results, command output and downloads as read-only blobs under `~/.pf/sessions/v2/<id>/blobs/` and terminal state under `~/.pf/terminal/<id>/`, with usage markers under `~/.pf/usage-recovery-v2/`, and records subagent children in the parent's log instead of `subagent/children.json`; Windows refuses it.
+Runtime state lives under `~/.pf/sessions/<session-id>/` (`session.json`, `background/`, `subagent/`, `logs/`). Sessions are global and portable across workspaces. Each session tracks its `workspace_root`, which updates when resumed in a different workspace. Subagent children are internal sessions registered in their parent's `subagent/children.json`. They stay out of session discovery and cannot be resumed directly. `--sessions-v2` or `PF_SESSIONS_V2` opts into an append-only store under `~/.pf/sessions/v2/`, which keeps tool results, command output and downloads as read-only blobs under `~/.pf/sessions/v2/<id>/blobs/` and terminal state under `~/.pf/terminal/<id>/`, with usage markers under `~/.pf/usage-recovery-v2/`, and records subagent children in the parent's log instead of `subagent/children.json`; Windows refuses it.
 
 ## Permissions
 
 Security is permission-first. All sensitive tool behavior must integrate with `src/core/permissions/permissions.zig`.
 
-* `permission_mode` controls baseline (`ask`, `auto`, or `full-access`; `yolo` remains an alias). Full access bypasses pf permission policy and uses an effective sandbox of `none` without rewriting saved sandbox configuration
+* `permission_mode` controls baseline (`ask`, `auto`, or `full-access`; `yolo` remains an alias). Full access bypasses pf permission policy
 
 * Configured denies are evaluated before saved-session rules; an exact saved-session deny can narrow a configured allow, while an exact saved-session allow can satisfy an unresolved configured ask
 
@@ -160,27 +166,17 @@ Do not bypass the permission system for new tools.
 
 ## Zig-Specific Patterns
 
-### Memory
+### Memory and Errors
 
 * Allocators are passed explicitly. Never use a global allocator.
-
-* Free what you allocate. Use `defer` for cleanup at the call site.
 
 * Prefer `ArenaAllocator` for request-scoped work that can be freed in bulk.
 
 * When a function returns allocated memory, document who owns it (caller or callee).
 
-### Error Handling
-
 * Return errors rather than panicking. `@panic` is for programmer bugs, not runtime conditions.
 
-* Use `errdefer` to clean up partial state on error paths.
-
-* Prefer specific error sets over `anyerror` when the set is bounded.
-
 ### Strings and JSON
-
-* Zig strings are `[]const u8`. There is no implicit null termination.
 
 * Zig 0.17 removed the `**` operator. Fill arrays with `@splat` and build repeated comptime strings with `text_utils.repeat` from `src/core/shared/text_utils.zig`.
 
@@ -242,8 +238,6 @@ pf does not use declarations that Zig 0.17 deprecates outside `src/core/upgrade/
 
 * Run the narrowest relevant tests while developing. The complete `zig build test` suite runs in ReleaseSafe in **CI** after the feature branch is pushed, and it must pass before the draft PR is marked ready.
 
-* Use `std.testing.expect`, `std.testing.expectEqual`, `std.testing.expectEqualStrings` for assertions.
-
 * In test blocks, use `std.testing.io` for the `Io` parameter. `io_mod.getIo()` automatically returns `std.testing.io` in test builds.
 
 * Use `io_mod.dirRealpathAlloc(alloc, dir, sub_path)` to resolve paths within `std.testing.tmpDir()`.
@@ -304,13 +298,13 @@ Do not run the complete deterministic test suite locally as the default developm
 
 After the focused checks pass, create a clean checkpoint commit, push the non-`main` feature branch, and open a draft PR immediately. Linux is the gate for every change because most pf behavior is identical on every platform:
 
-* `.github/workflows/ci.yml` runs on Linux x86_64. It checks formatting, the PGSO corpus, the public surface, and the compactor boundary, then runs the ReleaseSafe unit tests. It builds pf once, smoke-tests it, and shares that binary with four duration-balanced E2E shards and the MCP conformance baseline. Checked-in weights assign every E2E file to exactly one shard, and files inside each shard run sequentially in separate Bun processes so terminal fixtures and process state cannot leak between files. A failed file receives one retry after its tmux server is reset. A file that passes only on retry gets a warning annotation; investigate it as a possible race. The SDK jobs build WASM and the Node-API addons once and run the complete package qualification. It also runs the Python tests of the CI and release scripts. `Build & Test` passes only when the unit tests and every SDK job pass, so a change cannot break the SDK lanes while the unit tests still pass.
+* `.github/workflows/ci.yml` runs on Linux x86_64. It checks formatting, the PGSO corpus, the public surface, and the compactor boundary, runs the ReleaseSafe unit tests, runs the E2E files in four weighted shards plus the MCP conformance baseline, qualifies the SDK packages, and runs the Python tests of the CI and release scripts. A failed E2E file is retried once. A file that passes only on retry gets a warning annotation; investigate it as a possible race. `Build & Test` fails when any SDK job fails.
 * `.github/workflows/binary-size.yml` builds each release target on its native runner, reports the size change, and smoke-tests every target's binary. See **Binary Size Observability**.
 * `.github/workflows/bench.yml` enforces the startup latency budget. See **Benchmarks**.
 
 Linux jobs install Zig through `.github/actions/setup-zig`, which restores the Zig cache that runs on `main` save with `.github/actions/save-zig-cache`. Pull requests never save a Zig cache through these actions, so they cannot push `main`'s entries out of the repository's cache quota. The PGSO workflow keeps its own cache through `.github/actions/setup-pgso`.
 
-macOS runs only when a change can behave differently there. `.github/workflows/macos.yml` uses `scripts/detect-macos-need.sh` to check the diff. The macOS arm64 unit tests and the E2E files in `tests/e2e/macos-platform-tests.json` run when the change touches a Zig file with a macOS, BSD, or Linux code path, `build.zig`, the macOS signing script, the native SDK addon, a listed E2E file, a shared E2E helper that reads the platform, or the macOS checks themselves. A Linux-only branch counts because macOS takes its other path; a Windows-only branch does not. The listed E2E files run in two weighted shards that share one macOS build. Native SDK addon changes also build and load the addon on macOS. If the detector cannot read the change, the `macOS arm64` check fails instead of passing. To request macOS for any other change, add the `ci:macos` label or run `gh workflow run macos.yml --ref <branch>`. When the change does not need macOS, the `macOS arm64` check passes without starting a macOS runner. Every E2E file that branches on `process.platform` or `platform()` being `darwin` or `linux` must appear in `tests/e2e/macos-platform-tests.json`, and `tests/e2e/ci-shards.test.ts` enforces that.
+macOS runs only when `scripts/detect-macos-need.sh` finds a change that can behave differently there, such as a Zig file with a macOS, BSD, or Linux code path, `build.zig`, the macOS signing script, the native SDK addon, or a platform E2E file. If the detector cannot read the change, the `macOS arm64` check fails instead of passing. When the change does not need macOS, the check passes without starting a macOS runner. To request macOS for any other change, add the `ci:macos` label or run `gh workflow run macos.yml --ref <branch>`. Every E2E file that branches on `process.platform` or `platform()` being `darwin` or `linux` must appear in `tests/e2e/macos-platform-tests.json`, and `tests/e2e/ci-shards.test.ts` enforces that.
 
 Windows runs only when a change can behave differently there. `.github/workflows/windows.yml` uses `scripts/detect-windows-need.sh` to check the diff. On `windows-2025` (x86_64) it checks formatting, builds and unit-tests ReleaseSafe, smoke-tests `pf.exe help` and `pf.exe status --json`, builds the ConPTY driver, and runs the Windows E2E subset (`tests/e2e/windows-subset.ts`), naming the failing step and tests in the job summary. It runs when the change touches a Zig file with a Windows code path or any operating system branch, `build.zig`, the Windows signing script, an E2E file that `tests/e2e/windows-subset.ts` runs, a shared E2E helper that reads the platform, or the Windows checks themselves. Any operating system branch counts because Windows may take its other path. If the detector cannot read the change, the `Windows x86_64` check fails instead of passing. To request Windows for any other change, add the `ci:windows` label or run `gh workflow run windows.yml --ref <branch>`. When the change does not need Windows, the `Windows x86_64` check passes without starting a Windows runner.
 
@@ -322,7 +316,7 @@ A CI result is valid only when it belongs to the exact current commit and `Build
 
 ## Reproducing Render Bugs
 
-pf's rendering is inline by default and deliberately emits a small ANSI subset. Three owner classes are the narrow exceptions, and each takes the alternate buffer exclusively through `AlternateScreenOwner` in `src/ui/shell_runtime.zig`: interactive permission review, the full-transcript screen, and catalog menus. Only one class may own the buffer at a time, and each must leave it and restore the main grid, composer, cursor, paste, mouse, focus, and keyboard modes when it closes. Transcript rendering, question prompts, command-output expansion, and subagent delegation remain inline. Three tools exist for reproducing and regression-proofing render bugs:
+pf's rendering is inline by default and deliberately emits a small ANSI subset. Three owner classes are the narrow exceptions, and each takes the alternate buffer exclusively through `AlternateScreenOwner` in `src/ui/shell_runtime.zig`: interactive file-approval review (`file_approval`), the full-transcript screen, and catalog menus. Only one class may own the buffer at a time, and each must leave it and restore the main grid, composer, cursor, paste, mouse, focus, and keyboard modes when it closes. Transcript rendering, question prompts, command-output expansion, and subagent delegation remain inline. Three tools exist for reproducing and regression-proofing render bugs:
 
 ### tmux (live TTY repros)
 
@@ -372,7 +366,7 @@ Startup latency benchmarks live in `benchmarks/` and run in CI via `.github/work
 ./benchmarks/startup.sh --quick    # quick run (20 iterations)
 ```
 
-The CI workflow builds a ReleaseSafe binary, measures six CLI paths with hyperfine, and enforces per-command latency budgets. PRs that exceed a budget fail the check. Startup results stay in the job log, and the workflow uploads its terminal performance, long-turn memory, and libpf latency results as GitHub Actions artifacts; it uploads nothing to external storage.
+The `Startup Latency` job builds a ReleaseSafe binary, measures six CLI paths with hyperfine, and enforces per-command latency budgets. The same job runs `tests/e2e/tui-performance.test.ts` as the interactive terminal performance gate. A PR that exceeds either fails the check. Startup results stay in the job log, and the workflow uploads its terminal performance, long-turn memory, and libpf latency results as GitHub Actions artifacts; it uploads nothing to external storage.
 
 The long-turn memory and libpf runtime benchmarks run only on request. Start them with `gh workflow run bench.yml --ref <branch> -f long_turn_memory=true` or `-f libpf_runtime=true`.
 
@@ -380,29 +374,15 @@ The startup benchmark uses `PF_BENCH=1`, an environment variable that runs throu
 
 To measure the interactive launch up to the first frame, use `benchmarks/first_frame.py`. It drives pf on a pseudo-terminal and interleaves several `--binary` arguments for before-and-after comparisons.
 
-Current raw wall-clock contract:
-
-* Linux CI: 2ms for every command
-* Non-Linux local runs: informational raw means
-
-The Linux CI runner is the authoritative product budget. Local macOS process
-and dynamic-loader floors vary enough to exceed 2ms independently of pf, so
-local runs report raw means without assigning a substitute product budget. The
-process baseline is diagnostic only and is never subtracted.
+The budget is 2ms of raw wall-clock time for every command on the Linux CI runner, which is the authoritative product budget. Local macOS runs report raw means only, because process and dynamic-loader overhead there can exceed 2ms independently of pf. The process baseline is diagnostic only and is never subtracted.
 
 When adding features, consider their impact on startup latency. The `pf help` path is the baseline cold-start benchmark.
 
 ## Binary Size Observability
 
-Every pull request runs `.github/workflows/binary-size.yml` across Linux x86_64,
-Linux arm64, macOS x86_64, and macOS arm64. Each matrix job builds the pull
-request merge commit and its base commit as stripped ReleaseSafe binaries on
-the same native runner, then reports the exact byte and MiB delta plus ELF or
-Mach-O section changes. The base binary is cached by base commit, so later
-pushes to the same pull request reuse it until the base branch moves. Every job
-also smoke-tests the pull request binary with `scripts/smoke-binary.sh`. These
-are release-style builds, and the Linux arm64 and macOS binaries run nowhere
-else on a pull request.
+Every pull request runs `.github/workflows/binary-size.yml`, which builds each
+release target and its base commit on native runners, reports the size change,
+and smoke-tests the pull request binary with `scripts/smoke-binary.sh`.
 
 Each platform check is informational. An increase of at least 52,429 bytes
 (0.050000 MiB) emits a warning and retains that platform's binaries for
@@ -415,9 +395,10 @@ ceiling and performance gates.
 
 When adding or changing user-facing features, update **all** relevant files:
 
-1. `--help` output via command specs in `src/core/slash_commands/command_specs.zig`
+1. `--help` output via command specs in `src/builtins/commands.zig`
 2. `README.md` — feature descriptions, usage examples
-3. `CONTRIBUTING.md` — if build steps, config, or collaboration rules change
+3. `sdk/README.md` if libpf's supported public behavior or setup changes, as `sdk/AGENTS.md` describes
+4. `CONTRIBUTING.md` — if build steps, config, or collaboration rules change
 
 Do not document intended behavior as if it already exists.
 
@@ -482,8 +463,6 @@ Do not create version tags manually. Do not change `build.zig.zon` version (it i
 Paneflow Agent derives from `vercel-labs/fx` and is licensed under Apache-2.0. Keep links to `vercel-labs/fx` only for attribution; `NOTICE` and `UPSTREAM.md` record where the code comes from.
 
 ## What Not To Do
-
-* Do not grow `main.zig` with leaf feature logic
 
 * Do not add hidden product state that only exists in the live shell
 

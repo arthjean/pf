@@ -160,7 +160,7 @@ Config precedence (highest wins):
 4. `<workspace>/.pf.json` (committed project defaults)
 5. Built-in defaults
 
-Project `.pf.json` accepts only repo-safe defaults: `sandbox`, `max_agent_steps`, `max_tool_result_bytes`, and `context`. Profile-owned keys such as `provider`, `providers`, `models`, `model`, `effort`, `fast_mode`, `ultrafast_mode`, `slash_menu_categories`, `startup_scrollback`, `prompt_history`, `statusLine`, `skill_match_fuzzy`, `first_call_tool_choice`, `auto_upgrade`, `auto_compact_percent`, `update_channel`, `permission_mode`, `permission`, and `skill_symlink_authorities` are ignored from project config before their values are parsed.
+Project `.pf.json` accepts only repo-safe defaults: `max_agent_steps`, `max_tool_result_bytes`, `context`, `provider_order`, and `provider_strict`, parsed by `parseProjectSafeFields` in `src/core/config/config_runtime.zig`. The project layer never parses profile-owned keys, such as provider and model selection, permissions, and interface preferences.
 
 `skill_symlink_authorities` is an array of absolute directories that symlinked skills may resolve into, such as an app bundle or `/nix/store`. It is read at startup, a workspace override replaces the global list, and its entries are combined with the `PF_SKILL_SYMLINK_AUTHORITIES` environment variable, whose entries are separated like `PATH`: `:` on Linux and macOS, `;` on Windows.
 
@@ -490,8 +490,6 @@ Security is permission-first.
 
 * execution-memory schema 10 preserves review-feedback provenance while reading older schemas with an unmarked default. Conversation records use optional metadata for marked holds. Older builds may reject the new saved metadata or recovery checkpoints; do not downgrade an active session without preserving its files
 
-* the sandbox backend is configured independently; full access uses an effective backend of `none` without rewriting the saved sandbox setting
-
 Do not add new sensitive tool behavior without integrating it into `src/core/permissions/permissions.zig`.
 
 ## Writing a Resize Test
@@ -743,4 +741,4 @@ Minimum checklist:
 2. Run `zig build`, then exercise the change with `./zig-out/bin/pf`.
 3. Push the feature branch and open a draft PR immediately.
 4. Require **CI**, including the **macOS arm64** and **Windows x86_64** checks, and the final ship gate to pass for the exact current commit before marking the PR ready.
-5. Update `README.md` if user-facing behavior changed.
+5. If user-facing behavior changed, update the docs as [Documentation](AGENTS.md#documentation) describes.
