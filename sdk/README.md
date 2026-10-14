@@ -34,11 +34,11 @@ The full documentation is at [paneflow.dev/agent/docs/lib](https://paneflow.dev/
 
 | Object | What it is | How long it lives |
 | --- | --- | --- |
-| Agent | Configuration: model, instructions, tools, provider and where sessions live | One per server process |
+| Agent | Configuration: model, instructions, tools, provider and where sessions live | As long as the server process |
 | Session | One conversation | As long as its store keeps it |
 | Turn | One prompt and everything the agent does to answer it | Until it ends with a stop reason |
 
-An agent is configuration, and its conversations live in its sessions. Create it once per process with the same options on every server, and open a session for each conversation. Any process with that agent can run, continue or stream any of its sessions.
+An agent is configuration, and its conversations live in its sessions. Create each agent once per process with the same options on every server, and open a session for each conversation. Any process with that agent can run, continue or stream any of its sessions. An app can have [several agents](#several-agents), each with its own name.
 
 Underneath the agent is `createPfEngine()`, a single conversation with no store, for when you don't want sessions. See [Without sessions](#without-sessions).
 
@@ -127,16 +127,35 @@ On `local()`, `vercel()` and `world()`, a session id is a Workflow run id, `wrun
 
 A session stores the conversation and nothing else. Every process passes its own model, credentials, tools, MCP clients and skills when it creates the agent. If a session's saved checkpoint came from a different libpf version, tool set or model, the session still loads, and `onEvent` gets a `checkpoint.mismatch` event naming what changed.
 
+### Several agents
+
+An app can have more than one durable agent, each with its own model, instructions and tools. Give each one a name:
+
+```js
+export const support = createPfAgent({ name: "support", instructions: "Answer billing questions." });
+export const coding = createPfAgent({ name: "coding", model: "anthropic/claude-opus-5.5", tools: codingTools });
+```
+
+A session belongs to the agent that created it, and its turns run only on an agent with that name. A prompt sent through another agent, such as `coding.session(supportSessionId).prompt()`, still runs on `support`, and the sending agent's `onEvent` gets a `session.forwarded` event. An agent created without a name is named `default`.
+
+- Agents with the same name are copies of one agent, such as one on each server, and take turns running its sessions.
+- Keep names stable. A session keeps the name it was created with, so renaming an agent leaves its sessions with no agent to run them.
+- A process that gets a turn for a name it has no agent for refuses it with an `PF_NO_AGENT` error naming the agent, and the queue delivers it again.
+- Agents share sessions through their durability. Give agents that share sessions the same durability, or none: agents created without one share the default.
+
 ### On Vercel
 
 Add a route for libpf's queue deliveries:
 
 ```js
 // app/api/libpf/route.js
-import { agent } from "@/lib/agent";
+import { wakeHandler } from "libpf";
+import "@/lib/agents"; // creates the app's agents, so this function has them
 
-export const POST = agent.wakeHandler();
+export const POST = wakeHandler();
 ```
+
+The route delivers each turn to the agent it belongs to, so one route serves every agent the module it imports creates. With one agent, `agent.wakeHandler()` does the same.
 
 Then subscribe it to libpf's topic in `vercel.json`:
 
@@ -210,7 +229,7 @@ export const agent = createPfAgent({
 });
 ```
 
-A World that delivers queue messages over HTTP needs `agent.wakeHandler()` at the address it posts to. Workflow's Postgres World 5.0.2 posts every message to `/.well-known/workflow/v1/flow` on your app. `world()` takes options for what libpf can't learn from the World itself, such as how long a lease lasts and whether the queue keeps a message across crashes. The `WorldOptions` type documents each one.
+A World that delivers queue messages over HTTP needs `agent.wakeHandler()`, or `wakeHandler()` for several agents, at the address it posts to. Workflow's Postgres World 5.0.2 posts every message to `/.well-known/workflow/v1/flow` on your app. `world()` takes options for what libpf can't learn from the World itself, such as how long a lease lasts and whether the queue keeps a message across crashes. The `WorldOptions` type documents each one.
 
 On a World with Workflow's in-band writer fence, libpf writes each claim and record so that the World itself refuses a write from a worker another has replaced, and nothing of it is stored. libpf finds the fence in the World's capabilities, so there's nothing to configure. On a World without it, libpf detects the replaced worker after its write instead, and the session's log ignores what that worker wrote.
 
@@ -241,11 +260,9 @@ const agent = createPfAgent({
 
 Return a string to send it as is, or any other value to send it as JSON. A thrown error reaches the model as a failed tool result. To return images, return `{ type: "libpf.tool-result", text, images }`, with base64 image data.
 
-On the native backend, the calls from one model response run at the same time, up to 16 at once. Mark a tool `writes: true` to keep its calls from overlapping any other. On WebAssembly, calls run one after another.
-
 Validate the input and authorize the action inside `execute`. libpf orders the calls but grants nothing itself.
 
-On the native backend, calls to idempotent tools from one model response run at the same time. A tool that isn't idempotent runs alone, and so does one marked `writes: true`. Mark a tool `writes: false` to let it overlap with others anyway.
+On the native backend, calls to idempotent tools from one model response run at the same time, up to 16 at once. A tool that isn't idempotent runs alone, and so does one marked `writes: true`. Mark a tool `writes: false` to let it overlap with others anyway. On WebAssembly, calls run one after another.
 
 `tools` can also be an object keyed by tool name. Add `{ name: "web_search", providerExecuted: true }` for AI Gateway's web search, which runs at the provider instead of in your code.
 
@@ -449,7 +466,7 @@ This is the pf CLI's interface compiled to WebAssembly. Your page supplies stora
 
 | Import | What's in it |
 | --- | --- |
-| `libpf` | `createPfAgent`, `createPfEngine`, `createPfTerminal`, `memory`, `listModels`, `createMemoryPersistence`, `PfFencedError`, `PfJournalVersionError`, `supportsJspi`, `xtermAdapter`, `encodeXtermKeyEvent`, and on Node.js `getBackendInfo` |
+| `libpf` | `createPfAgent`, `createPfEngine`, `createPfTerminal`, `memory`, `listModels`, `createMemoryPersistence`, `PfFencedError`, `PfJournalVersionError`, `supportsJspi`, `xtermAdapter`, `encodeXtermKeyEvent`, and on Node.js `getBackendInfo` and `wakeHandler` |
 | `libpf/node`, `libpf/browser` | The same, for Node.js or browsers explicitly |
 | `libpf/wasm` | The WebAssembly SDK without packaged asset paths, so you pass `wasm` yourself |
 | `libpf/durable-local`, `libpf/durable-vercel`, `libpf/durable-world` | `local()`, `vercel()` and `world()` |
@@ -461,17 +478,18 @@ Every entry point ships TypeScript types, and the package has no runtime depende
 ## For coding agents
 
 - **Docs as Markdown:** [paneflow.dev/agent/llms.txt](https://paneflow.dev/agent/llms.txt) indexes every page, and each page has a `.md` version, such as `https://paneflow.dev/agent/docs/lib/durability.md`. The declarations in `types/` are the exact API.
-- **One agent per process:** create it once at module scope, not per request, and open `agent.session(id)` for each conversation.
+- **Agents at module scope:** create each agent once at module scope, not per request, and open `agent.session(id)` for each conversation.
 - **Session ids:** take them from `turn.accepted` or `agent.newSessionId()`. On every durability except `memory()`, an id that isn't a Workflow run id throws.
-- **Side effects:** set `idempotent: true` only on tools that are safe to run twice, and pass `executionId` to services that take an idempotency key.
-- **Deployments:** on Vercel, the `wakeHandler()` route and its `vercel.json` trigger are both required, or prompts are stored and never run.
+- **Side effects:** every tool sets `idempotent`. Set it to `true` only on tools that are safe to run twice, and pass `executionId` to services that take an idempotency key.
+- **Deployments:** on Vercel, the `wakeHandler()` route and its `vercel.json` trigger are both required, or prompts are stored and never run. The route must import the module that creates the agents.
+- **Several agents:** give each durable agent its own `name`, and never rename one that has sessions.
 - **Credentials:** keep keys and ChatGPT or Grok credentials on the server, and the object `startSignIn()` returns too.
 - **Checking a setup:** `getBackendInfo()` reports which backend would load without creating anything or making requests.
 - **Changing libpf:** the source is in the [pf repository](https://github.com/vercel-labs/fx) under `sdk/`. Its `AGENTS.md` files name the tests each change needs.
 
 ## Upgrading from 0.0.13
 
-In libpf 0.0.13 and earlier, `createPfAgent()` created the engine. It now creates the durable agent, so rename those calls to `createPfEngine()`. Old code keeps running against the agent, with a few differences: breaking out of a turn's events no longer cancels it, turns have no `cancel()` or `steer()` (the session does), and `persistence` and `sessionId` throw because the durability holds the session.
+In libpf 0.0.13 and earlier, `createPfAgent()` created the engine. It now creates the durable agent, so rename those calls to `createPfEngine()`. Old code runs against the agent once its tools set `idempotent`, with a few differences: breaking out of a turn's events no longer cancels it, turns have no `cancel()` or `steer()` (the session does), and `persistence` and `sessionId` throw because the durability holds the session.
 
 `libpfApiVersion` is now 3. Every tool given to `createPfAgent()` must set `idempotent`, and a tool's `writes` now defaults to the opposite of `idempotent`, in the engine too, so a tool that isn't marked idempotent runs alone. A journal written by this libpf can't be loaded by an older one, which fails with `PfJournalVersionError`.
 
