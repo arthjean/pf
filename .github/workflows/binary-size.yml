@@ -54,7 +54,7 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: "0.17.0"
+          version: "0.16.0"
           use-cache: false
 
       - name: Test size reporter
@@ -67,10 +67,11 @@ jobs:
           evidence_dir="$RUNNER_TEMP/pf-binary-size-evidence"
           mkdir -p "$evidence_dir"
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
-          ZIG_GLOBAL_CACHE_DIR="$RUNNER_TEMP/pf-global-cache" zig build \
+          zig build \
             -Dtarget=${{ matrix.target }} \
             -Doptimize=ReleaseSafe \
-            --cache-dir "$RUNNER_TEMP/pf-head-cache"
+            --cache-dir "$RUNNER_TEMP/pf-head-cache" \
+            --global-cache-dir "$RUNNER_TEMP/pf-global-cache"
           cp zig-out/bin/pf "$evidence_dir/head-pf"
           file "$evidence_dir/head-pf" > "$evidence_dir/head-file.txt"
           cat "$evidence_dir/head-file.txt"
@@ -90,30 +91,12 @@ jobs:
           VERCEL_OIDC_TOKEN: ""
         run: scripts/smoke-binary.sh "$RUNNER_TEMP/pf-binary-size-evidence/head-pf"
 
-      # The base commit builds with the Zig version it pins, which differs
-      # from this pull request's when the pull request changes the toolchain.
-      - name: Read base Zig version
-        id: base-zig
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(git show "$BASE_SHA:build.zig.zon" | sed -n 's/^ *\.minimum_zig_version = "\([^"]*\)",$/\1/p')"
-          test -n "$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
       - name: Restore base binary
         id: base-cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/pf-binary-size-base-bin
-          key: binary-size-base-v1-${{ matrix.target }}-zig-${{ steps.base-zig.outputs.version }}-${{ env.BASE_SHA }}
-
-      - name: Setup base Zig
-        if: steps.base-cache.outputs.cache-hit != 'true'
-        uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ steps.base-zig.outputs.version }}
-          use-cache: false
+          key: binary-size-base-v1-${{ matrix.target }}-zig-0.16.0-${{ env.BASE_SHA }}
 
       - name: Build base binary
         if: steps.base-cache.outputs.cache-hit != 'true'
@@ -129,10 +112,11 @@ jobs:
           test "$(git -C "$base_worktree" rev-parse HEAD)" = "$BASE_SHA"
           (
             cd "$base_worktree"
-            ZIG_GLOBAL_CACHE_DIR="$RUNNER_TEMP/pf-base-global-cache" zig build \
+            zig build \
               -Dtarget=${{ matrix.target }} \
               -Doptimize=ReleaseSafe \
-              --cache-dir "$RUNNER_TEMP/pf-base-cache"
+              --cache-dir "$RUNNER_TEMP/pf-base-cache" \
+              --global-cache-dir "$RUNNER_TEMP/pf-global-cache"
           )
           mkdir -p "$RUNNER_TEMP/pf-binary-size-base-bin"
           cp "$base_worktree/zig-out/bin/pf" "$RUNNER_TEMP/pf-binary-size-base-bin/pf"
@@ -142,7 +126,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/pf-binary-size-base-bin
-          key: binary-size-base-v1-${{ matrix.target }}-zig-${{ steps.base-zig.outputs.version }}-${{ env.BASE_SHA }}
+          key: binary-size-base-v1-${{ matrix.target }}-zig-0.16.0-${{ env.BASE_SHA }}
 
       - name: Measure base binary
         shell: bash

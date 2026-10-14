@@ -5,7 +5,7 @@ Paneflow Agent follows [vercel-labs/fx](https://github.com/vercel-labs/fx) witho
 | Field | Commit |
 |---|---|
 | Base | `1b1f9af1619de4dbf7b4a48a50bb11f77469e988` (2026-09-30) |
-| Last ported | `786247dccbe3890bd3ff050d74abaadc8219b919` |
+| Last ported | `f7d6cd1120f25438b200761d133fb32dce38c729` |
 
 "Last ported" means that every first-parent fx merge up to and including that commit is ported, except the merges listed under "Skipped", and that the hunks listed under "Held" are kept at pf's state.
 
@@ -34,6 +34,9 @@ Each row gives the fx merge's full 40-character SHA, its fx pull request, the Op
 | `7e9b98bff0011781a84d81437c5206d26599955f` | #1211 | Its `.github/workflows/ci.yml` lines for the provider crash test | `defae9808550da44a0868eb5804dbda4acf45f42` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 | `914f01f6d015d83152a957dc2d9d116a0e085ebe` | #1212 | Its `.github/workflows/ci.yml` lines for the provider crash test | `defae9808550da44a0868eb5804dbda4acf45f42` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 | `6fc796a7ec94dff5a086e91064bf536545a56c42` | #1219 | Its edit of the held Slack bridge form handler `answerForm` in `src/core/mcp_host/login.zig` | `ace8f2e9e6e621878fb6b6b2b25af006a0362577` | Q3 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
+| `f7d6cd1120f25438b200761d133fb32dce38c729` | #1163 | Its edit of `src/core/mcp/slack_preset.zig`, the Slack preset that pf skipped with fx #1101 | `pending` | Q1 of `tasks/prd-fx-sync-0-0-13.md`, answered D | permanent |
+| `f7d6cd1120f25438b200761d133fb32dce38c729` | #1163 | Its edit of the held Slack bridge `src/core/mcp_host/slack.zig` | `pending` | Q3 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
+| `f7d6cd1120f25438b200761d133fb32dce38c729` | #1163 | Its Zig 0.17.0 and LLVM 22 pins in `.github/actions/setup-pgso/action.yml`, `.github/workflows/bench.yml`, `binary-size.yml`, `ci.yml`, `dev-release.yml`, `macos.yml` and `release.yml`, including `ZIG_GLOBAL_CACHE_DIR` in place of `--global-cache-dir` | `pending` | Q5 of `tasks/prd-fx-sync-bc968ad6.md` | US-022 |
 
 Each row gives the fx merge's full 40-character SHA, its fx pull request, the held files or hunks, the full SHA of the pf hold commit, the Open Question that keeps them, and the story that revisits them.
 
