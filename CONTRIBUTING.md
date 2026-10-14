@@ -35,6 +35,19 @@ zig build test
 zig build run
 ```
 
+pf keeps its settings and sessions in `~/.pf`, and on macOS it stores API keys and OAuth credentials in your Keychain. To try a change against an empty profile without touching your own, give pf a temporary home directory and turn off Keychain storage:
+
+```bash
+HOME="$(mktemp -d)" PF_DISABLE_KEYCHAIN=1 ./zig-out/bin/pf
+```
+
+On Windows, pf reads `USERPROFILE` before `HOME`, so set both. From PowerShell, in a window you close afterward because it keeps the variables:
+
+```powershell
+$env:USERPROFILE = $env:HOME = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "pf-profile-$(Get-Random)")).FullName
+.\zig-out\bin\pf.exe
+```
+
 ### Windows
 
 pf builds and runs natively on Windows x86_64, and the interactive terminal UI runs in a console with virtual terminal support, such as Windows Terminal or the VS Code terminal. The README's Windows section lists what is not ported yet. To work on it:
@@ -85,6 +98,21 @@ warning at increases of 52,429 bytes (0.050000 MiB) or more. The warning request
 investigation but does not replace the full PGSO release gate or reject a valid
 feature solely for adding code. The same jobs smoke-test each release-style
 binary; the Linux arm64 and macOS binaries run nowhere else on a pull request.
+
+### Add an end-to-end test file
+
+Every root `tests/e2e/*.test.ts` file needs an entry in the first two files below, and in the other two only when the condition applies. CI fails when a required entry is missing or stale:
+
+| File | Entry |
+| --- | --- |
+| `scripts/pgso/corpus.json` | Exactly one classification: training, verification-only, or intentional exclusion (see [PGSO corpus ownership](#pgso-corpus-ownership)) |
+| `tests/e2e/ci-shard-weights.json` | A weight that balances the four CI shards |
+| `tests/e2e/macos-platform-tests.json` | Needed only when the file branches on `process.platform` or `platform()` being `darwin` or `linux` |
+| `tests/e2e/windows-subset.ts` | Needed only when the file runs on Windows: add it to `WINDOWS_E2E_FILES` |
+
+### Model evals
+
+The evals in `tests/evals/` drive the agent through `pf ask --json` against real models and need `AI_GATEWAY_API_KEY`. They make billed model calls and their results vary between runs, so they are not a check: no pull request gate runs them.
 
 ## Pull Requests
 

@@ -398,7 +398,7 @@ When adding or changing user-facing features, update **all** relevant files:
 1. `--help` output via command specs in `src/builtins/commands.zig`
 2. `README.md` — feature descriptions, usage examples
 3. `sdk/README.md` if libpf's supported public behavior or setup changes, as `sdk/AGENTS.md` describes
-4. `CONTRIBUTING.md` — if build steps, config, or collaboration rules change
+4. `CONTRIBUTING.md` — if build steps, development setup, or collaboration rules change
 
 Do not document intended behavior as if it already exists.
 
