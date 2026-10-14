@@ -12,6 +12,7 @@
 | 1.4 | 2026-10-13 | Arthur Jean | EP-002 review: US-004 expects -32602 for `session/set_mode` without a session, as fx and `6708560` answer; US-005 names the World versions of fx `1eed0348` |
 | 1.5 | 2026-10-13 | Arthur Jean | Q5 answered for #1180 and #1202: their `.github/` hunks are ported in EP-002 and their Held rows removed; the rest of Q5 is unchanged |
 | 1.6 | 2026-10-14 | Arthur Jean | Merges 17 to 29 ported (EP-003): sign-in modules held under Q2, the Slack bridge under Q3 and the `.github/` hunks of #1209, #1211 and #1212 under Q5; Release 1 recorded on Linux at `cfe5947` |
+| 1.7 | 2026-10-14 | Arthur Jean | EP-003 review: US-008 checks the Slack client id in MCP-v2 only, since the v1 Slack bridge that `c6bf84f` imported keeps it on purpose |
 
 ## Problem Statement
 
@@ -424,7 +425,7 @@ Port `/home/arthur/dev/fx@1eed0348..786247dc` on Zig 0.16: the opt-in MCP-v2 eng
 - [ ] Given the port `016cdc54..53a561be` (#1216), then it adds no conflict file, and fx's generic bridge support in `src/mcp/auth/oauth.zig` and `src/mcp/auth/client.zig` merges with the US-002 wording (`fx.sh's` kept, never `paneflow.dev/agent's`).
 - [ ] Given Q3 unanswered (pre-decision state consistent with the previous Q1 answer D), when commit B of the #1216 hold lands, then `src/core/mcp_host/slack.zig` is absent, `src/core/mcp_host/config.zig` never fills `client_id` from Slack (`/home/arthur/dev/fx@53a561be:src/core/mcp_host/config.zig:121-122` removed), `login.zig`, `runtime.zig` and `verbs.zig` have no Slack bridge path or `add slack` verb, the Slack tests of `tests/e2e/mcp-auth.test.ts` and `mcp-verbs.test.ts` are absent, and UPSTREAM.md gains a Held row for `53a561be` naming Q3 and US-022.
 - [ ] Given `PF_MCP_ENGINE=v2` and a `mcp.json` server whose URL is `https://mcp.slack.com/mcp` without `client_id`, when `pf mcp login <name>` runs, then pf starts a standard OAuth flow (or reports that the server needs a client id) and never opens `https://fx.sh/api/slack/auth`.
-- [ ] Given `git grep -n "12364000946" -- src tests`, then it returns nothing.
+- [ ] Given `git grep -n "12364000946" -- src/mcp src/core/mcp_host tests/e2e/mcp-verbs.test.ts`, then it returns nothing, and the v1 matches that `c6bf84f` imported and the previous sync kept (`src/core/mcp/mcp_auth.zig:1274`, `tests/e2e/mcp-auth.test.ts:41`) are unchanged against `346e270`.
 - [ ] Given the other #1216 fixes (Ctrl+C in `/mcp`, filtering, `mcp R/N` status, background start, `"type": "streamable-http"` read as HTTP for v1 and v2, project stdio servers started in the ACP session directory), then `cd tests/e2e && bun test mcp-verbs.test.ts mcp-auth.test.ts` passes (without the held Slack tests), and a v1 login is carried into the v2 store once.
 - [ ] Given the commits, then UPSTREAM.md "Last ported" is `53a561beabad811e9ef55375d4147591f76ea33f`, and `CHANGELOG.md` gains an entry for the MCP-v2 fixes.
 
