@@ -816,10 +816,10 @@ test "gitdir conditions see Windows paths with forward slashes" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
-    try std.testing.expectEqualStrings("C:/Users/a/work/.git", try Loader.gitSlashes(arena, "C:\\Users\\a\\work\\.git", .windows));
+    try std.testing.expectEqualStrings("C:/Users/example/work/.git", try Loader.gitSlashes(arena, "C:\\Users\\example\\work\\.git", .windows));
     // On POSIX a backslash is an ordinary file name byte.
     try std.testing.expectEqualStrings("/home/a\\b/.git", try Loader.gitSlashes(arena, "/home/a\\b/.git", .linux));
-    try std.testing.expect(wildmatch.match("C:/Users/a/work/**", try Loader.gitSlashes(arena, "C:\\Users\\a\\work\\one\\.git", .windows), .{ .pathname = true }));
+    try std.testing.expect(wildmatch.match("C:/Users/example/work/**", try Loader.gitSlashes(arena, "C:\\Users\\example\\work\\one\\.git", .windows), .{ .pathname = true }));
 }
 
 test "repository filter names come only from repository config and count every includeIf" {
