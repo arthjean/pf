@@ -1881,6 +1881,9 @@ const FakeInstructionHost = struct {
 };
 
 test "host instruction files deliver global and project rules from host paths" {
+    // pf: the fake host uses POSIX paths, and on Windows pf joins host paths
+    // with the native `\` separator.
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     FakeInstructionHost.reset(&.{
         .{ .path = "/home/visitor/.pf/AGENTS.md", .content = "GLOBAL_HOST_RULE\n" },
@@ -1922,6 +1925,9 @@ test "host instruction files stay silent when no rule exists" {
 }
 
 test "host workspace without instruction file access reports the omission once" {
+    // pf: the fake host uses POSIX paths, and on Windows pf joins host paths
+    // with the native `\` separator.
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var context = try gatherProjectContext(alloc, .{
         .workspace_root = "/workspace",
@@ -1962,6 +1968,9 @@ test "hosts without a workspace read no instruction files" {
 }
 
 test "host instruction reads apply the file limit and report truncation" {
+    // pf: the fake host uses POSIX paths, and on Windows pf joins host paths
+    // with the native `\` separator.
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     FakeInstructionHost.reset(&.{
         .{ .path = "/workspace/AGENTS.md", .content = "PROJECT-ONE\nPROJECT-TWO\n" },
@@ -1987,6 +1996,9 @@ test "host instruction reads apply the file limit and report truncation" {
 }
 
 test "host instruction read failures become explicit omissions" {
+    // pf: the fake host uses POSIX paths, and on Windows pf joins host paths
+    // with the native `\` separator.
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const cases = [_]struct {
         failure: context_contract.InstructionFileError,
@@ -2059,6 +2071,9 @@ test "host instruction reads reserve only the host read bound" {
 }
 
 test "host instruction files load scoped rules for later targets" {
+    // pf: the fake host uses POSIX paths, and on Windows pf joins host paths
+    // with the native `\` separator.
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     FakeInstructionHost.reset(&.{
         .{ .path = "/workspace/AGENTS.md", .content = "PROJECT_HOST_RULE" },
