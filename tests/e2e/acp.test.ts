@@ -3056,7 +3056,8 @@ describe("acp: model-independent", () => {
     LIVE_TIMEOUT,
   );
 
-  test(
+  // MCP-v2 is refused on Windows.
+  test.skipIf(process.platform === "win32")(
     "ACP session/new calls a supplied modern HTTP MCP server through MCP-v2",
     async () => {
       const root = createIsolatedRoot("pf-acp-mcp-v2-");
@@ -3135,7 +3136,8 @@ describe("acp: model-independent", () => {
     LIVE_TIMEOUT,
   );
 
-  test(
+  // MCP-v2 is refused on Windows.
+  test.skipIf(process.platform === "win32")(
     "context notices go to an editor that shows notices as ACP v1 Session Notices",
     async () => {
       const root = createIsolatedRoot("pf-acp-notices-");
@@ -3183,7 +3185,8 @@ describe("acp: model-independent", () => {
     LIVE_TIMEOUT,
   );
 
-  test(
+  // MCP-v2 is refused on Windows.
+  test.skipIf(process.platform === "win32")(
     "ACP on MCP-v2 loads a supplied server's tools every turn, unless it opts out",
     async () => {
       const root = createIsolatedRoot("pf-acp-mcp-v2-loaded-");
@@ -4243,7 +4246,8 @@ describe("acp: model-independent", () => {
     TIMEOUT,
   );
 
-  test(
+  // MCP-v2 is refused on Windows.
+  test.skipIf(process.platform === "win32")(
     "ACP on MCP-v2 starts a project stdio server in its project",
     async () => {
       const root = createIsolatedRoot("pf-acp-project-cwd-v2-");
@@ -5668,7 +5672,8 @@ describe("acp: model-independent", () => {
     LIVE_TIMEOUT,
   );
 
-  test(
+  // MCP-v2 is refused on Windows.
+  test.skipIf(process.platform === "win32")(
     "ACP form elicitation answers an MCP-v2 server's input request",
     async () => {
       const root = createIsolatedRoot("pf-acp-mcp-v2-form-");
@@ -5886,7 +5891,8 @@ describe("acp: model-independent", () => {
     LIVE_TIMEOUT,
   );
 
-  for (const engine of ["v1", "v2"] as const) test(
+  // MCP-v2 is refused on Windows.
+  for (const engine of ["v1", "v2"] as const) test.skipIf(engine === "v2" && process.platform === "win32")(
     `ACP URL consent completes only after modern MCP retry without prefetching (${engine})`,
     async () => {
       const root = createIsolatedRoot("pf-acp-mcp-elicitation-url-");
@@ -6093,7 +6099,8 @@ describe("acp: model-independent", () => {
     LIVE_TIMEOUT,
   );
 
-  for (const engine of ["v1", "v2"] as const) test(
+  // MCP-v2 is refused on Windows.
+  for (const engine of ["v1", "v2"] as const) test.skipIf(engine === "v2" && process.platform === "win32")(
     `legacy URL completion is correlated from the notification listener to ACP (${engine})`,
     async () => {
       const root = createIsolatedRoot("pf-acp-mcp-legacy-url-");
@@ -6217,7 +6224,8 @@ describe("acp: model-independent", () => {
     LIVE_TIMEOUT,
   );
 
-  for (const engine of ["v1", "v2"] as const) test(
+  // MCP-v2 is refused on Windows.
+  for (const engine of ["v1", "v2"] as const) test.skipIf(engine === "v2" && process.platform === "win32")(
     `legacy URL completion waits for ACP consent and publishes exactly once (${engine})`,
     async () => {
       const root = createIsolatedRoot("pf-acp-mcp-legacy-url-early-");
