@@ -499,6 +499,8 @@ test "messages arrive, and a stop that closes stdin ends the server" {
 }
 
 test "a server starts in the directory it's given" {
+    // pf: these tests spawn sh, and MCP-v2 is POSIX only (Windows refuses it).
+    if (comptime builtin.target.os.tag == .windows) return error.SkipZigTest;
     // The server names its directory as a notification's method.
     const argv = shell("printf '{\"jsonrpc\":\"2.0\",\"method\":\"%s\"}\\n' \"$(pwd -P)\"; exec cat >/dev/null");
     var p: Process = undefined;
