@@ -49,10 +49,10 @@
     {
       "id": "EP-006",
       "title": "Windows host validation",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 4,
-      "stories_done": 0
+      "stories_done": 4
     }
   ],
   "stories": [
@@ -366,49 +366,49 @@
       "id": "US-023",
       "title": "Run the Windows build and test suites and attribute failures",
       "epic": "EP-006",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-022"
       ],
       "started_at": "2026-10-19T14:03:43+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-19T18:39:19+02:00",
+      "reviewed_at": "2026-10-19T18:39:19+02:00"
     },
     {
       "id": "US-024",
       "title": "Exercise Release 1 changes on Windows",
       "epic": "EP-006",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
         "US-023"
       ],
       "started_at": "2026-10-19T14:03:43+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-19T18:39:19+02:00",
+      "reviewed_at": "2026-10-19T18:39:19+02:00"
     },
     {
       "id": "US-025",
       "title": "Exercise Release 2 changes on Windows",
       "epic": "EP-006",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": [
         "US-023"
       ],
       "started_at": "2026-10-19T14:03:43+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-19T18:39:19+02:00",
+      "reviewed_at": "2026-10-19T18:39:19+02:00"
     },
     {
       "id": "US-026",
       "title": "Certify the final commit on Windows and Linux",
       "epic": "EP-006",
-      "status": "IN_REVIEW",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [
@@ -416,8 +416,8 @@
         "US-025"
       ],
       "started_at": "2026-10-19T14:03:43+02:00",
-      "completed_at": null,
-      "reviewed_at": null
+      "completed_at": "2026-10-19T18:39:19+02:00",
+      "reviewed_at": "2026-10-19T18:39:19+02:00"
     }
   ]
 }
