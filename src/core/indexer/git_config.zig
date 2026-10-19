@@ -405,17 +405,27 @@ const Loader = struct {
         return false;
     }
 
-    /// git's include_by_gitdir and prepare_include_condition_pattern.
+    /// git's include_by_gitdir and prepare_include_condition_pattern. The
+    /// paths pf derives (home, config folder, git directory) are matched with
+    /// `/` separators, as Git for Windows does; the pattern text is kept.
     fn gitdirMatches(self: *Loader, raw: []const u8, fold_case: bool, config_path: []const u8) Allocator.Error!bool {
         const layout = self.context.layout orelse return false;
-        var pattern = try self.expandHome(raw) orelse return false;
+        const os_tag = builtin.target.os.tag;
+        if (raw.len == 0) return false;
+        var pattern = raw;
+        if (raw[0] == '~') {
+            if (!std.mem.startsWith(u8, raw, "~/")) return false;
+            const home = self.context.home orelse return false;
+            const home_slashed = std.mem.trimEnd(u8, try gitSlashes(self.arena, home, os_tag), "/");
+            pattern = try std.mem.concat(self.arena, u8, &.{ home_slashed, "/", raw[2..] });
+        }
         var literal_len: usize = 0;
         if (std.mem.startsWith(u8, pattern, "./")) {
             const real_config = io_mod.realpathAlloc(self.arena, config_path) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 else => return false,
             };
-            const dir = std.Io.Dir.path.dirname(real_config) orelse return false;
+            const dir = try gitSlashes(self.arena, std.Io.Dir.path.dirname(real_config) orelse return false, os_tag);
             pattern = try std.mem.concat(self.arena, u8, &.{ dir, pattern[1..] });
             literal_len = dir.len + 1;
         } else if (!std.Io.Dir.path.isAbsolute(pattern)) {
@@ -425,7 +435,7 @@ const Loader = struct {
 
         const candidates = [_]?[]const u8{ self.context.git_dir_real, layout.git_dir };
         for (candidates) |maybe_text| {
-            const text = maybe_text orelse continue;
+            const text = try gitSlashes(self.arena, maybe_text orelse continue, os_tag);
             if (literal_len > 0) {
                 if (text.len < literal_len) continue;
                 const same = if (fold_case)
@@ -437,6 +447,15 @@ const Loader = struct {
             if (wildmatch.match(pattern[literal_len..], text[literal_len..], .{ .pathname = true, .casefold = fold_case })) return true;
         }
         return false;
+    }
+
+    /// `path` with `/` separators on Windows, where pf's paths use `\`;
+    /// unchanged elsewhere, where `\` is a file name byte.
+    fn gitSlashes(arena: Allocator, path: []const u8, os_tag: std.Target.Os.Tag) Allocator.Error![]const u8 {
+        if (os_tag != .windows or std.mem.findScalar(u8, path, '\\') == null) return path;
+        const slashed = try arena.dupe(u8, path);
+        std.mem.replaceScalar(u8, slashed, '\\', '/');
+        return slashed;
     }
 
     /// git's include_by_branch.
@@ -691,7 +710,7 @@ test "config includes follow relative and home paths, skip missing files and sto
     const settings = try ignoreSettings(arena, loaded, &repo.context);
     // The last value wins in file order, after spliced-in includes.
     try std.testing.expect(!settings.ignore_case);
-    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ repo.root, "home/from-b" }), settings.excludes_file.?);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ repo.root, "home", "from-b" }), settings.excludes_file.?);
     try std.testing.expectEqual(@as(usize, 1), loaded.unavailable.len);
     try std.testing.expectEqualStrings("include_depth", loaded.unavailable[0].reason);
 }
@@ -704,7 +723,8 @@ test "config includeIf evaluates gitdir, gitdir/i and onbranch, and never hascon
     defer tmp.cleanup();
     const matching = try testRepo(arena, &tmp, "work/one", "feat/x");
     const other = try testRepo(arena, &tmp, "play/two", "main");
-    const root = matching.root;
+    // Patterns use `/` separators on every OS, as git expects.
+    const root = try Loader.gitSlashes(arena, matching.root, builtin.target.os.tag);
     const gitconfig = try arena.print(
         \\[includeIf "gitdir:{s}/work/"]
         \\path = work.inc
@@ -738,7 +758,7 @@ test "config includeIf evaluates gitdir, gitdir/i and onbranch, and never hascon
     no_repo.git_dir_real = null;
     no_repo.branch = null;
     const none = try ignoreSettings(arena, try loadAll(arena, &no_repo), &no_repo);
-    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, "home/.config/git/ignore" }), none.excludes_file.?);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ matching.root, "home", ".config", "git", "ignore" }), none.excludes_file.?);
 }
 
 test "config gitdir patterns relative to the including file" {
@@ -774,9 +794,9 @@ test "user config links are followed and repository config links are not" {
     try std.testing.expectEqual(@as(usize, 0), loaded.unavailable.len);
     const settings = try ignoreSettings(arena, loaded, &repo.context);
     try std.testing.expect(settings.ignore_case);
-    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ repo.root, "home/.gitignore_global" }), settings.excludes_file.?);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ repo.root, "home", ".gitignore_global" }), settings.excludes_file.?);
     try std.testing.expect(settings.excludes_file_follows_symlinks);
-    const home_prefix = try std.Io.Dir.path.join(arena, &.{ repo.root, "home/" });
+    const home_prefix = try arena.print("{s}{c}", .{ try std.Io.Dir.path.join(arena, &.{ repo.root, "home" }), std.Io.Dir.path.sep });
     for (loaded.paths) |read| {
         try std.testing.expectEqual(std.mem.startsWith(u8, read.path, home_prefix), read.follow_symlinks);
     }
@@ -790,6 +810,16 @@ test "user config links are followed and repository config links are not" {
     const repo_settings = try ignoreSettings(arena, repo_loaded, &repo.context);
     try std.testing.expectEqualStrings("/repo-excludes", repo_settings.excludes_file.?);
     try std.testing.expect(!repo_settings.excludes_file_follows_symlinks);
+}
+
+test "gitdir conditions see Windows paths with forward slashes" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try std.testing.expectEqualStrings("C:/Users/a/work/.git", try Loader.gitSlashes(arena, "C:\\Users\\a\\work\\.git", .windows));
+    // On POSIX a backslash is an ordinary file name byte.
+    try std.testing.expectEqualStrings("/home/a\\b/.git", try Loader.gitSlashes(arena, "/home/a\\b/.git", .linux));
+    try std.testing.expect(wildmatch.match("C:/Users/a/work/**", try Loader.gitSlashes(arena, "C:\\Users\\a\\work\\one\\.git", .windows), .{ .pathname = true }));
 }
 
 test "repository filter names come only from repository config and count every includeIf" {
