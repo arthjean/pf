@@ -229,7 +229,7 @@ fn executeDirectReadOnlyWithLimitAndTestControls(
             try windowsDirectArgv(scratch, msys_usr_bin, stage.argv)
         else
             stage.argv;
-        if (builtin.target.os.tag == .windows) try environment.put("PATH", msys_usr_bin);
+        if (builtin.target.os.tag == .windows) try applyWindowsPath(&environment, stage.environment_profile, msys_usr_bin);
         try command_runner.applyAgentEnvironment(&environment);
 
         const child = spawnDirect(.{
@@ -441,6 +441,37 @@ fn environmentForProfile(
         if (io_mod.getenv("SYSTEMROOT")) |system_root| try environment.put("SYSTEMROOT", system_root);
     }
     return environment;
+}
+
+/// On Windows, a basic stage runs Git Bash's tools from `msys_usr_bin`. A git
+/// stage keeps the PATH that `safe_git.environment` built from the same Git
+/// Bash, so the direct route and `pf pr` run git with the same environment.
+fn applyWindowsPath(
+    environment: *std.process.Environ.Map,
+    profile: command_effect.EnvironmentProfile,
+    msys_usr_bin: []const u8,
+) !void {
+    switch (profile) {
+        .basic_read_only => try environment.put("PATH", msys_usr_bin),
+        .git_read_only => {},
+    }
+}
+
+test "Windows direct stages keep safe git's PATH and give basic stages Git Bash's tools" {
+    const usr_bin = "C:\\Program Files\\Git\\usr\\bin";
+    const git_path = "C:\\Program Files\\Git\\usr\\bin;C:\\Program Files\\Git\\mingw64\\bin";
+
+    var basic = std.process.Environ.Map.init(std.testing.allocator);
+    defer basic.deinit();
+    try basic.put("PATH", "/usr/bin:/bin");
+    try applyWindowsPath(&basic, .basic_read_only, usr_bin);
+    try std.testing.expectEqualStrings(usr_bin, basic.get("PATH").?);
+
+    var git = std.process.Environ.Map.init(std.testing.allocator);
+    defer git.deinit();
+    try git.put("PATH", git_path);
+    try applyWindowsPath(&git, .git_read_only, usr_bin);
+    try std.testing.expectEqualStrings(git_path, git.get("PATH").?);
 }
 
 test "direct commands receive pf agent environment" {
