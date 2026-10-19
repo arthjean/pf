@@ -52,6 +52,9 @@ and has been modified since. Notable modifications:
   with the Windows profile variables, instead of a fixed install path.
 - `homeDir` checks `USERPROFILE` then `HOME` on Windows and ignores a
   relative value on every OS.
+- On Windows, the native indexer matches `includeIf` `gitdir:` conditions
+  against the home, config, and git directory paths with `/` separators, as
+  Git for Windows does.
 
 "fx" and "Vercel" are names of Vercel, Inc. They appear here only to describe
 where this code comes from.
