@@ -907,15 +907,21 @@ test "refresh trusts an old unchanged tree and rejects every kind of change" {
     const arena = arena_state.allocator();
     var tree = try TestTree.init(arena);
     defer tree.tmp.cleanup();
-    const cases = [_][]const u8{ "unchanged", "new_file", "ignore_edit", "index", "config", "replaced", "future" };
+    // pf: Zig 0.17's `Dir.setTimestamps` panics on Windows (a TODO in std),
+    // so the future-dated folder case runs elsewhere only.
+    const set_future = comptime builtin.target.os.tag != .windows;
+    const cases = [_][]const u8{ "unchanged", "new_file", "ignore_edit", "index", "config", "replaced" } ++
+        if (set_future) [_][]const u8{"future"} else [_][]const u8{};
     for (cases) |name| {
         try tree.repo(arena, name, &.{.{ .path = "src/a.txt" }});
         try tree.file(try arena.print("{s}/.gitignore", .{name}), "*.log\n");
         try tree.file(try arena.print("{s}/src/a.txt", .{name}), "a");
         try tree.file(try arena.print("{s}/docs/b.md", .{name}), "b");
     }
-    const future: std.Io.Timestamp = .{ .nanoseconds = @as(i96, tree_mod.nowNs()) + 3600 * std.time.ns_per_s };
-    try tree.tmp.dir.setTimestamps(std.testing.io, "future/docs", .{ .modify_timestamp = .{ .new = future } });
+    if (set_future) {
+        const future: std.Io.Timestamp = .{ .nanoseconds = @as(i96, tree_mod.nowNs()) + 3600 * std.time.ns_per_s };
+        try tree.tmp.dir.setTimestamps(std.testing.io, "future/docs", .{ .modify_timestamp = .{ .new = future } });
+    }
     // Folders above a searched one that have no `.gitignore` yet.
     const first_rules = [_][]const u8{ "root_rules", "parent_rules" };
     for (first_rules) |name| {

@@ -1938,7 +1938,10 @@ test "added-root candidates drop the same paths as primary-root ones" {
         .{ .path = "ok.txt", .kind = .file },
     };
     var trees: [2]indexer.Tree = undefined;
-    for (&trees, [_][]const u8{ "/workspace", "/extra" }, [_][]const indexer.Entry{ &primary, &added }) |*tree, root, entries| {
+    // Roots are absolute on the host OS, as the indexer reports them.
+    const windows = comptime @import("builtin").target.os.tag == .windows;
+    const roots = if (windows) [_][]const u8{ "C:\\workspace", "C:\\extra" } else [_][]const u8{ "/workspace", "/extra" };
+    for (&trees, roots, [_][]const indexer.Entry{ &primary, &added }) |*tree, root, entries| {
         tree.* = .{
             .root = root,
             .root_inode = 1,
@@ -1954,10 +1957,10 @@ test "added-root candidates drop the same paths as primary-root ones" {
         };
     }
     var stop_requested = std.atomic.Value(bool).init(false);
-    const candidates = try candidatesFromTrees(arena, &.{ "/workspace", "/extra" }, &trees, &stop_requested);
+    const candidates = try candidatesFromTrees(arena, &roots, &trees, &stop_requested);
     try std.testing.expectEqual(@as(usize, 2), candidates.len);
     try std.testing.expectEqualStrings("main.zig", candidates[0].path);
-    try std.testing.expectEqualStrings("/extra/ok.txt", candidates[1].path);
+    try std.testing.expectEqualStrings(if (windows) "C:\\extra\\ok.txt" else "/extra/ok.txt", candidates[1].path);
 }
 
 test "primary tree candidates keep plain paths and drop git, escaping and unsafe ones" {

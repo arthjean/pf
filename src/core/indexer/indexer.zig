@@ -149,7 +149,7 @@ test "repoFilters returns the repository and its drivers and fails closed on unr
     defer alloc.free(repo_src);
     const filters = try repoFilters(alloc, repo_src);
     defer filters.deinit(alloc);
-    const expected_git_dir = try std.Io.Dir.path.join(alloc, &.{ root, "repo/.git" });
+    const expected_git_dir = try std.Io.Dir.path.resolveAlloc(alloc, &.{ root, "repo/.git" });
     defer alloc.free(expected_git_dir);
     try std.testing.expectEqualStrings(expected_git_dir, filters.git_dir.?);
     try std.testing.expectEqual(@as(usize, 1), filters.names.len);

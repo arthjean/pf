@@ -215,7 +215,7 @@ test "layout discovery finds the innermost repository and the workspace prefix" 
     const start = try std.Io.Dir.path.join(arena, &.{ root, "repo/a/b" });
     const found = (try discover(arena, start)).?;
     try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, "repo" }), found.worktree_root);
-    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, "repo/.git" }), found.git_dir);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.resolveAlloc(arena, &.{ root, "repo/.git" }), found.git_dir);
     try std.testing.expectEqualStrings(found.git_dir, found.common_dir);
     try std.testing.expectEqualStrings("a/b", found.prefix);
     try std.testing.expectEqualStrings("main", (try currentBranch(arena, found)).?);
@@ -238,8 +238,8 @@ test "layout discovery follows gitdir files and commondir for linked worktrees" 
 
     const found = (try discover(arena, try std.Io.Dir.path.join(arena, &.{ root, "wt" }))).?;
     try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, "wt" }), found.worktree_root);
-    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, "main/.git/worktrees/wt" }), found.git_dir);
-    try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, "main/.git" }), found.common_dir);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.resolveAlloc(arena, &.{ root, "main/.git/worktrees/wt" }), found.git_dir);
+    try std.testing.expectEqualStrings(try std.Io.Dir.path.resolveAlloc(arena, &.{ root, "main/.git" }), found.common_dir);
     try std.testing.expectEqualStrings("feature/x", (try currentBranch(arena, found)).?);
 }
 
@@ -294,6 +294,6 @@ test "layout discovery accepts exactly the git directories git accepts" {
     };
     for (cases) |case| {
         const found = (try discover(arena, try std.Io.Dir.path.join(arena, &.{ root, case.start }))).?;
-        try std.testing.expectEqualStrings(try std.Io.Dir.path.join(arena, &.{ root, case.worktree }), found.worktree_root);
+        try std.testing.expectEqualStrings(try std.Io.Dir.path.resolveAlloc(arena, &.{ root, case.worktree }), found.worktree_root);
     }
 }
